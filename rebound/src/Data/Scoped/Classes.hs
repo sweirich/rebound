@@ -9,6 +9,7 @@
 -- these classes. (Which are used in the default definitions.)
 
 module Data.Scoped.Classes(
+    type (~>)(..),
     ScopedFunctor(..),
     ScopedFoldable(..),
     ScopedTraversable(..),
@@ -26,6 +27,7 @@ import Control.DeepSeq
 import Data.Foldable qualified as F
 import Data.Traversable qualified as T
 
+-- | A scoped function (i.e., a function whose input & output are scoped).
 newtype (~>) a b n = MkArr (a n -> b n) 
     deriving newtype (Semigroup, Monoid, Arbitrary, CoArbitrary, Testable, NFData)
     deriving stock (Generic)

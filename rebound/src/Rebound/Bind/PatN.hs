@@ -7,6 +7,8 @@
 module Rebound.Bind.PatN
   ( module Rebound,
 
+    PatN(..),
+
     -- * single binder --
     Bind1 (..),
     bind1,
@@ -56,8 +58,7 @@ import Data.Vec qualified as Vec
 -- N-ary patterns
 ----------------------------------------------------------------
 
--- * A pattern that binds `p` variables
-
+-- | A pattern that binds @p@ variables.
 newtype PatN (p :: Nat) where
   PatN :: SNat p -> PatN p
 
@@ -88,7 +89,7 @@ unbindN :: forall m v c n d. (Subst v c, SNatI n, SNatI m) => BindN v c m n -> (
 unbindN bnd f = Pat.unbind bnd (const f)
 
 -- | Retrieve the body of the binding.
--- For this kind of binding, it is equivalent to 'getBody'.
+-- For this kind of binding, it is equivalent to 'getBodyN'.
 unbindlN :: forall m v c n. (Subst v c, SNatI m) => BindN v c m n -> c (m + n)
 unbindlN = Pat.getBody
 
@@ -158,7 +159,7 @@ unbind1 ::
 unbind1 b f = f (Pat.getBody b)
 
 -- | Retrieve the body of the binding.
--- For this kind of binding, it is equivalent to 'getBody'.
+-- For this kind of binding, it is equivalent to 'getBody1'.
 unbindl1 :: forall v c n. (Subst v c) => Bind1 v c n -> c (S n)
 unbindl1 = Pat.getBody
 
@@ -231,7 +232,7 @@ unbind2 ::
 unbind2 b f = f (getBody2 b)
 
 -- | Retrieve the body of the binding.
--- For this kind of binding, it is equivalent to 'getBody'.
+-- For this kind of binding, it is equivalent to 'getBody2'.
 unbindl2 :: forall v c n. (Subst v c) => Bind2 v c n -> c (S (S n))
 unbindl2 = Pat.getBody
 

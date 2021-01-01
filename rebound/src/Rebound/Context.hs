@@ -25,7 +25,7 @@ shiftCtx g = g .>> shift1E
 emptyC :: Ctx v N0
 emptyC = zeroE
 
--- | 'Snoc' a new definition to the end of the context
+-- | "Snoc" a new definition to the end of the context
 -- All existing types in the context need to be shifted (lazily)
 (+++) :: forall v n. (SubstVar v) => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = applyE @v shift1E a .: (g .>> shift1E)

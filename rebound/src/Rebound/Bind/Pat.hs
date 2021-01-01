@@ -42,7 +42,7 @@ data Bind v c (pat :: Type) (n :: Nat) where
   Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 -- | To compare pattern binders, we need to unbind, but also
--- first make sure that the patterns are equal
+-- first make sure that the patterns are equal.
 instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat n) where
   b1 == b2 =
     getPat b1 == getPat b2

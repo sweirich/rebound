@@ -1,9 +1,12 @@
--- | A "Scoped" pattern binds variables but
--- can also include subterms that reference
--- free variables that are already in scope.
--- This is useful for type annotations and telescopes.
--- The pattern type must have kind `Nat -> Type`
--- For a simpler interface, see Rebound.Bind.Pat
+-- | 
+-- Module       : Rebound.Bind.Scoped
+-- Description  : Bind variables while referring to them
+--
+-- A "Scoped" pattern binds variables but can also include subterms that
+-- reference free variables that are already in scope. This is useful for type
+-- annotations and telescopes. The pattern type typically has kind
+-- @'Nat' -> 'Type'@, the 'Nat' is used to track the (initial) number of free
+-- variables. For a simpler interface, see 'Rebound.Bind.Pat.Pat'.
 module Rebound.Bind.Scoped (
     module Rebound,
     Bind,
@@ -23,8 +26,11 @@ module Rebound.Bind.Scoped (
     scopedSize,
     scopedNames,
     scopedPatEq,
+    EqSized,
+    EqScopedSized,
     
     -- * Telescopes
+    -- IScoped make sense, but are never used anywhere; should be remove it?
     IScopedSized,
     iscopedSize,
     iscopedNames,
@@ -48,38 +54,33 @@ import Data.Vec qualified as Vec
 -- Sized type class for patterns
 ----------------------------------------------------------
 
--- Scoped patterns have kinds :: Nat -> Nat -> Type where
--- the first parameter is `p`, the number of variables that pattern
--- binds, and the second parameter is `n`, the scope of for any
--- terms that appear inside the pattern.
-
--- Crucially, the number of variables bound by the pattern
--- shouldn't depend on the scope. We manifest that with the
--- associated type `ScopedSize :: Nat -> Type` and the constraint
--- that it must be the same as Size for any number of bound variables.
--- This technique is described by: 
--- https://blog.poisson.chat/posts/2022-09-21-quantified-constraint-trick.html
-
+-- | Constrain 'ScopedSized' to agree with 'Sized'.
 class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
 instance (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
--- this is equivalent to (Size (t p) ~ ScopedSize pat
+-- | Type class for the size of scoped patterns.
+-- The size it returns must be the same as the one returned by 'Sized'.
+--
+-- This type class is there to force the size of the pattern to be independent
+-- of the number of variables in scope. This technique is described by:
+-- https://blog.poisson.chat/posts/2022-09-21-quantified-constraint-trick.html
 class (forall p. EqSized pat p) => ScopedSized pat where
   type ScopedSize (pat :: Nat -> Type) :: Nat
 
--- For convenience, we give the `size` function a type that mentions
--- `ScopedSize` instead of `Size`.
+-- | 'Rebound.Classes.size', but with a type referring to 'ScopedSize'.
 scopedSize :: forall pat p. (ScopedSized pat) => pat p -> SNat (ScopedSize pat)
 scopedSize = size
 
--- And we give the `names` function a similar type
+-- | 'Rebound.MonadNames.names', but with a type referring to 'ScopedSize'.
 scopedNames ::
   (ScopedSized pat, Named name (pat p)) =>
   pat p ->
   Vec (ScopedSize pat) name
 scopedNames = names
 
+-- | Compare two patterns for equality. Provide a proof of equality of their
+-- size in case of success.
 scopedPatEq ::
   (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
   pat1 p1 ->
@@ -94,10 +95,10 @@ scopedPatEq = patEq
 -- Scoped Pattern binding
 ----------------------------------------------------------
 
--- The `Bind` type binds (ScopedSize p) variables.
--- Patterns can also include free occurrences of variables so
--- they are also indexed by a scope level.
--- As in `Bind` above, this data structure includes a delayed
+-- | The `Bind` type binds (ScopedSize p) variables.
+-- Patterns can also include free occurrences of variables, so
+-- the type is indexed by a scope level.
+-- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Nat -> Type) (n :: Nat) where
   Bind ::
@@ -106,6 +107,8 @@ data Bind v c (pat :: Nat -> Type) (n :: Nat) where
     c (ScopedSize pat + m) ->
     Bind v c pat n
 
+-- | To compare pattern binders, we need to unbind, but also
+-- first make sure that the patterns are equal.
 instance (forall n. Eq (c n), 
     PatEq (pat m n) (pat m n), 
     ScopedSized (pat m), 
@@ -114,8 +117,7 @@ instance (forall n. Eq (c n),
     Maybe.isJust (patEq (getPat b1) (getPat b2))
       && getBody b1 == getBody b2
 
-
--- | Create a `Bind` with an identity substitution.
+-- | Bind a pattern, using the identity substitution.
 bind ::
   forall v c pat n.
   (ScopedSized pat, Subst v c) =>
@@ -124,13 +126,17 @@ bind ::
   Bind v c pat n
 bind pat = Bind pat idE
 
--- | Access the pattern of a pattern binding
+-- | Bind a pattern, while suspending the provided substitution.
+bindWith ::
+  (ScopedSized pat, Subst v c) =>
+  pat n -> Env v m n -> c (ScopedSize pat + m) -> Bind v c pat n
+bindWith = Bind
+
+-- | Retrieve the pattern of the binding.
 getPat :: Bind v c pat n -> pat n
 getPat (Bind pat env t) = pat
 
--- | Access the body of a pattern binding.
--- The pattern type determines the number of variables
--- bound in the pattern
+-- | Retrieve the body of the binding.
 getBody ::
   forall v c pat n.
   (ScopedSized pat, Subst v v, Subst v c) =>
@@ -139,6 +145,23 @@ getBody ::
 getBody (Bind (pat :: pat n) (env :: Env v m n) t) =
   applyE @v @c @(ScopedSize pat + m) (upN (scopedSize pat) env) t
 
+-- | Run a function on the body (and pattern), after applying the delayed substitution.
+-- The size of the (current) scope is made available at runtime.
+unbind ::
+  forall v c pat n d.
+  (SNatI n, forall n. ScopedSized pat, Subst v v, Subst v c) =>
+  Bind v c pat n ->
+  ((SNatI (ScopedSize pat + n)) => pat n -> c (ScopedSize pat + n) -> d) ->
+  d
+unbind bnd f =
+  withSNat (sPlus (scopedSize (getPat bnd)) (snat @n)) $
+    f (getPat bnd) (getBody bnd)
+
+-- | Retrieve the body, as well as the bound pattern.
+unbindl :: (SNatI n, Subst v c, ScopedSized pat) => Bind v c pat n -> (pat n, c (ScopedSize pat + n))
+unbindl bnd = (getPat bnd, getBody bnd)
+
+-- | Instantiate the body (i.e. replace the bound variables) with the provided terms.
 instantiate ::
   forall v c pat n.
   (forall n. ScopedSized pat, Subst v c) =>
@@ -150,37 +173,8 @@ instantiate b e =
     b
     (\p r t -> withSNat (scopedSize p) $ applyE (e .++ r) t)
 
-instantiateWith ::
-  (ScopedSized pat, SubstVar v) =>
-  Bind v c pat n ->
-  Env v (ScopedSize pat) n ->
-  (forall m. Env v m n -> c m -> c n) ->
-  c n
-instantiateWith b v f =
-  unbindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
-
-unbind ::
-  forall v c pat n d.
-  (SNatI n, forall n. ScopedSized pat, Subst v v, Subst v c) =>
-  Bind v c pat n ->
-  ((SNatI (ScopedSize pat + n)) => pat n -> c (ScopedSize pat + n) -> d) ->
-  d
-unbind bnd f =
-  withSNat (sPlus (scopedSize (getPat bnd)) (snat @n)) $
-    f (getPat bnd) (getBody bnd)
-
-unbindl :: (SNatI n, Subst v c, ScopedSized pat) => Bind v c pat n -> (pat n, c (ScopedSize pat + n))
-unbindl bnd = (getPat bnd, getBody bnd)
-
--- | Apply a function to the pattern, suspended environment and body
--- in a pattern binding
-unbindWith ::
-  (forall n. Sized (pat n), SubstVar v) =>
-  Bind v c pat n ->
-  (forall m. pat n -> Env v m n -> c (ScopedSize pat + m) -> d) ->
-  d
-unbindWith (Bind pat r t) f = f pat r t
-
+-- | Apply a function under the binder.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
 applyUnder ::
   forall pat v c n1 n2.
   (ScopedSized pat, Subst v v, Subst v c, Subst v pat) =>
@@ -197,8 +191,28 @@ applyUnder f r2 (Bind p r1 t) =
     p' :: pat n2
     p' = applyE r2 p
 
--- Map variable 0 to given value, and shift everything else
--- in the environment
+-- | Run a function on the body.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
+unbindWith ::
+  (forall n. Sized (pat n), SubstVar v) =>
+  Bind v c pat n ->
+  (forall m. pat n -> Env v m n -> c (ScopedSize pat + m) -> d) ->
+  d
+unbindWith (Bind pat r t) f = f pat r t
+
+-- | Instantiate the body (i.e. replace the bound variable) with the provided term.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
+instantiateWith ::
+  (ScopedSized pat, SubstVar v) =>
+  Bind v c pat n ->
+  Env v (ScopedSize pat) n ->
+  (forall m. Env v m n -> c m -> c n) ->
+  c n
+instantiateWith b v f =
+  unbindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
+
+-- | Map variable 0 to given value, and shift everything else
+-- in the environment.
 instantiateWeakenEnv ::
   forall p n v c.
   (SubstVar v, Subst v v) =>
@@ -269,6 +283,7 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
 -- (i.e. Size or ScopedSize) so we need yet *another* type class
 -- to make this constraint.
 
+-- | Constrain 'IScopedSized' to agree with 'ScopedSized'.
 class (ScopedSize (t p) ~ p) => EqScopedSized t p
 
 instance (ScopedSize (t p) ~ p) => EqScopedSized t p
@@ -294,14 +309,18 @@ iscopedPatEq ::
   Maybe (p1 :~: p2)
 iscopedPatEq = scopedPatEq
 
--- | Telescopes: lists of local assumptions
--- These are scoped patterns because they include terms
--- that can mention variables that are already in scope
--- or that have been bound earlier in the pattern.
--- 'p' is the number of variables introduced by the telescope
--- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
--- We include the appropriate associativity property with ICons so
--- that it is always available for pattern matching
+-- | A telescope binds a linear sequence of variables. Each variable can have
+-- metadata attached, and that metadata can be indexed. Each piece of metadata
+-- can refer to every variable initially in scope, as well as every variables
+-- previously introduced by the telescope itself.
+-- 
+-- The type parameters are
+-- - @p@ is the number of variables introduced by the telescope
+-- - @n@ is the number of free variables for @A1@ (and @A2@ has @S n@, etc.)
+--
+-- We include some arithmetic properties with each constructors, so that these
+-- get brought in scope when pattern matching. Smart constructors 'nil'
+-- and '<:>' can be used to easily construct 'TeleList'.
 data TeleList (pat :: Nat -> Nat -> Type) p n where
   TNil :: ( n + N0 ~ n) =>
     TeleList pat N0 n
@@ -313,15 +332,16 @@ data TeleList (pat :: Nat -> Nat -> Type) p n where
     TeleList pat p2 (p1 + n) ->
     TeleList pat (p2 + p1) n
 
+-- | Length of a 'TeleList'.
 lengthTele :: TeleList pat p n -> Int
 lengthTele TNil = 0
 lengthTele (TCons _ ps) = 1 + lengthTele ps
 
--- Smart constructor
+-- | Smart constructor for 'TNil'.
 nil :: forall pat n. TeleList pat N0 n
 nil = case axiomPlusZ @n of Refl -> TNil
 
--- Smart constructor
+-- | Smart constructor for 'TCons'.
 (<:>) ::
   forall p1 p2 pat n.
   (IScopedSized pat) =>
@@ -330,6 +350,7 @@ nil = case axiomPlusZ @n of Refl -> TNil
   TeleList pat (p2 + p1) n
 e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
 
+-- | Append two telescopes.
 (<++>) ::
   forall p1 p2 pat n.
   (IScopedSized pat) =>
