@@ -142,8 +142,6 @@ data LE m n where
     LZ :: LE m m 
     LS :: LE m n -> LE m (S n)
 
-
-
 shift :: LE m n -> Fin m -> Fin n
 shift LZ f = f
 shift (LS le) f = FS (shift le f) 
