@@ -1,4 +1,5 @@
 -- The untyped lambda calculus
+-- Evaluation and normalization
 module LC where
 
 import Vec
@@ -142,29 +143,31 @@ eval' e
  | Just e' <- step e = eval' e'
  | otherwise = e
 
--- weak-head normalization
+-- full normalization
 -- to normalize under a lambda expression, we must first unbind 
 -- it and then rebind it when finished
   
 
--- >>> whnf t1
+-- >>> nf t1
 -- λ. λ. 1 0
 
--- >>> whnf (t1 `App` t0)
+-- >>> nf (t1 `App` t0)
 -- λ. λ. 0 0
 
-whnf :: Exp n -> Exp n
-whnf (Var x) = Var x
-whnf (Lam b) = Lam (bind1 (whnf (unbind b)))
-whnf (App e1 e2) =
-    case whnf e1 of
-        Lam b -> instantiate b (whnf e2)
-        t -> App t (whnf e2)
+nf :: Exp n -> Exp n
+nf (Var x) = Var x
+nf (Lam b) = Lam (bind1 (nf (unbind b)))
+nf (App e1 e2) =
+    case nf e1 of
+        Lam b -> instantiate b (nf e2)
+        t -> App t (nf e2)
 
 
 --------------------------------------------------------
 -- We can also write functions that manipulate the 
--- environment explicitly
+-- environment explicitly. These operations are equivalent
+-- to the definitions above, but they provide access to the 
+-- suspended substitution during the traversal of the term.
 
 -- >>> evalEnv idE t1
 -- λ. λ. 1 (λ. 0 0)
@@ -198,14 +201,14 @@ evalEnv r (App e1 e2) =
 -- In the beta-reduction case, we could use `unbindWith` as above
 -- but the `instantiateWith` function already captures exactly
 -- this pattern. 
-whnfEnv :: Env Exp m n -> Exp m -> Exp n
-whnfEnv r (Var x) = applyEnv r x
-whnfEnv r (Lam b) = Lam (applyWith whnfEnv r b)
-whnfEnv r (App e1 e2) =
-    let n = whnfEnv r e1 in
-    case whnfEnv r e1 of
-        Lam b -> instantiateWith whnfEnv b n
-        t -> App t (whnfEnv r e2)
+nfEnv :: Env Exp m n -> Exp m -> Exp n
+nfEnv r (Var x) = applyEnv r x
+nfEnv r (Lam b) = Lam (applyWith nfEnv r b)
+nfEnv r (App e1 e2) =
+    let n = nfEnv r e1 in
+    case nfEnv r e1 of
+        Lam b -> instantiateWith nfEnv b n
+        t -> App t (nfEnv r e2)
 
 ----------------------------------------------------------------
 

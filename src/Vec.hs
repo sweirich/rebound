@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module Vec where
 
 -- Library for `Nat`, `Fin` and `Vec`, i.e. bounded natural numbers and length-indexed lists
@@ -8,6 +10,21 @@ import Test.QuickCheck
 -----------------------------------------------------
 class ToInt n where
     toInt :: n -> Int
+
+-----------------------------------------------------
+-- Statically sized types
+
+class Sized t where
+    type Size t :: Nat
+    size :: t -> SNat (Size t)
+
+instance Sized (SNat n) where
+    type Size (SNat n) = n
+    size = id
+
+instance Sized (Vec n a) where
+    type Size (Vec n a) = n
+    size = vlength
 
 -----------------------------------------------------
 -- Nats (and singleton nats and implicit singletons)
@@ -27,6 +44,13 @@ one = FS FZ
 
 two :: Fin (S (S (S n)))
 two = FS (FS FZ)
+
+type family Plus (n :: Nat) (m :: Nat) :: Nat where
+    Plus Z m = m
+    Plus (S n) m = S (Plus n m)
+
+
+---------------------------------------------------------
 
 data SNat (n :: Nat) where
     SZ :: SNat Z

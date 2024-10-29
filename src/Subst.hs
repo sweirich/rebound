@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Subst where
 
 import Vec
@@ -46,6 +48,16 @@ singleE v = Env $ \ case FZ -> v ; FS y -> var (FS y)
 (.:) :: SubstVar v => v m -> Env v n m -> Env v (S n) m
 v .: f = Env $ \ case FZ -> v ; (FS x) -> applyEnv f x 
 
+appendE :: forall v p n m . 
+    SubstVar v => SNat p -> Env v p n -> Env v m n -> 
+    Env v (Plus p m) n
+appendE SZ e1 e2 = e2 
+appendE (SS (p1 :: SNat n1)) (e1 :: Env v (S n1) n) e2 = u 
+    where
+       u :: Env v (S (Plus n1 m)) n 
+       u = headE e1 .: appendE p1 (tailE e1) e2
+       
+
 -- inverse of `cons` -- remove the first mapping
 tailE :: SubstVar v => Env v (S n) m -> Env v n m
 tailE f = Env (applyEnv f . FS )
@@ -61,6 +73,20 @@ upE e = var FZ .: (e .>> shiftE)
 shiftE :: SubstVar v => Env v n (S n)
 shiftE = Env (var . FS)
 
+{-
+class UpE p where 
+    up :: Subst v v => Env v m n -> Env v (Plus (Size p) m) (Plus (Size p) n)
+
+instance UpE (SNat Z) where
+    up = id
+instance UpE (SNat n) => UpE (SNat (S n)) where
+    up e = var FZ .: (up @n e .>> shiftE)
+-}
+
+upN :: forall p v m n. (Subst v v) => 
+        SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
+upN SZ = id
+upN (SS n) = \ e -> var FZ .: (upN n e .>> shiftE)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -124,6 +150,71 @@ instance Subst v v => Subst v (Bind2 v c) where
     applyE :: SubstVar v => Env v n m -> Bind2 v c n -> Bind2 v c m
     applyE env1 (Bind2 env2 m) = Bind2 (env2 .>> env1) m
 
--- TODO: n-ary binders
+-- | access the body of the binder  (inverse of bind)
+unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
+unbind2 (Bind2 env t) = applyE (upE (upE env)) t
+
+-- | unbind a binder and apply the function to the argument and subterm.
+unbind2With :: (SubstVar v) => 
+    (forall m. Env v m n -> c (S (S m)) -> d) ->
+    Bind2 v c n -> d
+unbind2With f (Bind2 r t) = f r t
+
+-- | instantiate a binder with a term
+instantiate2 :: forall v c n. (Subst v c) => Bind2 v c n -> v n -> v n -> c n
+-- instantiate = instantiateWith applyE
+instantiate2 b v1 v2 = unbind2With (\ r e -> applyE (v1 .: (v2 .: r)) e) b
+
+----------------------------------------------------------
+-- Pattern binding
+----------------------------------------------------------
+
+data PatBind v c (p :: Type) (n :: Nat) where
+    PatBind :: p -> Env v m n -> c (Plus (Size p) m) 
+            -> PatBind v c p n
+
+patBind :: (Sized p, Subst v v) => p -> c (Plus (Size p) n) -> PatBind v c p n
+patBind pat = PatBind pat idE
+
+unPatBind :: 
+    (Sized p, Subst v v, Subst v c) => PatBind v c p n -> c (Plus (Size p) n)
+unPatBind (PatBind pat env t) = 
+    applyE (upN (size pat) env) t
+
+unPatBindWith ::  (Sized p, SubstVar v) => 
+    (forall m. p -> Env v m n -> c (Plus (Size p) m) -> d) -> PatBind v c p n -> d
+unPatBindWith f (PatBind pat r t) = 
+    f pat r t
+
+instantiatePat :: forall v c p n. (Sized p, Subst v c) => 
+   PatBind v c p n -> Env v (Size p) n -> c n
+instantiatePat b e = unPatBindWith (\ p r t -> applyE (appendE (size p) e r) t) b
+
+applyPatWith :: (Sized p, Subst v v, Subst v c) => 
+   (forall m n. Env v m n -> c m -> c n) -> Env v n1 n2 ->
+        PatBind v c p n1 -> PatBind v c p n2
+applyPatWith f r2 (PatBind p r1 t) = 
+    patBind p (f (upN (size p) (r1 .>> r2)) t)
+
+instantiatePatWith :: (Sized p, SubstVar v) =>
+         (forall m n. Env v m n -> c m -> c n) ->
+         PatBind v c p n -> Env v (Size p) n -> c n
+instantiatePatWith f b v = 
+    unPatBindWith (\ p r e -> f (appendE (size p) v r) e) b
 
 
+----------------------------------------------------------------
+-- For dependently-typed languages
+
+weaken :: forall v c n. Subst v c => c n -> c (S n)
+weaken = applyE @v shiftE
+
+type Ctx v n = Env v n n
+
+weakenCtx :: Subst v v => Env v n n -> Env v n (S n)
+weakenCtx g = g .>> shiftE
+
+(+++) :: forall v n. Subst v v => Ctx v n -> v n -> Ctx v (S n)
+g +++ a = weaken @v @v a .: weakenCtx g 
+
+----------------------------------------------------------------
