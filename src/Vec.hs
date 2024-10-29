@@ -1,6 +1,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FunctionalDependencies #-}
 module Vec where
+--- replace with
+-- https://hackage.haskell.org/package/fin 
+-- https://hackage.haskell.org/package/vec
+
 
 -- Library for `Nat`, `Fin` and `Vec`, i.e. bounded natural numbers and length-indexed lists
 
@@ -155,12 +159,32 @@ pick f x y = case f of
 -----------------------------------------------------
 
 data Vec n a where
-    Nil  :: Vec Z a
-    Cons :: a -> Vec n a -> Vec (S n) a
+    VNil  :: Vec Z a
+    (:::) :: a -> Vec n a -> Vec (S n) a
 
 deriving instance Functor (Vec n)
 deriving instance Foldable (Vec n)
 deriving instance Show a => Show (Vec n a)
+
+vlength :: Vec n a -> SNat n
+vlength VNil = SZ
+vlength (_ ::: vs) = SS (vlength vs)
+
+lookupVec :: Fin n -> Vec n a -> a
+lookupVec FZ (v ::: _)= v
+lookupVec (FS v) (_ ::: env) = lookupVec v env
+
+vupdate :: Fin n -> Vec n a -> a -> Vec n a
+vupdate FZ (_ ::: vs) w = w ::: vs
+vupdate (FS x) (w1 ::: env) w2 = w1 ::: (vupdate x env w2)
+
+vreplicate :: SNat n -> a -> Vec n a 
+vreplicate SZ x = VNil
+vreplicate (SS n) x = x ::: (vreplicate n x)
+
+vzipWith :: (a -> b -> c) -> Vec n a -> Vec n b -> Vec n c
+vzipWith f VNil VNil = VNil
+vzipWith f (x ::: xs) (y ::: ys) = (f x y) ::: (vzipWith f xs ys)
 
 data LE m n where
     LZ :: LE m m 
@@ -169,16 +193,3 @@ data LE m n where
 shift :: LE m n -> Fin m -> Fin n
 shift LZ f = f
 shift (LS le) f = FS (shift le f) 
-
-
-vlength :: Vec n a -> SNat n
-vlength Nil = SZ
-vlength (Cons _ vs) = SS (vlength vs)
-
-lookupVec :: Fin n -> Vec n a -> a
-lookupVec FZ (Cons v _)= v
-lookupVec (FS v) (Cons _ env) = lookupVec v env
-
-replaceVec :: Fin n -> Vec n a -> a -> Vec n a
-replaceVec FZ (Cons _ vs) w = Cons w vs
-replaceVec (FS x) (Cons w1 env) w2 = Cons w1 (replaceVec x env w2)

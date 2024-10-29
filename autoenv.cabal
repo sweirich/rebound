@@ -38,7 +38,7 @@ common common-stanza
     , StandaloneDeriving
     , LambdaCase
     , QuantifiedConstraints
-    , ClosedTypeFamilies
+    , TypeFamilies
 
 library
   import:
@@ -47,8 +47,8 @@ library
         Subst
       , Vec
       , LC
-      , DepSubst
       , PTS
+      , Pat
   hs-source-dirs:
       src
       , examples

@@ -176,8 +176,12 @@ data PatBind v c (p :: Type) (n :: Nat) where
 patBind :: (Sized p, Subst v v) => p -> c (Plus (Size p) n) -> PatBind v c p n
 patBind pat = PatBind pat idE
 
+getPat :: PatBind v c p n -> p
+getPat (PatBind pat env t) = pat
+
 unPatBind :: 
-    (Sized p, Subst v v, Subst v c) => PatBind v c p n -> c (Plus (Size p) n)
+    (Sized p, Subst v v, Subst v c) => PatBind v c p n 
+    -> c (Plus (Size p) n)
 unPatBind (PatBind pat env t) = 
     applyE (upN (size pat) env) t
 
@@ -202,6 +206,10 @@ instantiatePatWith :: (Sized p, SubstVar v) =>
 instantiatePatWith f b v = 
     unPatBindWith (\ p r e -> f (appendE (size p) v r) e) b
 
+instance Subst v v => Subst v (PatBind v c p) where
+    -- applyE :: SubstVar v => (Fin n -> v m) -> Bind1 v c n -> Bind1 v c m
+    applyE env1 (PatBind p env2 m) = 
+        PatBind p (env2 .>> env1) m
 
 ----------------------------------------------------------------
 -- For dependently-typed languages
