@@ -2,12 +2,14 @@
 -- Evaluation and normalization
 module LC where
 
-import Vec
+import Lib
 import Subst
+import qualified Vec
+
 
 {- 
 
-Here is a simple representation of well-scoped lambda calculus terms. 
+This is a simple representation of well-scoped lambda calculus terms. 
 The natural number index `n` is the scoping level -- a bound on the number 
 of free variables that can appear in the term. If `n` is 0, then the 
 term must be closed.
@@ -62,13 +64,13 @@ instance Subst Exp Exp where
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z 
-t0 = Lam (bind1 (Var zero))
+t0 = Lam (bind1 (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam (bind1 (Lam (bind1 (Var one `App` 
-    (Lam (bind1 (Var zero)) `App` Var zero)))))
+t1 = Lam (bind1 (Lam (bind1 (Var f1 `App` 
+    (Lam (bind1 (Var f0)) `App` Var f0)))))
 
 -- To show lambda terms, we can write a simple recursive instance of 
 -- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 

@@ -1,8 +1,9 @@
--- The untyped lambda calculus, with pattern matching
+-- The untyped lambda calculus with pattern matching
 -- Evaluation and normalization
 module Pat where
 
-import Vec
+import Lib
+import qualified Vec
 import Subst
 import Data.Type.Equality
 
@@ -22,6 +23,9 @@ data Pat (n :: Nat) where
 
 data Branch (n :: Nat) where
     Branch :: SNatI m => PatBind Exp Exp (Pat m) n -> Branch n
+
+----------------------------------------------
+-- How many variables are bound in a pattern?
 
 instance SNatI m => Sized (Pat m) where
     type Size (Pat m) = m
@@ -45,28 +49,26 @@ instance Subst Exp Branch where
     applyE :: Env Exp n m -> Branch n -> Branch m
     applyE r (Branch bnd) = Branch (applyE r bnd)
 
-
-
 ----------------------------------------------
 -- Examples
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z 
-t0 = Lam (bind1 (Var zero))
+t0 = Lam (bind1 (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam (bind1 (Lam (bind1 (Var one `App` 
-    (Lam (bind1 (Var zero)) `App` Var zero)))))
+t1 = Lam (bind1 (Lam (bind1 (Var f1 `App` 
+    (Lam (bind1 (Var f0)) `App` Var f0)))))
 
 
 t2 :: Exp Z
-t2 = Lam (bind1 (Case (Var zero) [Branch (patBind @(Pat Z) 
-                                    (PCon "Nil") (Var zero)), 
-                                  Branch (patBind @(Pat Two) 
-                                    (PCon "Cons" `PApp` PVar zero `PApp` PVar one) (Var zero))]))
+t2 = Lam (bind1 (Case (Var f0) [Branch (patBind @(Pat N0) 
+                                    (PCon "Nil") (Var f0)), 
+                                  Branch (patBind @(Pat N2) 
+                                    (PCon "Cons" `PApp` PVar f0 `PApp` PVar f1) (Var f0))]))
 
 -- To show lambda terms, we can write a simple recursive instance of 
 -- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 
@@ -135,165 +137,30 @@ deriving instance (Eq (Pat n))
 
 --------------------------------------------------------
 -- this pattern matching code fails if Pat n does not include
--- n different variables. 
+-- n different variables 
 
 type PartialEnv n m = Vec n (Maybe (Exp m))
 
 emptyPE :: SNatI n => PartialEnv n m
-emptyPE = vreplicate snat Nothing
+emptyPE = Vec.repeat snat Nothing
 
 singlePE :: SNatI n => Fin n -> Exp m -> PartialEnv n m
-singlePE x e = vupdate x emptyPE (Just e)
+singlePE x e = Vec.setAt x emptyPE (Just e)
                  
 mergePE :: PartialEnv n m -> PartialEnv n m -> PartialEnv n m
-mergePE = vzipWith $ \m1 m2 -> case (m1,m2) of 
+mergePE = Vec.zipWith $ \m1 m2 -> case (m1,m2) of 
                                  (Just x, _) -> Just x
                                  (_,Just x)  -> Just x
                                  (_,_) -> Nothing
 
 resolvePE :: PartialEnv n m -> Maybe (Env Exp n m)
-resolvePE pe = if all Maybe.isJust pe then Just $ Env $ \x -> Maybe.fromJust (lookupVec x pe) else Nothing
+resolvePE pe = if all Maybe.isJust pe then Just $ Env $ \x -> Maybe.fromJust (pe Vec.! x) else Nothing
 
 patternMatch :: SNatI n => Pat n -> Exp m -> Maybe (PartialEnv n m)
 patternMatch (PVar x) e = Just $ singlePE x e
 patternMatch (PCon s1) (Con s2) = Just emptyPE
 patternMatch (PApp p1 p2) (App e1 e2) = mergePE <$> patternMatch p1 e1 <*> patternMatch p2 e2
 patternMatch _ _ = Nothing
-
-
---------------------------------------------------------
-
-{- We can write the usual operations for evaluating 
-   lambda terms to values -}
-
--- big-step evaluation
-
-
-
-
-
--- >>> eval t1
--- λ. λ. 1 (λ. 0 0)
-
--- >>> eval (t1 `App` t0)
--- λ. λ. 0 (λ. 0 0)
-
-t3 = t2 `App` (((Con "Cons") `App` (Con "1")) `App` (Con "2"))
-
--- >>> t3
--- λ. case 0 of [Nil => 0,(Cons 0) 1 => 0] ((Cons 1) 2)
-
--- >>> eval t3
--- 1
-
-eval :: Exp n -> Exp n
-eval (Var x) = Var x
-eval (Lam b) = Lam b
-eval (App e1 e2) =
-    let v = eval e2 in
-    case eval e1 of
-        Lam b -> eval (instantiate b v)
-        t -> App t v
-eval (Con s) = Con s
-eval (Case e brs) = 
-    evalBranches (eval e) brs
-
-evalBranches :: Exp n -> [Branch n] -> Exp n
-evalBranches e [] = Case e []
-evalBranches e (Branch bind : brs) = 
-    case patternMatch (getPat bind) e of
-        Just pm -> case resolvePE pm of
-            Just r -> instantiatePat bind r
-            Nothing -> error "not enough binding variables"
-        Nothing -> evalBranches e brs
-
--- small-step evaluation
-
--- >>> step (t1 `App` t0)
--- Just (λ. λ. 0 (λ. 0 0))
-
-step :: Exp n -> Maybe (Exp n)
-step (Var x) = Nothing
-step (Lam b) = Nothing 
-step (App (Lam b) e2) = Just (instantiate b e2)
-step (App e1 e2)
- | Just e1' <- step e1 = Just (App e1' e2)
- | Just e2' <- step e2 = Just (App e1 e2')
- | otherwise = Nothing
-
-eval' :: Exp n -> Exp n
-eval' e 
- | Just e' <- step e = eval' e'
- | otherwise = e
-
--- full normalization
--- to normalize under a lambda expression, we must first unbind 
--- it and then rebind it when finished
-  
-
--- >>> nf t1
--- λ. λ. 1 0
-
--- >>> nf (t1 `App` t0)
--- λ. λ. 0 0
-
-nf :: Exp n -> Exp n
-nf (Var x) = Var x
-nf (Lam b) = Lam (bind1 (nf (unbind b)))
-nf (App e1 e2) =
-    case nf e1 of
-        Lam b -> instantiate b (nf e2)
-        t -> App t (nf e2)
-
-
---------------------------------------------------------
--- We can also write functions that manipulate the 
--- environment explicitly. These operations are equivalent
--- to the definitions above, but they provide access to the 
--- suspended substitution during the traversal of the term.
-
--- >>> evalEnv idE t1
--- λ. λ. 1 (λ. 0 0)
-
--- Below, if n is 0, then this function acts like an 
--- "environment-based" bigstep evaluator. The result of 
--- evaluating a lambda expression is a closure --- the body 
--- of the lambda paired with its environment. That is exactly 
--- what the implementation of bind does.
-
--- In the case of beta-reduction, the `unBindWith` operation 
--- applies its argument to the environment and subterm in the
--- closure. In other words, this function calls `evalEnv` 
--- recursively with the saved environment and body of the lambda term.
-
-evalEnv :: Env Exp m n -> Exp m -> Exp n
-evalEnv r (Var x) = applyEnv r x
-evalEnv r (Lam b) = applyE r (Lam b)
-evalEnv r (App e1 e2) =
-    let v = evalEnv r e2 in
-    case evalEnv r e1 of
-        Lam b -> 
-            unbindWith (\r' e' -> evalEnv (v .: r') e') b
-        t -> App t v
-
--- To normalize under the binder, the `applyWith` function 
--- takes care of the necessary environment manipulation. It 
--- composes the given environment r with the environment stored
--- in the binder and also shifts them for the recursive call.
---
--- In the beta-reduction case, we could use `unbindWith` as above
--- but the `instantiateWith` function already captures exactly
--- this pattern. 
-nfEnv :: Env Exp m n -> Exp m -> Exp n
-nfEnv r (Var x) = applyEnv r x
-nfEnv r (Lam b) = Lam (applyWith nfEnv r b)
-nfEnv r (App e1 e2) =
-    let n = nfEnv r e1 in
-    case nfEnv r e1 of
-        Lam b -> instantiateWith nfEnv b n
-        t -> App t (nfEnv r e2)
-
-----------------------------------------------------------------
 
 
 

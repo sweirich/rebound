@@ -15,7 +15,9 @@ extra-source-files:
     ChangeLog.md
 
 common common-stanza
-  ghc-options:         -Wno-type-defaults -fwarn-incomplete-patterns
+  ghc-options:         
+     -Wno-type-defaults 
+     -fwarn-incomplete-patterns
   build-depends:
       base >=4.15
     , HUnit 
@@ -29,6 +31,8 @@ common common-stanza
     , mtl
     , brick
     , vty
+    , fin
+    , vec 
   default-language:
     GHC2021
   default-extensions:
@@ -45,6 +49,9 @@ library
       common-stanza
   exposed-modules:
         Subst
+      , Lib
+      , Nat
+      , Fin
       , Vec
       , LC
       , PTS

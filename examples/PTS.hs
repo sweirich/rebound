@@ -1,7 +1,8 @@
 -- Pure-type system example
 module PTS where
 
-import Vec
+import Lib
+import qualified Vec
 import Subst
 
 -- In a pure type system, terms and types are combined
@@ -37,10 +38,10 @@ instance Subst Exp Exp where
 
 -- Does a variable appear free in a term?
 
--- >>> appearsFree FZ (App (Var zero) (Var one))
+-- >>> appearsFree FZ (App (Var f0) (Var f1))
 -- True
 
--- >>> appearsFree FZ (App (Var one) (Var one))
+-- >>> appearsFree FZ (App (Var f1) (Var f1))
 -- False
 
 appearsFree :: Fin n -> Exp n -> Bool
@@ -53,19 +54,22 @@ appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
 appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
 appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
 
+strengthen :: SNat m -> Exp (Plus m n) -> Maybe (Exp n)
+strengthen = undefined
+
 ----------------------------------------------
 -- Examples
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z 
-t0 = Lam Star (bind1 (Var zero))
+t0 = Lam Star (bind1 (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam Star (bind1 (Lam Star (bind1 (Var one `App` 
-    (Lam Star (bind1 (Var zero)) `App` Var zero)))))
+t1 = Lam Star (bind1 (Lam Star (bind1 (Var f1 `App` 
+    (Lam Star (bind1 (Var f0)) `App` Var f0)))))
 
 -- To show lambda terms, we can write a simple recursive instance of 
 -- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 
@@ -79,8 +83,8 @@ t1 = Lam Star (bind1 (Lam Star (bind1 (Var one `App`
 
 -- Polymorphic identity function and its type
 
-tyid = Pi Star (bind1 (Pi (Var zero) (bind1 (Var one))))
-tmid = Lam Star (bind1 (Lam (Var zero) (bind1 (Var zero))))
+tyid = Pi Star (bind1 (Pi (Var f0) (bind1 (Var f1))))
+tmid = Lam Star (bind1 (Lam (Var f0) (bind1 (Var f0))))
 
 -- >>> tyid
 -- Pi *.(0 -> 1)
@@ -292,28 +296,10 @@ evalEnv r (Split a b) =
                 evalEnv (a1 .: (a2 .: (r' .>> r))) e') b
         t -> Split t (applyE r b)
 
--- To normalize under the binder, the `applyWith` function 
--- takes care of the necessary environment manipulation. It 
--- composes the given environment r with the environment stored
--- in the binder and also shifts them for the recursive call.
---
--- In the beta-reduction case, we could use `unbindWith` as above
--- but the `instantiateWith` function already captures exactly
--- this pattern. 
-nfEnv :: Env Exp m n -> Exp m -> Exp n
-nfEnv r (Var x) = applyEnv r x
-nfEnv r (Lam a b) = Lam (nfEnv r a) (applyWith nfEnv r b)
-nfEnv r (App e1 e2) =
-    let n = nfEnv r e1 in
-    case nfEnv r e1 of
-        Lam a b -> instantiateWith nfEnv b n
-        t -> App t (nfEnv r e2)
-nfEnv r Star = Star
-nfEnv r (Pi a b) = Pi (nfEnv r a) (applyWith nfEnv r b)
 ----------------------------------------------------------------
 
 
-typeCheck :: Ctx Exp n -> Exp n -> Maybe (Exp n)
+typeCheck :: forall n. Ctx Exp n -> Exp n -> Maybe (Exp n)
 typeCheck g (Var x) = Just (applyEnv g x)
 typeCheck g Star = Just Star
 typeCheck g (Pi a b) = do
@@ -330,6 +316,24 @@ typeCheck g (App a b) = do
     case tyA of 
         Pi tyA1 tyB1 -> if tyB == tyA1 then return $ instantiate tyB1 b else Nothing
         _ -> Nothing 
+typeCheck g (Sigma a b) = do
+    tyA <- typeCheck g a
+    tyB <- typeCheck (g +++ a) (unbind b)
+    if tyA == Star && tyB == Star then return Star else Nothing
+typeCheck g (Pair a b) = do 
+    tyA <- typeCheck g a 
+    tyB <- typeCheck g b 
+    -- TODO: Need a type annotation here!
+    Nothing
+typeCheck g (Split a b) = do
+    tyA <- typeCheck g a 
+    case tyA of 
+        Sigma tyA' tyB -> do
+            let g' :: Ctx Exp (S (S n))
+                g' = g +++ tyA' +++ unbind tyB
+            tyB <- typeCheck g' (unbind2 b) 
+            strengthen snat2 tyB
+        _ -> Nothing
 
 
 emptyE :: Ctx Exp Z 
