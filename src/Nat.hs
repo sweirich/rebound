@@ -22,12 +22,12 @@ data Nat = Z | S Nat
 
 instance Show Nat where show = show . toIntNat
 
-nat0 :: Nat
-nat0 = Z
-nat1 :: Nat
-nat1 = S nat1
-nat2 :: Nat
-nat2 = S nat2 
+n0 :: Nat
+n0 = Z
+n1 :: Nat
+n1 = S n1
+n2 :: Nat
+n2 = S n2 
 
 toIntNat :: Nat -> Int
 toIntNat Z = 0
@@ -50,14 +50,14 @@ data SNat (n :: Nat) where
     SZ :: SNat Z
     SS :: SNat n -> SNat (S n)
 
-snat0 :: SNat N0
-snat0 = SZ
-snat1 :: SNat N1
-snat1 = SS snat0
-snat2 :: SNat N2
-snat2 = SS snat1 
-snat3 :: SNat N3
-snat3 = SS snat2
+s0 :: SNat N0
+s0 = SZ
+s1 :: SNat N1
+s1 = SS s0
+s2 :: SNat N2
+s2 = SS s1 
+s3 :: SNat N3
+s3 = SS s2
 
 toIntSNat :: SNat n -> Int
 toIntSNat SZ = 0
@@ -76,6 +76,10 @@ instance SNatI n => Arbitrary (SNat n) where
 
 instance Show (SNat n) where show = show . toIntSNat
 
+sPlus :: SNat n1 -> SNat n2 -> SNat (Plus n1 n2)
+sPlus SZ x = x
+sPlus (SS x) y = SS (sPlus x y)
+
 ---------------------------------------------------------
 -- Implicit Singleton
 ---------------------------------------------------------
@@ -93,3 +97,6 @@ instance SNatI n => SNatI (S n) where
 withSNat :: SNat n -> (SNatI n => r) -> r
 withSNat SZ k = k
 withSNat (SS n) k = withSNat n k
+
+spred :: SNat (S n) -> SNat n
+spred (SS n) = n

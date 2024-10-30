@@ -77,7 +77,7 @@ t1 = Lam (bind1 (Lam (bind1 (Var f1 `App`
 -- operation to access the body of the lambda expression.
 
 -- >>> t0
--- λ. 0
+-- /var/folders/p3/pkythxvx6rq9q054797y4bb80000gn/T/extra-file-58337066664-1546-81: withFile: resource busy (file is locked)
 
 -- >>> t1
 -- λ. λ. 1 (λ. 0 0)

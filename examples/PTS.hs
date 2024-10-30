@@ -54,6 +54,7 @@ appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
 appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
 appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
 
+-- TODO
 strengthen :: SNat m -> Exp (Plus m n) -> Maybe (Exp n)
 strengthen = undefined
 
@@ -332,7 +333,7 @@ typeCheck g (Split a b) = do
             let g' :: Ctx Exp (S (S n))
                 g' = g +++ tyA' +++ unbind tyB
             tyB <- typeCheck g' (unbind2 b) 
-            strengthen snat2 tyB
+            strengthen s2 tyB
         _ -> Nothing
 
 

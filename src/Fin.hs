@@ -71,10 +71,10 @@ enumFin :: SNat n -> [Fin n]
 enumFin SZ = []
 enumFin (SS n) = FZ : map FS (enumFin n)
 
-
-
 universe :: SNatI n => [Fin n]
 universe = enumFin snat
+
+
 
 ---------------------------------
 -- Plus 

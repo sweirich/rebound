@@ -1,4 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use lambda-case" #-}
 
 module Subst where
 
@@ -32,6 +34,12 @@ class SubstVar v => Subst v c where
 
 ----------------------------------------------
 -- operations on substitutions
+
+zeroE :: Env v Z n
+zeroE = Env $ \case
+
+oneE :: v n -> Env v N1 n
+oneE e = Env $ const e
 
 -- identity environment
 idE :: SubstVar v => Env v n n
@@ -161,7 +169,7 @@ unPatBindWith f (PatBind pat r t) =
 instantiatePat :: forall v c p n. (Sized p, Subst v c) => 
    PatBind v c p n -> Env v (Size p) n -> c n
 instantiatePat b e = unPatBindWith 
-    (\ p r t -> applyE (e .++ r) t) b
+    (\ p r t -> withSNat (size p) $ applyE (e .++ r) t) b
 
 applyPatWith :: (Sized p, Subst v v, Subst v c) => 
    (forall m n. Env v m n -> c m -> c n) -> Env v n1 n2 ->
@@ -173,7 +181,7 @@ instantiatePatWith :: (Sized p, SubstVar v) =>
          (forall m n. Env v m n -> c m -> c n) ->
          PatBind v c p n -> Env v (Size p) n -> c n
 instantiatePatWith f b v = 
-    unPatBindWith (\ p r e -> f (v .++ r) e) b
+    unPatBindWith (\ p r e -> withSNat (size p) $ f (v .++ r) e) b
 
 instance Subst v v => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
@@ -223,3 +231,8 @@ weakenCtx g = g .>> shift
 g +++ a = weaken @v @v a .: weakenCtx g 
 
 ----------------------------------------------------------------
+toList :: SNatI n => Env v n m -> [v m]
+toList r = map (applyEnv r) (enumFin snat)
+
+instance (SNatI n, Show (v m)) => Show (Env v n m) where
+    show x = show (toList x)
