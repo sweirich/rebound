@@ -1,8 +1,6 @@
--- The untyped lambda calculus with pattern matching
--- This extends the lambda calculus with constants (like 'nil 'cons)
+-- | The untyped lambda calculus with pattern matching
+-- This example extends the lambda calculus with constants (like 'nil 'cons)
 -- and arbitrary pattern matching 
--- The evaluation order is CBN, though pattern matching will force 
--- evaluation
 module Pat where
 
 import Lib
@@ -19,20 +17,21 @@ data Exp (n :: Nat) where
     Con   :: String -> Exp n
     Case  :: Exp n -> [Branch n] -> Exp n
 
--- A branch in a case expression is a pattern binding
+-- A branch in a case expression is a pattern binding, i.e. a data structure
+-- that binds m variables in some expression body
 data Branch (n :: Nat) where
     Branch :: PatBind Exp Exp (Pat m) n -> Branch n
 
 -- The index in the pattern is the number of occurrences of 
--- pattern variables (PVar), i.e. the number variables bound 
--- by the pattern. These variables are ordered left to right.
+-- PVar, i.e. the number variables bound by the pattern. 
+-- These variables are ordered left to right.
 data Pat (n :: Nat) where
     PVar :: Pat N1  -- binds exactly one
     PApp :: Pat n1 -> Pat n2 -> Pat (Plus n1 n2)
     PCon :: String -> Pat N0
 
 ----------------------------------------------
--- The type tells us how many variables are bound 
+-- The `Pat` type tells us how many variables are bound 
 -- the pattern. We can also recover that number 
 -- from the pattern itself.
 
@@ -63,7 +62,7 @@ instance Subst Exp Branch where
     applyE r (Branch bnd) = Branch (applyE r bnd)
 
 ----------------------------------------------
--- Examples
+-- Example terms
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
@@ -85,9 +84,11 @@ t2 = Lam (bind1 (Case (Var f0)
                 Branch (patBind @(Pat N2) 
                   (PCon "Cons" `PApp` PVar `PApp` PVar) (Var f0))]))
 
--- To show lambda terms, we can write a simple recursive instance of 
--- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 
--- operation to access the body of the lambda expression.
+
+--------------------------------------------------------------
+-- * Show implementation
+--------------------------------------------------------------
+
 
 -- >>> t0
 -- λ. 0
@@ -131,6 +132,27 @@ instance Show (Branch n) where
         showString " => " .
         showsPrec d (unPatBind bnd)
             
+
+--------------------------------------------------------------
+-- * Eq implementation
+--------------------------------------------------------------
+
+instance Eq (Pat n) where
+    (==) :: Pat n -> Pat n -> Bool
+    p1 == p2 = Maybe.isJust (testEquality p1 p2)
+
+-- a general form of equality that does not require the 
+-- indices to match
+instance TestEquality Pat where
+    testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
+    testEquality PVar PVar = Just Refl
+    testEquality (PApp p1 p2) (PApp p1' p2') = do 
+        Refl <- testEquality p1 p1'
+        Refl <- testEquality p2 p2'
+        return Refl
+    testEquality (PCon s1) (PCon s2) | s1 == s2 = Just Refl
+    testEquality _ _ = Nothing
+
 instance Eq (Branch n) where
     (==) :: Branch n -> Branch n -> Bool
     (Branch (p1 :: PatBind Exp Exp (Pat m1) n)) ==
@@ -140,10 +162,12 @@ instance Eq (Branch n) where
             Just Refl -> p1 == p2
             Nothing -> False
        
--- To compare binders, we need to `unbind` them
+-- To compare simple binders, we need to `unbind` them
 instance Eq (Exp n) => Eq (Bind1 Exp Exp n) where
         b1 == b2 = unbind b1 == unbind b2
 
+-- To compare pattern binders, we need to unbind, but also 
+-- make sure that the patterns are equal
 instance (Sized p, Eq p, Eq (Exp n)) => Eq (PatBind Exp Exp p n) where
         b1 == b2 =
             getPat b1 == getPat b2
@@ -153,31 +177,20 @@ instance (Sized p, Eq p, Eq (Exp n)) => Eq (PatBind Exp Exp p n) where
 -- is alpha-equivalence
 deriving instance (Eq (Exp n))
 
-instance Eq (Pat n) where
-    (==) :: Pat n -> Pat n -> Bool
-    p1 == p2 = Maybe.isJust (testEquality p1 p2)
 
-instance TestEquality Pat where
-    testEquality PVar PVar = Just Refl
-    testEquality (PApp p1 p2) (PApp p1' p2') = do 
-        Refl <- testEquality p1 p1'
-        Refl <- testEquality p2 p2'
-        return Refl
-    testEquality (PCon s1) (PCon s2) | s1 == s2 = Just Refl
-    testEquality _ _ = Nothing
 
 --------------------------------------------------------
 -- Pattern matching code
 --------------------------------------------------------
 
 p1 :: Pat N2
-p1 = PApp (PApp (PCon "c") PVar) PVar
+p1 = PApp (PApp (PCon "C") PVar) PVar
 p2 :: Pat N3
 p2 = PApp (PApp PVar PVar) PVar
 e1 :: Exp N0
-e1 = App (App (Con "c") (Con "a")) (Con "b")
+e1 = App (App (Con "C") (Con "A")) (Con "B")
 e2 :: Exp N0
-e2 = App (App (Con "d") (Con "a")) (Con "b")
+e2 = App (App (Con "D") (Con "A")) (Con "B")
 
 -- >>> patternMatch p1 e1
 -- Just [a,b]
@@ -191,6 +204,9 @@ e2 = App (App (Con "d") (Con "a")) (Con "b")
 -- >>> patternMatch p2 e2
 -- Just [d,a,b]
 
+-- | Compare a pattern with an expression, potentially 
+-- producing a substitution for all of the variables
+-- bound in the pattern
 patternMatch :: Pat n -> Exp m -> Maybe (Env Exp n m)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PApp p1 p2) (App e1 e2)  = do
@@ -201,7 +217,6 @@ patternMatch (PCon s1) (Con s2) =
     if s1 == s2 then Just zeroE else Nothing
 patternMatch _ _ = Nothing
 
---------------------------------------------------------
 
 findBranch :: Exp n -> [Branch n] -> Maybe (Exp n)
 findBranch e [] = Nothing
@@ -211,7 +226,7 @@ findBranch e (Branch bind : brs) =
         Nothing -> findBranch e brs
 
 --------------------------------------------------------
--- Examples
+-- Eval and step
 --------------------------------------------------------
 
 
