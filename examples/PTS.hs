@@ -3,20 +3,21 @@ module PTS where
 
 import Lib
 import qualified Vec
-import Subst
+import AutoEnv
 
 -- In a pure type system, terms and types are combined
 -- into the same syntactic class
 
 data Exp (n :: Nat) where
     Star  :: Exp n
-    Pi    :: Exp n -> Bind1 Exp Exp n -> Exp n 
+    Pi    :: Exp n -> Bind Exp Exp n -> Exp n 
     Var   :: Fin n -> Exp n
-    Lam   :: Exp n -> Bind1 Exp Exp n -> Exp n
+    Lam   :: Exp n -> Bind Exp Exp n -> Exp n
     App   :: Exp n -> Exp n -> Exp n
-    Sigma :: Exp n -> Bind1 Exp Exp n -> Exp n
-    Pair  :: Exp n -> Exp n -> Exp n
+    Sigma :: Exp n -> Bind Exp Exp n -> Exp n
+    Pair  :: Exp n -> Exp n -> Exp n -> Exp n
     Split :: Exp n -> Bind2 Exp Exp n -> Exp n
+
 
 ----------------------------------------------
 
@@ -32,8 +33,9 @@ instance Subst Exp Exp where
     applyE r (Lam a b) = Lam (applyE r a) (applyE r b)
     applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
     applyE r (Sigma a b) = Sigma (applyE r a) (applyE r b)
-    applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
+    applyE r (Pair e1 e2 t1) = Pair (applyE r e1) (applyE r e2) (applyE r t1)
     applyE r (Split e1 e2) = Split (applyE r e1) (applyE r e2)
+
 ----------------------------------------------
 
 -- Does a variable appear free in a term?
@@ -51,8 +53,9 @@ appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (unbind b)
 appearsFree n (Lam a b) = appearsFree n a || appearsFree (FS n) (unbind b)
 appearsFree n (App a b) = appearsFree n a || appearsFree n b
 appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
-appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
+appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n t
 appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
+
 
 -- TODO
 strengthen :: SNat m -> Exp (Plus m n) -> Maybe (Exp n)
@@ -64,13 +67,13 @@ strengthen = undefined
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z 
-t0 = Lam Star (bind1 (Var f0))
+t0 = Lam Star (bind (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam Star (bind1 (Lam Star (bind1 (Var f1 `App` 
-    (Lam Star (bind1 (Var f0)) `App` Var f0)))))
+t1 = Lam Star (bind (Lam Star (bind (Var f1 `App` 
+    (Lam Star (bind (Var f0)) `App` Var f0)))))
 
 -- To show lambda terms, we can write a simple recursive instance of 
 -- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 
@@ -84,8 +87,8 @@ t1 = Lam Star (bind1 (Lam Star (bind1 (Var f1 `App`
 
 -- Polymorphic identity function and its type
 
-tyid = Pi Star (bind1 (Pi (Var f0) (bind1 (Var f1))))
-tmid = Lam Star (bind1 (Lam (Var f0) (bind1 (Var f0))))
+tyid = Pi Star (bind (Pi (Var f0) (bind (Var f1))))
+tmid = Lam Star (bind (Lam (Var f0) (bind (Var f0))))
 
 -- >>> tyid
 -- Pi *.(0 -> 1)
@@ -129,7 +132,7 @@ instance Show (Exp n) where
     showsPrec d (Lam t b) = showParen (d > 10) $ 
                              showString "λ. " .
                              shows (unbind b) 
-    showsPrec d (Pair e1 e2) = showParen (d > 0) $
+    showsPrec d (Pair e1 e2 t) = showParen (d > 0) $
                               showsPrec 10 e1 . 
                               showString ", " .
                               showsPrec 11 e2
@@ -139,8 +142,9 @@ instance Show (Exp n) where
                               showString " in " .
                               shows (unbind2 b)
 
+
 -- To compare binders, we only need to `unbind` them
-instance Eq (Exp n) => Eq (Bind1 Exp Exp n) where
+instance Eq (Exp n) => Eq (Bind Exp Exp n) where
         b1 == b2 = unbind b1 == unbind b2
 
 instance Eq (Exp n) => Eq (Bind2 Exp Exp n) where
@@ -177,10 +181,10 @@ eval (App e1 e2) =
 eval Star = Star
 eval (Pi a b) = Pi a b
 eval (Sigma a b) = Sigma a b
-eval (Pair a b) = Pair a b
+eval (Pair a b t) = Pair a b t
 eval (Split a b) = 
     case eval a of
-      Pair a1 a2 -> 
+      Pair a1 a2 _ -> 
         eval (instantiate2 b (eval a1) (eval a2))
       t -> Split t b
 -- small-step evaluation
@@ -199,8 +203,8 @@ step (App e1 e2)
 step Star = Nothing
 step (Pi a b) = Nothing
 step (Sigma a b) = Nothing
-step (Pair a b) = Nothing
-step (Split (Pair a1 a2) b) = Just (instantiate2 b a1 a2)
+step (Pair a b _) = Nothing
+step (Split (Pair a1 a2 _) b) = Just (instantiate2 b a1 a2)
 step (Split a b) 
  | Just a' <- step a = Just (Split a' b)
  | otherwise = Nothing 
@@ -224,19 +228,20 @@ eval' e
 -- reduce the term everywhere, as much as possible
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
-nf (Lam a b) = Lam a (bind1 (nf (unbind b)))
+nf (Lam a b) = Lam a (bind (nf (unbind b)))
 nf (App e1 e2) =
     case nf e1 of
         Lam a b -> nf (instantiate b e2)
         t -> App t (nf e2)
 nf Star = Star
-nf (Pi a b) = Pi (nf a) (bind1 (nf (unbind b)))
-nf (Sigma a b) = Sigma (nf a) (bind1 (nf (unbind b)))
-nf (Pair a b) = Pair (nf a) (nf b)
+nf (Pi a b) = Pi (nf a) (bind (nf (unbind b)))
+nf (Sigma a b) = Sigma (nf a) (bind (nf (unbind b)))
+nf (Pair a b t) = Pair (nf a) (nf b) (nf t)
 nf (Split a b) = 
     case nf a of 
-        Pair a1 a2 -> nf (instantiate2 b a1 a2)
+        Pair a1 a2 _ -> nf (instantiate2 b a1 a2)
         t -> Split t (bind2 (nf (unbind2 b)))
+
 
 -- first find the head form, then normalize
 whnf :: Exp n -> Exp n
@@ -244,16 +249,16 @@ whnf (App a1 a2) = case whnf a1 of
                     Lam a b -> whnf (instantiate b a1)
                     t -> App t (norm a2)
 whnf (Split a b) = case whnf a of 
-                    Pair a1 a2 -> whnf (instantiate2 b a1 a2)
+                    Pair a1 a2 _ -> whnf (instantiate2 b a1 a2)
                     t -> Split a (bind2 (norm (unbind2 b)))
 whnf a = a
 
 norm :: Exp n -> Exp n
 norm a = case whnf a of 
-           Lam a b -> Lam (norm a) (bind1 (norm (unbind b)))
-           Pi a b -> Pi (norm a) (bind1 (norm (unbind b)))
-           Sigma a b -> Sigma (norm a) (bind1 (norm (unbind b)))
-           Pair a b -> Pair (norm a) (norm b)
+           Lam a b -> Lam (norm a) (bind (norm (unbind b)))
+           Pi a b -> Pi (norm a) (bind (norm (unbind b)))
+           Sigma a b -> Sigma (norm a) (bind (norm (unbind b)))
+           Pair a b t -> Pair (norm a) (norm b) (norm t)
            Star -> Star
            App a b -> App a b
            Split a b -> Split a b 
@@ -289,16 +294,18 @@ evalEnv r (App e1 e2) =
 evalEnv r Star = Star
 evalEnv r (Pi a b) = applyE r (Pi a b)
 evalEnv r (Sigma a b) = applyE r (Sigma a b)
-evalEnv r (Pair a b) = applyE r (Pair a b)
+evalEnv r (Pair a b t) = applyE r (Pair a b t)
 evalEnv r (Split a b) = 
     case evalEnv r a of 
-        Pair a1 a2 -> 
+        Pair a1 a2 _ -> 
             unbind2With (\r' e' -> 
                 evalEnv (a1 .: (a2 .: (r' .>> r))) e') b
         t -> Split t (applyE r b)
 
 ----------------------------------------------------------------
 
+
+-- TODO: add conversion
 
 typeCheck :: forall n. Ctx Exp n -> Exp n -> Maybe (Exp n)
 typeCheck g (Var x) = Just (applyEnv g x)
@@ -310,7 +317,7 @@ typeCheck g (Pi a b) = do
 typeCheck g (Lam a b) = do
     tyA <- typeCheck g a 
     tyB <- typeCheck (g +++ a) (unbind b)
-    if tyA == Star then return $ Pi a (bind1 tyB) else Nothing
+    if tyA == Star then return $ Pi a (bind tyB) else Nothing
 typeCheck g (App a b) = do
     tyA <- typeCheck g a
     tyB <- typeCheck g b
@@ -321,10 +328,15 @@ typeCheck g (Sigma a b) = do
     tyA <- typeCheck g a
     tyB <- typeCheck (g +++ a) (unbind b)
     if tyA == Star && tyB == Star then return Star else Nothing
-typeCheck g (Pair a b) = do 
+typeCheck g (Pair a b ty) = do 
     tyA <- typeCheck g a 
     tyB <- typeCheck g b 
-    -- TODO: Need a type annotation here!
+    case ty of 
+        (Sigma tyA' tyB') -> 
+            if tyA == tyA' && tyB == instantiate tyB' a 
+            then Just ty
+            else Nothing
+        _ -> Nothing
     Nothing
 typeCheck g (Split a b) = do
     tyA <- typeCheck g a 

@@ -5,14 +5,14 @@ module Pat where
 
 import Lib
 import qualified Vec
-import Subst
+import AutoEnv
 import Data.Type.Equality
 
 import qualified Data.Maybe as Maybe
 
 data Exp (n :: Nat) where
     Var   :: Fin n -> Exp n
-    Lam   :: Bind1 Exp Exp n -> Exp n
+    Lam   :: Bind Exp Exp n -> Exp n
     App   :: Exp n -> Exp n -> Exp n
     Con   :: String -> Exp n
     Case  :: Exp n -> [Branch n] -> Exp n
@@ -67,18 +67,18 @@ instance Subst Exp Branch where
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z 
-t0 = Lam (bind1 (Var f0))
+t0 = Lam (bind (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam (bind1 (Lam (bind1 (Var f1 `App` 
-    (Lam (bind1 (Var f0)) `App` Var f0)))))
+t1 = Lam (bind (Lam (bind (Var f1 `App` 
+    (Lam (bind (Var f0)) `App` Var f0)))))
 
 -- "head function"
 -- \x -> case x of [nil -> x ; cons y z -> y]
 t2 :: Exp Z
-t2 = Lam (bind1 (Case (Var f0) 
+t2 = Lam (bind (Case (Var f0) 
       [Branch (patBind @(Pat N0) 
                (PCon "Nil") (Var f0)), 
                 Branch (patBind @(Pat N2) 
@@ -163,7 +163,7 @@ instance Eq (Branch n) where
             Nothing -> False
        
 -- To compare simple binders, we need to `unbind` them
-instance Eq (Exp n) => Eq (Bind1 Exp Exp n) where
+instance Eq (Exp n) => Eq (Bind Exp Exp n) where
         b1 == b2 = unbind b1 == unbind b2
 
 -- To compare pattern binders, we need to unbind, but also 
@@ -289,7 +289,7 @@ eval' e
 -- λ. λ. 0 0
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
-nf (Lam b) = Lam (bind1 (nf (unbind b)))
+nf (Lam b) = Lam (bind (nf (unbind b)))
 nf (App e1 e2) =
     case nf e1 of
         Lam b -> instantiate b (nf e2)

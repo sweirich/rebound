@@ -48,7 +48,7 @@ library
   import:
       common-stanza
   exposed-modules:
-        Subst
+        AutoEnv
       , Lib
       , Nat
       , Fin
