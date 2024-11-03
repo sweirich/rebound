@@ -13,6 +13,7 @@ import Prelude hiding (head,tail)
 import Lib
 import Data.Kind
 import qualified Data.List as List
+import Vec (Vec(..))
 import qualified Vec
 
 -- | An environment (or explicit substitution) that map
@@ -156,33 +157,44 @@ applyUnder f r2 (Bind r1 t) =
 -- Pattern binding (N-ary binding)
 ----------------------------------------------------------
 
+-- | A pattern is any type that can be made an instance of the 
+-- `Sized` type class. 
+-- The `PatBind` type generalizes the definitions above 
+-- to bind (Size p) variables. 
+-- As in `Bind` above, this type includes a delayed substitution
+-- for the variables in the body of the binder.
 data PatBind v c (p :: Type) (n :: Nat) where
     PatBind :: p -> Env v m n -> c (Plus (Size p) m) 
             -> PatBind v c p n
 
-patBind :: (Sized p, Subst v v) => p -> c (Plus (Size p) n) -> PatBind v c p n
+-- | Create a `PatBind` with an identity substitution.
+patBind :: (Sized p, Subst v c) => p -> c (Plus (Size p) n) -> PatBind v c p n
 patBind pat = PatBind pat idE
 
+-- | Access the pattern of a pattern binding
 getPat :: PatBind v c p n -> p
 getPat (PatBind pat env t) = pat
 
--- | 
-upN :: (Subst v v) => 
-        SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
-upN SZ = id
-upN (SS n) = \ e -> var FZ .: (upN n e .>> shift)
-
-
+-- | Access the body of a pattern binding.
+-- The pattern type determines the number of variables
+-- bound in the pattern
 unPatBind :: 
     (Sized p, Subst v v, Subst v c) => PatBind v c p n 
     -> c (Plus (Size p) n)
 unPatBind (PatBind pat env t) = 
     applyE (upN (size pat) env) t
 
+-- | Shift an environment by size `p` 
+upN :: (Subst v v) => 
+        SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
+upN SZ = id
+upN (SS n) = \ e -> var FZ .: (upN n e .>> shift)
+
+-- | Apply a function to the pattern, suspended environment and body
+-- in a pattern binding
 unPatBindWith ::  (Sized p, SubstVar v) => 
     (forall m. p -> Env v m n -> c (Plus (Size p) m) -> d) -> PatBind v c p n -> d
-unPatBindWith f (PatBind pat r t) = 
-    f pat r t
+unPatBindWith f (PatBind pat r t) = f pat r t
 
 instantiatePat :: forall v c p n. (Sized p, Subst v c) => 
    PatBind v c p n -> Env v (Size p) n -> c n
@@ -205,14 +217,33 @@ instance Subst v v => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
         PatBind p (env2 .>> env1) m
 
+
+
 ----------------------------------------------------------------
 -- Double binder
 ----------------------------------------------------------------
--- TODO: fill this out as above, or remove it
--- Should be isomorphic to a pattern binding with "SNat 2" as
--- the pattern.
 
+-- A double binder is isomorphic to a pattern binding with 
+-- "SNat 2" as the pattern.
 
+type Bind2 v c n = PatBind v c (SNat N2) n
+
+bind2 :: Subst v c => c (S (S n)) -> Bind2 v c n
+bind2 = patBind s2
+
+unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
+unbind2 = unPatBind
+
+unbind2With :: (SubstVar v) => 
+    (forall m. Env v m n -> c (S (S m)) -> d) ->
+    Bind2 v c n -> d
+unbind2With f = 
+    unPatBindWith (const f)
+
+instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
+instantiate2 b v1 v2 = instantiatePat b (v1 .: (v2 .: zeroE))
+
+{-
 data Bind2 v c (n :: Nat) where
     Bind2 :: Env v m n -> c (S (S m)) -> Bind2 v c n
 
@@ -236,7 +267,7 @@ unbind2With f (Bind2 r t) = f r t
 -- | instantiate a binder with a term
 instantiate2 :: forall v c n. (Subst v c) => Bind2 v c n -> v n -> v n -> c n
 instantiate2 b v1 v2 = unbind2With (\ r e -> applyE (v1 .: (v2 .: r)) e) b
-
+-}
 ----------------------------------------------------------------
 -- For dependently-typed languages
 

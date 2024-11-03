@@ -1,9 +1,11 @@
 -- imports and reexports libraries for Nat / Fin / Vec
 module Lib(module Nat,
            module Fin,
+           type Type,
            Vec(..),
            Sized(..)) where
 
+import Data.Kind(Type)
 import Nat
 import Fin
 import Vec

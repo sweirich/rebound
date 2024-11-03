@@ -1,6 +1,20 @@
+{-|
+Module      : Pat
+Description : Untyped lambda calculus, with pattern matching
+Stability   : experimental
+
+An implementation of the untyped lambda calculus with pattern matching.
+
+This example extends the lambda calculus with constants (like 'nil 'cons)
+and arbitrary pattern matching. Case expressions include a list of branches,
+where each branch is a pattern and a right-hand side. The pattern can bind 
+multiple variables and the index ensures that the rhs matches the number of 
+variables bound in the pattern.
+
+-}
+
 -- | The untyped lambda calculus with pattern matching
--- This example extends the lambda calculus with constants (like 'nil 'cons)
--- and arbitrary pattern matching 
+-- 
 module Pat where
 
 import Lib
@@ -10,6 +24,11 @@ import Data.Type.Equality
 
 import qualified Data.Maybe as Maybe
 
+
+----------------------------------------------
+-- * Syntax
+----------------------------------------------
+
 data Exp (n :: Nat) where
     Var   :: Fin n -> Exp n
     Lam   :: Bind Exp Exp n -> Exp n
@@ -17,23 +36,36 @@ data Exp (n :: Nat) where
     Con   :: String -> Exp n
     Case  :: Exp n -> [Branch n] -> Exp n
 
--- A branch in a case expression is a pattern binding, i.e. a data structure
--- that binds m variables in some expression body
+-- Each branch in a case expression is a pattern binding, 
+-- i.e. a data structure that binds m variables in some 
+-- expression body
 data Branch (n :: Nat) where
     Branch :: PatBind Exp Exp (Pat m) n -> Branch n
 
 -- The index in the pattern is the number of occurrences of 
 -- PVar, i.e. the number variables bound by the pattern. 
 -- These variables are ordered left to right.
+-- For example (PCon "cons" `PApp` PVar `PApp` PVar) is the 
+-- representation of the pattern "cons x y", which binds two 
+-- variables.
 data Pat (n :: Nat) where
-    PVar :: Pat N1  -- binds exactly one
-    PApp :: Pat n1 -> Pat n2 -> Pat (Plus n1 n2)
-    PCon :: String -> Pat N0
+    PVar :: Pat N1  -- binds exactly one variable
+    PApp :: Pat n1 -> Pat n2 -> Pat (Plus n1 n2)  
+    PCon :: String -> Pat N0 -- binds zero variables
 
 ----------------------------------------------
+-- Sized instance
+----------------------------------------------
+
+-- Any type that is used as a pattern must be an 
+-- instance of the sized type class, so that the library 
+-- can access this information both statically 
+-- and dynamically.
+
 -- The `Pat` type tells us how many variables are bound 
 -- the pattern. We can also recover that number 
--- from the pattern itself.
+-- from the pattern itself by counting the number 
+-- of occurrences of `PVar`.
 
 instance Sized (Pat n) where
     type Size (Pat n) = n
@@ -43,6 +75,9 @@ instance Sized (Pat n) where
     size (PApp p1 p2) = sPlus (size p1) (size p2)
     size (PCon s) = s0
 
+
+----------------------------------------------
+-- Substitution
 ----------------------------------------------
 
 instance SubstVar Exp where
@@ -63,6 +98,7 @@ instance Subst Exp Branch where
 
 ----------------------------------------------
 -- Example terms
+--------------------------------------------------------------
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
@@ -84,6 +120,11 @@ t2 = Lam (bind (Case (Var f0)
                 Branch (patBind @(Pat N2) 
                   (PCon "Cons" `PApp` PVar `PApp` PVar) (Var f0))]))
 
+-- the "list"  ['a','b']
+t3 :: Exp Z
+t3 = Con "cons" `App` Con "a" `App` (Con "cons" `App` Con "b" `App` Con "nil")
+
+
 
 --------------------------------------------------------------
 -- * Show implementation
@@ -98,6 +139,9 @@ t2 = Lam (bind (Case (Var f0)
 
 -- >>> t2
 -- λ. case 0 of [Nil => 0,(Cons 0) 1 => 0]
+
+-- >>> t3
+-- (cons a) ((cons b) nil)
 
 instance Show (Exp n) where
     showsPrec :: Int -> Exp n -> String -> String
@@ -125,6 +169,9 @@ instance Show (Pat n) where
                               showsPrec 11 p2
     showsPrec d (PCon s) = showString s
 
+
+-- In a `PatBind` term, we can access the pattern with `getPat`
+-- and the RHS with `unPatBind` 
 instance Show (Branch n) where
     showsPrec :: Int -> Branch n -> String -> String
     showsPrec d (Branch bnd) = 
@@ -137,12 +184,14 @@ instance Show (Branch n) where
 -- * Eq implementation
 --------------------------------------------------------------
 
-instance Eq (Pat n) where
-    (==) :: Pat n -> Pat n -> Bool
-    p1 == p2 = Maybe.isJust (testEquality p1 p2)
-
--- a general form of equality that does not require the 
--- indices to match
+-- To compare Patterns for equality, we first generalize to 
+-- `TestEquality` from Data.Type.Equality. This class is for
+-- comparisons between indexed types. If the terms are equal
+-- then this function also returns a proof that the indices
+-- are equal. (The type `a :~: b` is a GADT with a single 
+-- constructor `Refl` that can only be used when a and be are
+-- equal. Pattern matching on this GADT brings an equality 
+-- between a and b into the context of the term.)
 instance TestEquality Pat where
     testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
     testEquality PVar PVar = Just Refl
@@ -152,6 +201,11 @@ instance TestEquality Pat where
         return Refl
     testEquality (PCon s1) (PCon s2) | s1 == s2 = Just Refl
     testEquality _ _ = Nothing
+
+instance Eq (Pat n) where
+    (==) :: Pat n -> Pat n -> Bool
+    p1 == p2 = Maybe.isJust (testEquality p1 p2)
+
 
 instance Eq (Branch n) where
     (==) :: Branch n -> Branch n -> Bool
@@ -237,11 +291,11 @@ findBranch e (Branch bind : brs) =
 -- λ. λ. 1 (λ. 0 0)
 -- >>> eval (t1 `App` t0)
 -- λ. λ. 0 (λ. 0 0)
-t3 = t2 `App` (((Con "Cons") `App` (Con "1")) `App` (Con "2"))
--- >>> t3
--- λ. case 0 of [Nil => 0,(Cons V) V => 0] ((Cons 1) 2)
--- >>> eval t3
--- 1
+t4 = t2 `App` t3
+-- >>> t4
+-- λ. case 0 of [Nil => 0,(Cons V) V => 0] ((cons a) ((cons b) nil))
+-- >>> eval t4
+-- case (cons a) ((cons b) nil) of [Nil => (cons a) ((cons b) nil),(Cons V) V => 0]
 eval :: Exp n -> Exp n
 eval (Var x) = Var x
 eval (Lam b) = Lam b

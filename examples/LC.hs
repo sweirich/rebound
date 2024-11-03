@@ -139,7 +139,7 @@ instance Show (Exp n) where
 -- in an application it evaluates the argument `e2` before 
 -- using the `instantiate` function from the library to substitute
 -- the bound variable of `Bind` by v. However, this is Haskell, 
--- a lazy language, so that result won't be evaluate unless the 
+-- a lazy language, so that result won't be evaluated unless the 
 -- function actually uses its argument.
 eval :: Exp n -> Exp n
 eval (Var x) = Var x
@@ -181,7 +181,7 @@ eval' e
 
 -- | Calculate the normal form of a lambda expression. This 
 -- is like evaluation except that it also reduces in the bodies
--- of `Lam` expressions. In this case,we must first `unbind` 
+-- of `Lam` expressions. In this case, we must first `unbind` 
 -- the binder and then rebind when finished
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
@@ -242,19 +242,19 @@ evalEnv r (App e1 e2) =
 
 
 -- For full reduction, we need to normalize under the binder too.
--- In this case, the `applyWith` function takes care of the 
+-- In this case, the `applyUnder` function takes care of the 
 -- necessary environment manipulation. It applies its argument (`nfEnv`)
 -- to the modifed 
 
--- >>> :t applyWith nfEnv
--- applyWith nfEnv :: Env Exp n1 n2 -> Bind Exp Exp n1 -> Bind Exp Exp n2
+-- >>> :t applyUnder nfEnv
+-- applyUnder nfEnv :: Env Exp n1 n2 -> Bind Exp Exp n1 -> Bind Exp Exp n2
 --
 -- In the beta-reduction case, we could use `unbindWith` as above
 -- but the `instantiateWith` function already captures exactly
 -- this pattern. 
 nfEnv :: Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
-nfEnv r (Lam b) = Lam (applyWith nfEnv r b)
+nfEnv r (Lam b) = Lam (applyUnder nfEnv r b)
 nfEnv r (App e1 e2) =
     let n = nfEnv r e1 in
     case nfEnv r e1 of

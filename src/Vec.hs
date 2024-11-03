@@ -7,7 +7,7 @@ module Vec where
 
 -- Library for length-indexed lists
 -- Should be imported qualified as it includes operations that 
--- conflict with list operations in the prelude
+-- conflict with list operations in the Prelude
 
 import Data.Type.Equality
 import Test.QuickCheck
