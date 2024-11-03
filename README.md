@@ -15,11 +15,15 @@ Defines the syntax and substitution functions for the untyped lambda calculus. U
 
 2. [Scope checking](examples/ScopeCheck.hs)
 
+Demonstrates how to convert a "named" expression to a well-scoped expression.
+
 3. [Untyped lambda calculus with pattern matching](examples/Pat.hs)
+
+Extends the lambda calculus example with pattern matching. 
 
 4. [Partial implementation of dependent types](examples/PTS.hs)
 
-
+A start of an implementation of a type checker for a dependent-type system. Language includes Pi and Sigma types.
 
 
 
