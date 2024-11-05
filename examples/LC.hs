@@ -40,20 +40,21 @@ data Exp (n :: Nat) where
 -- | The identity function "λ x. x". 
 -- With de Bruijn indices we write it as "λ. 0"
 -- The `bind` function creates the binder 
-t0 :: Exp Z 
+--t0 :: Exp Z 
 t0 = Lam (bind (Var f0))
 
--- | A larger term "λ x. λy. x (λ z. z z)"
+-- | A larger term "λ x. λy. x ((λ z. z) y)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = Lam (bind (Lam (bind (Var f1 `App` 
-    (Lam (bind (Var f0)) `App` Var f0)))))
+t1 = Lam (bind 
+        (Lam (bind (Var f1 `App` 
+            (Lam (bind (Var f0)) `App` Var f0)))))
 
 -- >>> t0
--- λ. 0
+-- (λ. 0)
 
 -- >>> t1
--- λ. λ. 1 (λ. 0 0)
+-- (λ. (λ. (1 ((λ. 0) 0))))
 
 ----------------------------------------------
 -- (Alpha-)Equivalence
@@ -116,11 +117,11 @@ instance Subst Exp Exp where
 instance Show (Exp n) where
     showsPrec :: Int -> Exp n -> String -> String
     showsPrec _ (Var x) = shows (toInt x)
-    showsPrec d (App e1 e2) = showParen (d > 0) $
+    showsPrec d (App e1 e2) = showParen True $
                               showsPrec 10 e1 . 
                               showString " " .
                               showsPrec 11 e2
-    showsPrec d (Lam b) = showParen (d > 10) $ 
+    showsPrec d (Lam b) = showParen True $ 
                           showString "λ. " .
                           shows (unbind b) 
 
@@ -129,10 +130,12 @@ instance Show (Exp n) where
 -----------------------------------------------
 
 -- >>> eval t1
--- λ. λ. 1 (λ. 0 0)
+-- (λ. (λ. (1 ((λ. 0) 0))))
 
 -- >>> eval (t1 `App` t0)
--- λ. λ. 0 (λ. 0 0)
+-- (λ. ((λ. 0) ((λ. 0) 0)))
+
+-- NOTE: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
 
 -- | Calculate the value of a lambda-calculus expression 
 -- This function looks like it uses call-by-value evaluation: 
@@ -154,7 +157,7 @@ eval (App e1 e2) =
 -- small-step evaluation
 ----------------------------------------------
 -- >>> step (t1 `App` t0)
--- Just (λ. λ. 0 (λ. 0 0))
+-- Just (λ. ((λ. 0) ((λ. 0) 0)))
 
 -- | Do one step of evaluation, if possible
 -- If the function is already a value or is stuck
@@ -192,11 +195,14 @@ nf (App e1 e2) =
         t -> App t (nf e2)
 
 
+-- >>> nf t0
+-- (λ. 0)
+
 -- >>> nf t1
--- λ. λ. 1 0
+-- (λ. (λ. (1 0)))
 
 -- >>> nf (t1 `App` t0)
--- λ. λ. 0 0
+-- (λ. 0)
 
 --------------------------------------------------------
 -- environment based evaluation / normalization
@@ -262,8 +268,3 @@ nfEnv r (App e1 e2) =
         t -> App t (nfEnv r e2)
 
 ----------------------------------------------------------------
-
-
-
-
-
