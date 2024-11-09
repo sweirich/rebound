@@ -269,15 +269,37 @@ nfEnv r (App e1 e2) =
 
 ----------------------------------------------------------------
 
+t2 = Lam (bind (App (Lam (bind (Lam (bind (Var f0))))) (Var f0)))
+
+-- >>> t2
+-- (λ. ((λ. (λ. 0)) 0))
+
+t3 = Lam (bind (App (Lam (bind (Var f0))) (Lam (bind (Var f0)))))
+
+-- >>> t3
+-- (λ. ((λ. 0) (λ. 0)))
+
 betaEqual :: Exp m -> Exp m -> Bool
 betaEqual a b = nf a == nf b
+
+-- >>> betaEqual t0 (nf t0)
+-- True
+-- >>> betaEqual t1 (nf t1)
+-- True
+-- >>> betaEqual t2 t3
+-- True
 
 shortCircuitEq :: Exp m -> Exp m -> Bool
 shortCircuitEq a b =
   case (a, b) of
     (Var a, Var b) -> a == b
     (Lam a, Lam b) -> shortCircuitEq (unbind a) (unbind b)
-    (App a1 a2, App b1 b2) -> shortCircuitEq a1 b1 && shortCircuitEq a2 b2
+    (App a1 a2, App b1 b2) ->
+      if shortCircuitEq a1 b1
+        then shortCircuitEq a2 b2
+        else case (nf a1, nf b1) of
+          (Lam a, Lam b) -> shortCircuitEq (instantiate a a2) (instantiate b b2)
+          _ -> False
     (App a1 a2, _) ->
       case nf a1 of
         Lam a -> shortCircuitEq (instantiate a a2) b
@@ -288,11 +310,6 @@ shortCircuitEq a b =
         _ -> False
     _ -> False
 
--- >>> betaEqual t0 (nf t0)
--- True
--- >>> betaEqual t1 (nf t1)
--- True
-
 -- >>> shortCircuitEq t0 t0
 -- True
 -- >>> shortCircuitEq t1 t1
@@ -300,4 +317,6 @@ shortCircuitEq a b =
 -- >>> shortCircuitEq t0 (nf t0)
 -- True
 -- >>> shortCircuitEq t1 (nf t1)
+-- True
+-- >>> shortCircuitEq t2 t3
 -- True
