@@ -280,10 +280,24 @@ shortCircuitEq a b =
     (App a1 a2, App b1 b2) -> shortCircuitEq a1 b1 && shortCircuitEq a2 b2
     (App a1 a2, _) ->
       case nf a1 of
-        Lam a -> shortCircuitEq (nf (instantiate a (nf a2))) b
+        Lam a -> shortCircuitEq (instantiate a a2) b
         _ -> False
     (_, App b1 b2) ->
       case nf b1 of
-        Lam b -> shortCircuitEq a (nf (instantiate b (nf b2)))
+        Lam b -> shortCircuitEq a (instantiate b b2)
         _ -> False
     _ -> False
+
+-- >>> betaEqual t0 (nf t0)
+-- True
+-- >>> betaEqual t1 (nf t1)
+-- True
+
+-- >>> shortCircuitEq t0 t0
+-- True
+-- >>> shortCircuitEq t1 t1
+-- True
+-- >>> shortCircuitEq t0 (nf t0)
+-- True
+-- >>> shortCircuitEq t1 (nf t1)
+-- True
