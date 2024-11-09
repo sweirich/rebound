@@ -274,10 +274,10 @@ t2 = Lam (bind (App (Lam (bind (Lam (bind (Var f0))))) (Var f0)))
 -- >>> t2
 -- (λ. ((λ. (λ. 0)) 0))
 
-t3 = Lam (bind (App (Lam (bind (Var f0))) (Lam (bind (Var f0)))))
+t3 = Lam (bind (App (Lam (bind (Var f0))) (App (Lam (bind (Var f0))) (Lam (bind (Var f0))))))
 
 -- >>> t3
--- (λ. ((λ. 0) (λ. 0)))
+-- (λ. ((λ. 0) ((λ. 0) (λ. 0))))
 
 betaEqual :: Exp m -> Exp m -> Bool
 betaEqual a b = nf a == nf b
@@ -289,26 +289,31 @@ betaEqual a b = nf a == nf b
 -- >>> betaEqual t2 t3
 -- True
 
-shortCircuitEq :: Exp m -> Exp m -> Bool
-shortCircuitEq a b =
+shortCircuitEq' :: Exp m -> Exp m -> (Bool, Exp m, Exp m)
+shortCircuitEq' a b =
   case (a, b) of
-    (Var a, Var b) -> a == b
-    (Lam a, Lam b) -> shortCircuitEq (unbind a) (unbind b)
+    (Var a, Var b) -> (a == b, Var a, Var b)
+    (Lam a, Lam b) -> (shortCircuitEq (unbind a) (unbind b), Lam a, Lam b)
     (App a1 a2, App b1 b2) ->
-      if shortCircuitEq a1 b1
-        then shortCircuitEq a2 b2
-        else case (nf a1, nf b1) of
-          (Lam a, Lam b) -> shortCircuitEq (instantiate a a2) (instantiate b b2)
-          _ -> False
+      case shortCircuitEq' a1 b1 of
+        (True, _, _) -> shortCircuitEq' a2 b2
+        (False, Lam a, Lam b) -> shortCircuitEq' (instantiate a a2) (instantiate b b2)
+        -- If a1, b1 do not match, we "short circuit" by not normalizing a2, b2
+        (False, a, b) -> (False, App a a2, App b b2)
     (App a1 a2, _) ->
       case nf a1 of
-        Lam a -> shortCircuitEq (instantiate a a2) b
-        _ -> False
+        Lam a -> shortCircuitEq' (instantiate a a2) b
+        a -> (False, App a a2, b)
     (_, App b1 b2) ->
       case nf b1 of
-        Lam b -> shortCircuitEq a (instantiate b b2)
-        _ -> False
-    _ -> False
+        Lam b -> shortCircuitEq' a (instantiate b b2)
+        _ -> (False, a, App b b2)
+    _ -> (False, a, b)
+
+shortCircuitEq :: Exp m -> Exp m -> Bool
+shortCircuitEq a b =
+  case shortCircuitEq' a b of
+    (eq, _, _) -> eq
 
 -- >>> shortCircuitEq t0 t0
 -- True
