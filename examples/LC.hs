@@ -274,10 +274,20 @@ t2 = Lam (bind (App (Lam (bind (Lam (bind (Var f0))))) (Var f0)))
 -- >>> t2
 -- (λ. ((λ. (λ. 0)) 0))
 
-t3 = Lam (bind (App (Lam (bind (Var f0))) (App (Lam (bind (Var f0))) (Lam (bind (Var f0))))))
+t3 = Lam (bind (App (App (Lam (bind (Var f0))) (Lam (bind (Var f0)))) (App (Lam (bind (Var f0))) (Lam (bind (Var f0))))))
 
 -- >>> t3
--- (λ. ((λ. 0) ((λ. 0) (λ. 0))))
+-- (λ. (((λ. 0) (λ. 0)) ((λ. 0) (λ. 0))))
+
+t4 = Lam (bind (App (Var f0) (Lam (bind (Var f1)))))
+
+-- >>> t4
+-- (λ. (0 (λ. 1)))
+
+t5 = Lam (bind (App (Lam (bind (Var f0))) (App (Var f0) (Lam (bind (Var f1))))))
+
+-- >>> t5
+-- (λ. ((λ. 0) (0 (λ. 1))))
 
 betaEqual :: Exp m -> Exp m -> Bool
 betaEqual a b = nf a == nf b
@@ -287,6 +297,8 @@ betaEqual a b = nf a == nf b
 -- >>> betaEqual t1 (nf t1)
 -- True
 -- >>> betaEqual t2 t3
+-- True
+-- >>> betaEqual t4 t5
 -- True
 
 shortCircuitEq' :: Exp m -> Exp m -> (Bool, Exp m, Exp m)
@@ -298,6 +310,8 @@ shortCircuitEq' a b =
       case shortCircuitEq' a1 b1 of
         (True, _, _) -> shortCircuitEq' a2 b2
         (False, Lam a, Lam b) -> shortCircuitEq' (instantiate a a2) (instantiate b b2)
+        (False, Lam a, _) -> shortCircuitEq' (instantiate a a2) b
+        (False, _, Lam b) -> shortCircuitEq' a (instantiate b b2)
         -- If a1, b1 do not match, we "short circuit" by not normalizing a2, b2
         (False, a, b) -> (False, App a a2, App b b2)
     (App a1 a2, _) ->
@@ -324,4 +338,6 @@ shortCircuitEq a b =
 -- >>> shortCircuitEq t1 (nf t1)
 -- True
 -- >>> shortCircuitEq t2 t3
+-- True
+-- >>> shortCircuitEq t4 t5
 -- True
