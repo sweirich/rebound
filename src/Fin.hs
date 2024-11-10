@@ -134,18 +134,14 @@ weaken1Fin = weakenFin s1
 
 -- Strengthening cannot be implemented through substitution because it 
 -- must fail if the term uses invalid variables. Therefore, we make a 
--- class of nat-indexed types that can be strengthened.
+-- class of nat-indexed types that can be strengthened. We also provide
+-- default definitions for strengthening by one and by n. Only one of 
+-- these functions need to be provided
 
-class CoerceIndex t where
-    weakenOne :: t n -> t (S n)
-    weakenOne = weaken' (SS SZ)
+class Strengthen t where
 
     strengthenOne' :: SNat n -> t (S n) -> Maybe (t n)
     strengthenOne' = strengthen' (SS SZ)
-
-    weaken' :: SNat m -> t n -> t (Plus m n)
-    weaken' SZ t = t 
-    weaken' (SS m1) t = weakenOne (weaken' m1 t)
 
     strengthen' :: SNat m -> SNat n -> t (Plus m n) -> Maybe (t n)
     strengthen' SZ n f = Just f
@@ -153,17 +149,11 @@ class CoerceIndex t where
     strengthen' (SS m) (SS n) f = do 
         f' <- strengthenOne' (sPlus m (SS n)) f 
         strengthen' m (SS n) f'
-    
-weaken :: forall m n t. (CoerceIndex t, SNatI m) => t n -> t (Plus m n)
-weaken = weaken' (snat :: SNat m)
 
-strengthen :: forall m n t. (CoerceIndex t, SNatI m, SNatI n) => t (Plus m n) -> Maybe (t n)
+strengthen :: forall m n t. (Strengthen t, SNatI m, SNatI n) => t (Plus m n) -> Maybe (t n)
 strengthen = strengthen' (snat :: SNat m) (snat :: SNat n)
 
-instance CoerceIndex Fin where 
-    weaken' :: SNat m -> Fin n -> Fin (Plus m n)
-    weaken' = weakenFin
-
+instance Strengthen Fin where 
     strengthen' :: SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
     strengthen' = strengthenFin
 

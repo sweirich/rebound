@@ -74,6 +74,9 @@ appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 
 -- >>> weaken' s1 t00
 -- 0 0
 
+weaken' :: SNat m -> Exp n -> Exp (Plus m n)
+weaken' m = applyE @Exp (weakenE' m)
+
 -- >>> strengthen' s1 s1 t00
 -- Just (0 0)
 
@@ -81,10 +84,7 @@ appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 
 -- Nothing
 
 
-instance CoerceIndex Exp where
-    weaken' :: SNat m -> Exp n -> Exp (Plus m n)
-    weaken' m = applyE @Exp (weakenE' m)
-
+instance Strengthen Exp where
     strengthen' :: SNat m -> SNat n -> Exp (Plus m n) -> Maybe (Exp n)
     strengthen' m n (Var x) = Var <$> strengthen' m n x
     strengthen' m n Star = pure Star

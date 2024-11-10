@@ -101,10 +101,10 @@ shift = Env (var . FS)
 -- | weaken variables by 1
 -- makes their bound bigger but does not change any of their indices
 weakenOneE :: SubstVar v => Env v n (S n)
-weakenOneE = Env (var . weakenOne)
+weakenOneE = Env (var . weaken1Fin)
 
 weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (Plus m n)
-weakenE' sm = Env (var . weaken' sm)
+weakenE' sm = Env (var . weakenFin sm)
 
 ----------------------------------------------------------------
 -- Single binders
@@ -163,8 +163,7 @@ applyUnder f r2 (Bind r1 t) =
 
 -- TODO: this implementation of strengthening for binders is rather inefficient
 -- maybe there is a better way to do it???
-instance (SubstVar v, Subst v v, Subst v c, CoerceIndex c) => CoerceIndex (Bind v c) where
-    weaken' m = applyE @v (weakenE' m)
+instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v c) where
     strengthen' (m :: SNat m) (n :: SNat n) b = 
         case axiom @m @n of
           Refl -> bind <$> strengthen' m (SS n) (unbind b)
@@ -233,8 +232,8 @@ instance Subst v v => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
         PatBind p (env2 .>> env1) m
 
-instance (Sized p, SubstVar v, Subst v v, Subst v c, CoerceIndex c) => CoerceIndex (PatBind v c p) where
-    weaken' m = applyE @v (weakenE' m)
+instance (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (PatBind v c p) where
+
     strengthen' (m :: SNat m) (n :: SNat n) b = 
         case axiomM @m @(Size p) @n of
           Refl -> patBind (getPat b) <$> strengthen' m (sPlus (size (getPat b)) n) (unPatBind b)
