@@ -6,9 +6,11 @@ Stability   : experimental
 
 -}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
 module AutoEnv where
 
 import Prelude hiding (head,tail)
+import Data.Type.Equality
 
 import Lib
 import Data.Kind
@@ -96,7 +98,13 @@ head f = applyEnv f FZ
 shift :: SubstVar v => Env v n (S n)
 shift = Env (var . FS)
 
+-- | weaken variables by 1
+-- makes their bound bigger but does not change any of their indices
+weakenOneE :: SubstVar v => Env v n (S n)
+weakenOneE = Env (var . weakenOne)
 
+weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (Plus m n)
+weakenE' sm = Env (var . weaken' sm)
 
 ----------------------------------------------------------------
 -- Single binders
@@ -152,6 +160,14 @@ applyUnder :: (Subst v v, Subst v c) =>
         Bind v c n1 -> Bind v c n2
 applyUnder f r2 (Bind r1 t) = 
     bind (f (up (r1 .>> r2)) t)
+
+-- TODO: this implementation of strengthening for binders is rather inefficient
+-- maybe there is a better way to do it???
+instance (SubstVar v, Subst v v, Subst v c, CoerceIndex c) => CoerceIndex (Bind v c) where
+    weaken' m = applyE @v (weakenE' m)
+    strengthen' (m :: SNat m) (n :: SNat n) b = 
+        case axiom @m @n of
+          Refl -> bind <$> strengthen' m (SS n) (unbind b)
 
 ----------------------------------------------------------
 -- Pattern binding (N-ary binding)
@@ -217,7 +233,11 @@ instance Subst v v => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
         PatBind p (env2 .>> env1) m
 
-
+instance (Sized p, SubstVar v, Subst v v, Subst v c, CoerceIndex c) => CoerceIndex (PatBind v c p) where
+    weaken' m = applyE @v (weakenE' m)
+    strengthen' (m :: SNat m) (n :: SNat n) b = 
+        case axiomM @m @(Size p) @n of
+          Refl -> patBind (getPat b) <$> strengthen' m (sPlus (size (getPat b)) n) (unPatBind b)
 
 ----------------------------------------------------------------
 -- Double binder
@@ -271,16 +291,17 @@ instantiate2 b v1 v2 = unbind2With (\ r e -> applyE (v1 .: (v2 .: r)) e) b
 ----------------------------------------------------------------
 -- For dependently-typed languages
 
-weaken :: forall v c n. Subst v c => c n -> c (S n)
-weaken = applyE @v shift
+-- This is not weakening --- it increments all variables by one
+shiftC :: forall v c n. Subst v c => c n -> c (S n)
+shiftC = applyE @v shift
 
 type Ctx v n = Env v n n
 
-weakenCtx :: Subst v v => Env v n n -> Env v n (S n)
-weakenCtx g = g .>> shift
+shiftCtx :: Subst v v => Env v n n -> Env v n (S n)
+shiftCtx g = g .>> shift
 
 (+++) :: forall v n. Subst v v => Ctx v n -> v n -> Ctx v (S n)
-g +++ a = weaken @v @v a .: weakenCtx g 
+g +++ a = shiftC @v @v a .: shiftCtx g 
 
 ----------------------------------------------------------------
 toList :: SNatI n => Env v n m -> [v m]
