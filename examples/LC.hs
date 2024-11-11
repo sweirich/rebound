@@ -301,19 +301,30 @@ betaEqual a b = nf a == nf b
 -- >>> betaEqual t4 t5
 -- True
 
+reduceApply :: Exp m -> Exp m -> Exp m
+reduceApply a b =
+  case a of
+    Lam a -> instantiate a b
+    _ -> App a b
+
 shortCircuitEq' :: Exp m -> Exp m -> (Bool, Exp m, Exp m)
 shortCircuitEq' a b =
   case (a, b) of
     (Var a, Var b) -> (a == b, Var a, Var b)
-    (Lam a, Lam b) -> (shortCircuitEq (unbind a) (unbind b), Lam a, Lam b)
+    (Lam a, Lam b) ->
+      case shortCircuitEq' (unbind a) (unbind b) of
+        (eq, a', b') -> (eq, Lam (bind a'), Lam (bind b'))
     (App a1 a2, App b1 b2) ->
       case shortCircuitEq' a1 b1 of
-        (True, _, _) -> shortCircuitEq' a2 b2
-        (False, Lam a, Lam b) -> shortCircuitEq' (instantiate a a2) (instantiate b b2)
-        (False, Lam a, _) -> shortCircuitEq' (instantiate a a2) b
-        (False, _, Lam b) -> shortCircuitEq' a (instantiate b b2)
-        -- If a1, b1 do not match, we "short circuit" by not normalizing a2, b2
-        (False, a, b) -> (False, App a a2, App b b2)
+        (True, a1', b1') ->
+          case shortCircuitEq' a2 b2 of
+            (eq, a2', b2') -> (eq, reduceApply a1' a2', reduceApply b1' b2)
+        (False, a1', b1') ->
+          case (a1', b1') of
+            (Lam a, _) -> shortCircuitEq' (reduceApply a1' a2) (reduceApply b1' b2)
+            (_, Lam b) -> shortCircuitEq' (reduceApply a1' a2) (reduceApply b1' b2)
+            -- If a1, b1 do not match, we "short circuit" by not normalizing a2, b2
+            _ -> (False, App a1' a2, App b1' b2)
     (App a1 a2, _) ->
       case nf a1 of
         Lam a -> shortCircuitEq' (instantiate a a2) b
