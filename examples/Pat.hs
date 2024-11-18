@@ -42,19 +42,25 @@ data Exp (n :: Nat) where
 data Branch (n :: Nat) where
     Branch :: PatBind Exp Exp (Pat m) n -> Branch n
 
--- The index in the pattern is the number of occurrences of 
+-- The index `m` in the pattern is the number of occurrences of 
 -- PVar, i.e. the number variables bound by the pattern. 
 -- These variables are ordered left to right.
 -- For example (PCon "cons" `PApp` PVar `PApp` PVar) is the 
 -- representation of the pattern "cons x y", which binds two 
 -- variables.
-data Pat (n :: Nat) where
-    PVar :: Pat N1  -- binds exactly one variable
-    PApp :: Pat n1 -> Pat n2 -> Pat (Plus n1 n2)  
-    PCon :: String -> Pat N0 -- binds zero variables
+-- The index `n` is the number of free variables that 
+-- appear in the pattern. This pattern does not include any 
+-- expression terms, so this index is unconstrained here
+-- It is not clear whether we should include this support in 
+-- the pattern binding parts of the library, or regress to 
+-- closed patterns. But I'm leaving it here for now.
+data Pat (m :: Nat) (n :: Nat) where
+    PVar :: Pat N1 n -- binds exactly one variable
+    PApp :: Pat m1 n -> Pat m2 n -> Pat (Plus m1 m2) n 
+    PCon :: String -> Pat N0 n -- binds zero variables
 
 ----------------------------------------------
--- Sized instance
+-- * Sized instance
 ----------------------------------------------
 
 -- Any type that is used as a pattern must be an 
@@ -67,17 +73,17 @@ data Pat (n :: Nat) where
 -- from the pattern itself by counting the number 
 -- of occurrences of `PVar`.
 
-instance Sized (Pat n) where
-    type Size (Pat n) = n
+instance Sized (Pat m) where
+    type Size (Pat m) = m
 
-    size :: Pat n -> SNat (Size (Pat n))
+    size :: Pat m n -> SNat (Size (Pat m))
     size PVar = s1
     size (PApp p1 p2) = sPlus (size p1) (size p2)
     size (PCon s) = s0
 
 
 ----------------------------------------------
--- Substitution
+-- * Substitution
 ----------------------------------------------
 
 instance SubstVar Exp where
@@ -96,9 +102,15 @@ instance Subst Exp Branch where
     applyE :: Env Exp n m -> Branch n -> Branch m
     applyE r (Branch bnd) = Branch (applyE r bnd)
 
+instance Subst Exp (Pat m) where
+    applyE r PVar = PVar
+    applyE r (PApp p1 p2) = PApp (applyE r p1) (applyE r p2)
+    applyE r (PCon s) = PCon s
+
+
 ----------------------------------------------
 -- Example terms
---------------------------------------------------------------
+----------------------------------------------
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
@@ -115,9 +127,9 @@ t1 = Lam (bind (Lam (bind (Var f1 `App`
 -- \x -> case x of [nil -> x ; cons y z -> y]
 t2 :: Exp Z
 t2 = Lam (bind (Case (Var f0) 
-      [Branch (patBind @(Pat N0) 
+      [Branch (patBind @_ @_ @(Pat N0) 
                (PCon "Nil") (Var f0)), 
-                Branch (patBind @(Pat N2) 
+                Branch (patBind @_ @_ @(Pat N2) 
                   (PCon "Cons" `PApp` PVar `PApp` PVar) (Var f0))]))
 
 -- the "list"  ['a','b']
@@ -160,8 +172,8 @@ instance Show (Exp n) where
         showString " of " . 
         shows brs
 
-instance Show (Pat n) where
-    showsPrec :: Int -> Pat n -> String -> String
+instance Show (Pat m n) where
+    showsPrec :: Int -> Pat m n -> String -> String
     showsPrec d PVar = showString "V"
     showsPrec d (PApp p1 p2) = showParen (d > 0) $
                               showsPrec 10 p1 . 
@@ -184,27 +196,40 @@ instance Show (Branch n) where
 -- * Eq implementation
 --------------------------------------------------------------
 
--- To compare Patterns for equality, we first generalize to 
--- `TestEquality` from Data.Type.Equality. This class is for
--- comparisons between indexed types. If the terms are equal
--- then this function also returns a proof that the indices
+-- We would like to derive equality for patterns, but 
+-- because of the application case, this process fails.
+-- We don't know that each subpattern binds the same 
+-- number of variables!
+-- deriving instance (Eq (Pat m n))
+
+-- Therefore to compare Pats for equality, we generalize the 
+-- `testEquality` function from Data.Type.Equality. (This 
+-- class is often used for comparisons between indexed types. 
+-- but only works if the index is the last type parameter. 
+-- In our case, we need to produce an equality for the 
+-- first type parameter.)
+-- This function can be applied, even if the number of 
+-- pattern-bound variables are not known to be equal.
+-- (cf. m1 and m2 below). If the patterns are indeed equal, 
+-- then `testEquality1` *also* returns a proof that the indices
 -- are equal. (The type `a :~: b` is a GADT with a single 
 -- constructor `Refl` that can only be used when a and be are
 -- equal. Pattern matching on this GADT brings an equality 
 -- between a and b into the context of the term.)
-instance TestEquality Pat where
-    testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
-    testEquality PVar PVar = Just Refl
-    testEquality (PApp p1 p2) (PApp p1' p2') = do 
-        Refl <- testEquality p1 p1'
-        Refl <- testEquality p2 p2'
-        return Refl
-    testEquality (PCon s1) (PCon s2) | s1 == s2 = Just Refl
-    testEquality _ _ = Nothing
 
-instance Eq (Pat n) where
-    (==) :: Pat n -> Pat n -> Bool
-    p1 == p2 = Maybe.isJust (testEquality p1 p2)
+testEquality1 :: Pat m1 n -> Pat m2 n -> Maybe (m1 :~: m2)
+testEquality1 PVar PVar = Just Refl
+testEquality1 (PApp p1 p2) (PApp p1' p2') = do 
+        Refl <- testEquality1 p1 p1'
+        Refl <- testEquality1 p2 p2'
+        return Refl
+testEquality1 (PCon s1) (PCon s2) | s1 == s2 = Just Refl
+testEquality1 _ _ = Nothing
+
+-- the generalized equality can be used for the usual equality
+instance Eq (Pat m n) where
+     (==) :: Pat m n -> Pat m n -> Bool
+     p1 == p2 = Maybe.isJust (testEquality1 p1 p2)
 
 
 instance Eq (Branch n) where
@@ -221,10 +246,10 @@ instance Eq (Exp n) => Eq (Bind Exp Exp n) where
         b1 == b2 = unbind b1 == unbind b2
 
 -- To compare pattern binders, we need to unbind, but also 
--- make sure that the patterns are equal
-instance (Sized p, Eq p, Eq (Exp n)) => Eq (PatBind Exp Exp p n) where
+-- first make sure that the patterns are equal
+instance (Eq (Exp n)) => Eq (PatBind Exp Exp (Pat m) n) where
         b1 == b2 =
-            getPat b1 == getPat b2
+            Maybe.isJust (testEquality1 (getPat b1) (getPat b2))
              && unPatBind b1 == unPatBind b2
 
 -- With the instance above the derivable equality instance
@@ -237,9 +262,9 @@ deriving instance (Eq (Exp n))
 -- Pattern matching code
 --------------------------------------------------------
 
-p1 :: Pat N2
+p1 :: Pat N2 n
 p1 = PApp (PApp (PCon "C") PVar) PVar
-p2 :: Pat N3
+p2 :: Pat N3 n
 p2 = PApp (PApp PVar PVar) PVar
 e1 :: Exp N0
 e1 = App (App (Con "C") (Con "A")) (Con "B")
@@ -261,7 +286,7 @@ e2 = App (App (Con "D") (Con "A")) (Con "B")
 -- | Compare a pattern with an expression, potentially 
 -- producing a substitution for all of the variables
 -- bound in the pattern
-patternMatch :: Pat n -> Exp m -> Maybe (Env Exp n m)
+patternMatch :: Pat p n -> Exp m -> Maybe (Env Exp p m)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PApp p1 p2) (App e1 e2)  = do
     env1 <- patternMatch p1 e1

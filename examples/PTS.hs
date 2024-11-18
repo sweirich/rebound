@@ -1,5 +1,5 @@
--- Pure-type system example, based on pi-forall (version2)
--- Includes Pi/Sigma
+-- Pure-type system example
+-- Includes Pi/Sigma, untyped equivalence
 module PTS where
 
 import Lib
@@ -21,7 +21,6 @@ data Exp (n :: Nat) where
     Sigma :: Exp n -> Bind Exp Exp n -> Exp n
     Pair  :: Exp n -> Exp n -> Exp n -> Exp n
     Split :: Exp n -> Bind2 Exp Exp n -> Exp n
-
 
 ----------------------------------------------
 
@@ -324,7 +323,7 @@ evalEnv r (App e1 e2) =
     let v = evalEnv r e2 in
     case evalEnv r e1 of
         Lam a b -> 
-            unbindWith (\r' e' -> evalEnv (v .: r') e') b
+            unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 evalEnv r Star = Star
 evalEnv r (Pi a b) = applyE r (Pi a b)
@@ -433,7 +432,33 @@ emptyE :: Ctx Exp Z
 emptyE = Env $ \case
 
 -- >>> inferType emptyE tmid
--- Just (Pi *. 0 -> 1)
+-- Ambiguous type variable `m0_adMT[tau:0]' arising from a use of `evalPrint'
+-- prevents the constraint `(Show
+--                             (m0_adMT[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_adMT[tau:0]' should be.
+-- Potentially matching instances:
+--   instance (Show a, Show b) => Show (Either a b)
+--     -- Defined in `Data.Either'
+--   instance forall k (f :: k -> Type) (a :: k).
+--            Show (f a) =>
+--            Show (Alt f a)
+--     -- Defined in `Data.Semigroup.Internal'
+--   ...plus 30 others
+--   (use -fprint-potential-instances to see them all)
+-- In a stmt of an interactive GHCi command: evalPrint it_adbK
 
 -- >>> inferType emptyE (App tmid tyid)
--- Just ((Pi *. 0 -> 1) -> Pi *. 0 -> 1)
+-- Ambiguous type variable `m0_adMS[tau:0]' arising from a use of `evalPrint'
+-- prevents the constraint `(Show
+--                             (m0_adMS[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_adMS[tau:0]' should be.
+-- Potentially matching instances:
+--   instance (Show a, Show b) => Show (Either a b)
+--     -- Defined in `Data.Either'
+--   instance forall k (f :: k -> Type) (a :: k).
+--            Show (f a) =>
+--            Show (Alt f a)
+--     -- Defined in `Data.Semigroup.Internal'
+--   ...plus 30 others
+--   (use -fprint-potential-instances to see them all)
+-- In a stmt of an interactive GHCi command: evalPrint it_adbW

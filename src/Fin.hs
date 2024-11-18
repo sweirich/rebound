@@ -38,6 +38,7 @@ axiom = unsafeCoerce Refl
 axiomM :: forall m p n. Plus p (Plus m n) :~: Plus m (Plus p n)
 axiomM = unsafeCoerce Refl
 
+
 -----------------------------------------------------
 -- Type
 -----------------------------------------------------
@@ -108,6 +109,23 @@ universe :: SNatI n => [Fin n]
 universe = enumFin snat
 
 -------------------------------------------------------------------------------
+-- Shifting
+-------------------------------------------------------------------------------
+
+-- increment by a fixed amount
+shiftN :: SNat m -> Fin n -> Fin (Plus m n)
+shiftN SZ f = f
+shiftN (SS n) f = FS (shiftN n f)
+
+-- increment by a fixed amount
+-- TODO: remove unsafeCoerce here
+shiftL :: forall m1 m n. SNat m1 -> Fin (Plus m n) -> Fin (Plus (Plus m1 m) n)
+shiftL m1 f = unsafeCoerce (shiftN m1 f)
+
+shiftR :: forall m m1 n. SNat m1 -> Fin (Plus m n) -> Fin (Plus (Plus m m1) n)
+shiftR m1 f = unsafeCoerce (shiftN m1 f)
+
+-------------------------------------------------------------------------------
 -- Weakening and Strengthening
 -------------------------------------------------------------------------------
 
@@ -166,14 +184,10 @@ strengthenFin m (SS (n0 :: SNat n0)) (FS f) =
         Refl -> FS <$> strengthenFin m n0 f
 
     
-
-t0 :: Fin N3
-t0 = FZ 
-
--- >>> strengthenOne' (SS (SS SZ)) t0 :: Maybe (Fin N2)
+-- >>> strengthenOne' (SS (SS SZ)) (FZ :: Fin N3) :: Maybe (Fin N2)
 -- Just 0
 
--- >>> strengthen' (SS (SS SZ)) (SS SZ) t0 :: Maybe (Fin N1)
+-- >>> strengthen' (SS (SS SZ)) (SS SZ) (FZ :: Fin N3) :: Maybe (Fin N1)
 -- Just 0
 
 

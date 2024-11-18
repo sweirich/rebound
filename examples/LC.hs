@@ -239,7 +239,7 @@ evalEnv r (App e1 e2) =
     let v = evalEnv r e2 in
     case evalEnv r e1 of
         Lam b -> 
-            unbindWith (\r' e' -> evalEnv (v .: r') e') b
+            unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 
 
@@ -264,7 +264,7 @@ nfEnv r (Lam b) = Lam (applyUnder nfEnv r b)
 nfEnv r (App e1 e2) =
     let n = nfEnv r e1 in
     case nfEnv r e1 of
-        Lam b -> instantiateWith nfEnv b n
+        Lam b -> instantiateWith b n nfEnv
         t -> App t (nfEnv r e2)
 
 ----------------------------------------------------------------

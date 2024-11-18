@@ -24,6 +24,7 @@ common common-stanza
     , QuickCheck
     , containers
     , filepath
+    , parsec
     , prettyprinter
     , network
     , directory
@@ -54,6 +55,7 @@ library
       , Fin
       , Vec
       , LC
+      , LCLet
       , PTS
       , Pat
   hs-source-dirs:
