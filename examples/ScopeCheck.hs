@@ -1,5 +1,4 @@
 module ScopeCheck where
-
 import Lib
 import qualified LC 
 import AutoEnv

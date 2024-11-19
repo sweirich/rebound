@@ -5,7 +5,7 @@ Stability   : experimental
 
 An implementation of the untyped lambda calculus with pattern matching.
 
-This example extends the lambda calculus with constants (like 'nil 'cons)
+This example extends the lambda calculus with constants (like 'nil and 'cons)
 and arbitrary pattern matching. Case expressions include a list of branches,
 where each branch is a pattern and a right-hand side. The pattern can bind 
 multiple variables and the index ensures that the rhs matches the number of 

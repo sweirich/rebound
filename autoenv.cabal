@@ -32,8 +32,6 @@ common common-stanza
     , mtl
     , brick
     , vty
-    , fin
-    , vec 
   default-language:
     GHC2021
   default-extensions:
@@ -58,6 +56,7 @@ library
       , LCLet
       , PTS
       , Pat
+      , PiForall
   hs-source-dirs:
       src
       , examples
