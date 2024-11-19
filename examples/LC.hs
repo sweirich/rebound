@@ -241,7 +241,7 @@ evalEnv r (App e1 e2) =
   let v = evalEnv r e2
    in case evalEnv r e1 of
         Lam b ->
-          unbindWith (\r' e' -> evalEnv (v .: r') e') b
+          unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 
 -- >>> evalEnv zeroE t1     -- start with "empty environment"
