@@ -318,7 +318,7 @@ shortCircuitEq' a b =
       case shortCircuitEq' a1 b1 of
         (True, a1', b1') ->
           case shortCircuitEq' a2 b2 of
-            (eq, a2', b2') -> (eq, reduceApply a1' a2', reduceApply b1' b2)
+            (eq, a2', b2') -> (eq, reduceApply a1' a2', reduceApply b1' b2')
         (False, a1', b1') ->
           case (a1', b1') of
             (Lam a, _) -> shortCircuitEq' (reduceApply a1' a2) (reduceApply b1' b2)
