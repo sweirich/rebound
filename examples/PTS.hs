@@ -1,12 +1,16 @@
 -- Pure-type system example
+-- Includes Pi/Sigma, untyped equivalence
 module PTS where
 
 import Lib
+import qualified Fin
 import qualified Vec
 import AutoEnv
 
+import Control.Monad.Except ( MonadError(..), ExceptT, runExceptT )
+
 -- In a pure type system, terms and types are combined
--- into the same syntactic class
+-- into the same syntactic class. 
 
 data Exp (n :: Nat) where
     Star  :: Exp n
@@ -17,7 +21,6 @@ data Exp (n :: Nat) where
     Sigma :: Exp n -> Bind Exp Exp n -> Exp n
     Pair  :: Exp n -> Exp n -> Exp n -> Exp n
     Split :: Exp n -> Bind2 Exp Exp n -> Exp n
-
 
 ----------------------------------------------
 
@@ -38,12 +41,19 @@ instance Subst Exp Exp where
 
 ----------------------------------------------
 
+
+t00 :: Exp N2
+t00 = App (Var f0) (Var f0)
+
+t01 :: Exp N2
+t01 = App (Var f0) (Var f1)
+
 -- Does a variable appear free in a term?
 
--- >>> appearsFree FZ (App (Var f0) (Var f1))
+-- >>> appearsFree f0 t00
 -- True
 
--- >>> appearsFree FZ (App (Var f1) (Var f1))
+-- >>> appearsFree f1 t00
 -- False
 
 appearsFree :: Fin n -> Exp n -> Bool
@@ -57,9 +67,32 @@ appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n
 appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
 
 
--- TODO
-strengthen :: SNat m -> Exp (Plus m n) -> Maybe (Exp n)
-strengthen = undefined
+-- >>> :t weaken' s1 t00
+-- weaken' s1 t00 :: Exp ('S ('S N1))
+
+-- >>> weaken' s1 t00
+-- 0 0
+
+weaken' :: SNat m -> Exp n -> Exp (Plus m n)
+weaken' m = applyE @Exp (weakenE' m)
+
+-- >>> strengthen' s1 s1 t00
+-- Just (0 0)
+
+-- >>> strengthen' s1 s1 t01
+-- Nothing
+
+
+instance Strengthen Exp where
+    strengthen' :: SNat m -> SNat n -> Exp (Plus m n) -> Maybe (Exp n)
+    strengthen' m n (Var x) = Var <$> strengthen' m n x
+    strengthen' m n Star = pure Star
+    strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
+    strengthen' m n (Lam a b) = Lam <$> strengthen' m n a <*> strengthen' m n b
+    strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
+    strengthen' m n (Sigma a b) = Sigma <$> strengthen' m n a <*> strengthen' m n b
+    strengthen' m n (Pair a b t) = Pair <$> strengthen' m n a <*> strengthen' m n b <*> strengthen' m n t
+    strengthen' m n (Split a b) = Split <$> strengthen' m n a <*> strengthen' m n b
 
 ----------------------------------------------
 -- Examples
@@ -243,14 +276,15 @@ nf (Split a b) =
         t -> Split t (bind2 (nf (unbind2 b)))
 
 
--- first find the head form, then normalize
+-- first find the head form
 whnf :: Exp n -> Exp n
 whnf (App a1 a2) = case whnf a1 of 
                     Lam a b -> whnf (instantiate b a1)
-                    t -> App t (norm a2)
+                    t -> App t a2
 whnf (Split a b) = case whnf a of 
                     Pair a1 a2 _ -> whnf (instantiate2 b a1 a2)
-                    t -> Split a (bind2 (norm (unbind2 b)))
+                    t -> Split t b
+-- all other terms are already in head form
 whnf a = a
 
 norm :: Exp n -> Exp n
@@ -260,8 +294,8 @@ norm a = case whnf a of
            Sigma a b -> Sigma (norm a) (bind (norm (unbind b)))
            Pair a b t -> Pair (norm a) (norm b) (norm t)
            Star -> Star
-           App a b -> App a b
-           Split a b -> Split a b 
+           App a b -> App a (norm b)
+           Split a b -> Split a (bind2 (norm (unbind2 b))) 
            Var x -> Var x
 
 --------------------------------------------------------
@@ -289,7 +323,7 @@ evalEnv r (App e1 e2) =
     let v = evalEnv r e2 in
     case evalEnv r e1 of
         Lam a b -> 
-            unbindWith (\r' e' -> evalEnv (v .: r') e') b
+            unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 evalEnv r Star = Star
 evalEnv r (Pi a b) = applyE r (Pi a b)
@@ -302,58 +336,129 @@ evalEnv r (Split a b) =
                 evalEnv (a1 .: (a2 .: (r' .>> r))) e') b
         t -> Split t (applyE r b)
 
+
+----------------------------------------------------------------
+data Err where
+    Equate :: Exp n -> Exp n -> Err
+    PiExpected :: Exp n -> Err
+    SigmaExpected :: Exp n -> Err
+    VarEscapes :: Exp n -> Err
+
+equate :: MonadError Err m => Exp n -> Exp n -> m ()
+equate t1 t2 = do 
+  let n1 = whnf t1
+      n2 = whnf t2  
+  equateWHNF n1 n2
+
+equateWHNF :: MonadError Err m => Exp n -> Exp n -> m () 
+equateWHNF n1 n2 = 
+  case ( n1 , n2 ) of
+    (Star, Star) -> pure ()
+    (Var x, Var y) | x == y -> pure ()
+    (Lam _ b1, Lam _ b2) -> equate (unbind b1) (unbind b2)
+    (App a1 a2, App b1 b2) -> do
+        equateWHNF a1 b1 
+        equate a2 b2
+    (Pi tyA1 b1, Pi tyA2 b2) -> do
+        equate tyA1 tyA2
+        equate (unbind b1) (unbind b2)
+    (Pair a1 a2 _, Pair b1 b2 _) -> do
+        equate a1 b1
+        equate a2 b2
+    (Split a1 b1, Split a2 b2) -> do
+        equateWHNF a1 a2
+        equate (unPatBind b1) (unPatBind b2)
+    (Sigma tyA1 b1, Sigma tyA2 b2) -> do
+        equate tyA1 tyA2
+        equate (unbind b1) (unbind b2)
+    (_, _) -> throwError (Equate n1 n2)
+
+
 ----------------------------------------------------------------
 
+checkType :: forall n m. (MonadError Err m, SNatI n) => 
+   Ctx Exp n -> Exp n -> Exp n -> m ()
+checkType g e t1 = do
+    t2 <- inferType g e 
+    equate (whnf t2) t1
 
--- TODO: add conversion
-
-typeCheck :: forall n. Ctx Exp n -> Exp n -> Maybe (Exp n)
-typeCheck g (Var x) = Just (applyEnv g x)
-typeCheck g Star = Just Star
-typeCheck g (Pi a b) = do
-    tyA <- typeCheck g a
-    tyB <- typeCheck (g +++ a) (unbind b)
-    if tyA == Star && tyB == Star then return Star else Nothing
-typeCheck g (Lam a b) = do
-    tyA <- typeCheck g a 
-    tyB <- typeCheck (g +++ a) (unbind b)
-    if tyA == Star then return $ Pi a (bind tyB) else Nothing
-typeCheck g (App a b) = do
-    tyA <- typeCheck g a
-    tyB <- typeCheck g b
-    case tyA of 
-        Pi tyA1 tyB1 -> if tyB == tyA1 then return $ instantiate tyB1 b else Nothing
-        _ -> Nothing 
-typeCheck g (Sigma a b) = do
-    tyA <- typeCheck g a
-    tyB <- typeCheck (g +++ a) (unbind b)
-    if tyA == Star && tyB == Star then return Star else Nothing
-typeCheck g (Pair a b ty) = do 
-    tyA <- typeCheck g a 
-    tyB <- typeCheck g b 
+inferType :: forall n m. (MonadError Err m, SNatI n) => 
+   Ctx Exp n -> Exp n -> m (Exp n)
+inferType g (Var x) = pure (applyEnv g x)
+inferType g Star = pure Star
+inferType g (Pi a b) = do
+    checkType g a Star
+    checkType (g +++ a) (unbind b) Star
+    pure Star
+inferType g (Lam tyA b) = do
+    checkType g tyA Star
+    tyB <- inferType (g +++ tyA) (unbind b)
+    return $ Pi tyA (bind tyB)
+inferType g (App a b) = do
+    tyA <- inferType g a
+    case whnf tyA of 
+        Pi tyA1 tyB1 -> do
+            checkType g b tyA1
+            pure $ instantiate tyB1 b
+        t -> throwError (PiExpected t)
+inferType g (Sigma a b) = do
+    checkType g a Star
+    checkType (g +++ a) (unbind b) Star
+    pure Star
+inferType g (Pair a b ty) = do 
+    tyA <- inferType g a 
+    tyB <- inferType g b 
     case ty of 
-        (Sigma tyA' tyB') -> 
-            if tyA == tyA' && tyB == instantiate tyB' a 
-            then Just ty
-            else Nothing
-        _ -> Nothing
-    Nothing
-typeCheck g (Split a b) = do
-    tyA <- typeCheck g a 
-    case tyA of 
-        Sigma tyA' tyB -> do
+        (Sigma tyA tyB) -> do
+            checkType g a tyA
+            checkType g b (instantiate tyB a)
+            pure ty
+        _ -> throwError (SigmaExpected ty)
+inferType g (Split a b) = do
+    tyA <- inferType g a 
+    case whnf tyA of 
+        Sigma tyA' tyB' -> do
             let g' :: Ctx Exp (S (S n))
-                g' = g +++ tyA' +++ unbind tyB
-            tyB <- typeCheck g' (unbind2 b) 
-            strengthen s2 tyB
-        _ -> Nothing
+                g' = g +++ tyA' +++ unbind tyB'
+            ty <- inferType g' (unbind2 b) 
+            let ty' = whnf ty
+            case strengthen' s2 snat ty' of
+                Nothing -> throwError (VarEscapes ty)
+                Just ty'' -> pure ty''
+        _ -> throwError (SigmaExpected tyA)
 
 
 emptyE :: Ctx Exp Z 
 emptyE = Env $ \case
 
--- >>> typeCheck emptyE tmid
--- Just (Pi *. 0 -> 1)
+-- >>> inferType emptyE tmid
+-- Ambiguous type variable `m0_adMT[tau:0]' arising from a use of `evalPrint'
+-- prevents the constraint `(Show
+--                             (m0_adMT[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_adMT[tau:0]' should be.
+-- Potentially matching instances:
+--   instance (Show a, Show b) => Show (Either a b)
+--     -- Defined in `Data.Either'
+--   instance forall k (f :: k -> Type) (a :: k).
+--            Show (f a) =>
+--            Show (Alt f a)
+--     -- Defined in `Data.Semigroup.Internal'
+--   ...plus 30 others
+--   (use -fprint-potential-instances to see them all)
+-- In a stmt of an interactive GHCi command: evalPrint it_adbK
 
--- >>> typeCheck emptyE (App tmid tyid)
--- Just ((Pi *. 0 -> 1) -> Pi *. 0 -> 1)
+-- >>> inferType emptyE (App tmid tyid)
+-- Ambiguous type variable `m0_adMS[tau:0]' arising from a use of `evalPrint'
+-- prevents the constraint `(Show
+--                             (m0_adMS[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_adMS[tau:0]' should be.
+-- Potentially matching instances:
+--   instance (Show a, Show b) => Show (Either a b)
+--     -- Defined in `Data.Either'
+--   instance forall k (f :: k -> Type) (a :: k).
+--            Show (f a) =>
+--            Show (Alt f a)
+--     -- Defined in `Data.Semigroup.Internal'
+--   ...plus 30 others
+--   (use -fprint-potential-instances to see them all)
+-- In a stmt of an interactive GHCi command: evalPrint it_adbW

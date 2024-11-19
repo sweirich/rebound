@@ -24,6 +24,7 @@ common common-stanza
     , QuickCheck
     , containers
     , filepath
+    , parsec
     , prettyprinter
     , network
     , directory
@@ -31,8 +32,6 @@ common common-stanza
     , mtl
     , brick
     , vty
-    , fin
-    , vec 
   default-language:
     GHC2021
   default-extensions:
@@ -54,8 +53,10 @@ library
       , Fin
       , Vec
       , LC
+      , LCLet
       , PTS
       , Pat
+      , PiForall
   hs-source-dirs:
       src
       , examples

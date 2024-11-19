@@ -6,15 +6,21 @@ Stability   : experimental
 
 -}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 module AutoEnv where
 
 import Prelude hiding (head,tail)
+import Data.Type.Equality
 
 import Lib
 import Data.Kind
 import qualified Data.List as List
 import Vec (Vec(..))
 import qualified Vec
+
+import Unsafe.Coerce(unsafeCoerce)
 
 -- | An environment (or explicit substitution) that map
 -- indices bounded by `m`, to values of type `v n`
@@ -76,6 +82,7 @@ v .: f = Env $ \ case FZ -> v ; (FS x) -> applyEnv f x
 (.++) :: (SNatI p, SubstVar v) => 
     Env v p n -> Env v m n -> Env v (Plus p m) n
 (.++) = appendE snat
+
     
 -- | append two environments: explicit length `SNat p` required
 -- for the domain of the first list
@@ -93,10 +100,30 @@ head :: SubstVar v => Env v (S n) m -> v m
 head f = applyEnv f FZ
 
 -- | increment all free variables by 1
-shift :: SubstVar v => Env v n (S n)
-shift = Env (var . FS)
+shift1E :: SubstVar v => Env v n (S n)
+shift1E = Env (var . FS)
 
+-- | increment all free variables by m
+shiftNE :: SubstVar v => SNat m -> Env v n (Plus m n)
+shiftNE m = Env (var . shiftN m)
 
+-- | increment all free variables by m, but in the middle
+shiftRE :: forall v n1 n2 n. SubstVar v => SNat n2 -> 
+    Env v (Plus n1 n) (Plus (Plus n1 n2) n)
+shiftRE n2 = Env (var . shiftR @n1 @n2 @n n2)
+
+-- | increment all free variables by m, but at the top
+shiftLE :: forall v n1 n2 n. SubstVar v => SNat n1 -> 
+    Env v (Plus n2 n) (Plus (Plus n1 n2) n)
+shiftLE n1 = Env (var . shiftL @n1 @n2 @n n1)
+
+-- | weaken variables by 1
+-- makes their bound bigger but does not change any of their indices
+weakenOneE :: SubstVar v => Env v n (S n)
+weakenOneE = Env (var . weaken1Fin)
+
+weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (Plus m n)
+weakenE' sm = Env (var . weakenFin sm)
 
 ----------------------------------------------------------------
 -- Single binders
@@ -120,20 +147,21 @@ bind = Bind idE
 
 -- | instantiate a binder with a term
 instantiate :: (Subst v c) => Bind v c n -> v n -> c n
-instantiate b v = unbindWith (\ r e -> applyE (v .: r) e) b
+instantiate b v = unbindWith b (\ r e -> applyE (v .: r) e)
 
 -- | apply an environment-parameterized function while
 -- instantiating
 instantiateWith :: (SubstVar v) =>
+         Bind v c n -> v n -> 
          (forall m n. Env v m n -> c m -> c n) ->
-         Bind v c n -> v n -> c n
-instantiateWith f b v = unbindWith (\ r e -> f ( v .: r) e) b
+         c n
+instantiateWith b v f = unbindWith b (\ r e -> f ( v .: r) e)
 
 
 -- | modify an environment so that it can go under 
 -- a binder
 up :: Subst v v => Env v m n -> Env v (S m) (S n)
-up e = var FZ .: (e .>> shift)
+up e = var FZ .: (e .>> shift1E)
 
 -- | access the body of the binder  (inverse of bind)
 unbind :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)
@@ -141,9 +169,10 @@ unbind (Bind r t) = applyE (up r) t
 
 -- | unbind a binder and apply the function to the argument and subterm
 unbindWith :: (SubstVar v) => 
+    Bind v c n -> 
     (forall m. Env v m n -> c (S m) -> d) ->
-    Bind v c n -> d
-unbindWith f (Bind r t) = f r t
+    d
+unbindWith (Bind r t) f = f r t
 
 -- | apply an environment-parameterized function & environment 
 -- underneath a binder
@@ -153,6 +182,24 @@ applyUnder :: (Subst v v, Subst v c) =>
 applyUnder f r2 (Bind r1 t) = 
     bind (f (up (r1 .>> r2)) t)
 
+-- TODO: this implementation of strengthening for binders is rather inefficient
+-- maybe there is a better way to do it???
+instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v c) where
+    strengthen' (m :: SNat m) (n :: SNat n) b = 
+        case axiom @m @n of
+          Refl -> bind <$> strengthen' m (SS n) (unbind b)
+
+----------------------------------------------------------
+-- Patterns
+----------------------------------------------------------
+
+
+class Sized (t :: Nat -> Type) where
+    type Size t :: Nat
+    size :: t n -> SNat (Size t)
+
+
+
 ----------------------------------------------------------
 -- Pattern binding (N-ary binding)
 ----------------------------------------------------------
@@ -161,75 +208,99 @@ applyUnder f r2 (Bind r1 t) =
 -- `Sized` type class. 
 -- The `PatBind` type generalizes the definitions above 
 -- to bind (Size p) variables. 
--- As in `Bind` above, this type includes a delayed substitution
--- for the variables in the body of the binder.
-data PatBind v c (p :: Type) (n :: Nat) where
-    PatBind :: p -> Env v m n -> c (Plus (Size p) m) 
-            -> PatBind v c p n
+-- Patterns can also include free occurrences of variables so 
+-- they are also indexed by a scope level.
+-- As in `Bind` above, this data structure includes a delayed 
+-- substitution for the variables in the body of the binder.
+data PatBind v c (pat :: Nat -> Type) (n :: Nat) where
+    PatBind :: pat n -> Env v m n -> c (Plus (Size pat) m) 
+            -> PatBind v c pat n
 
 -- | Create a `PatBind` with an identity substitution.
-patBind :: (Sized p, Subst v c) => p -> c (Plus (Size p) n) -> PatBind v c p n
+patBind :: forall v c pat n . (Sized pat, Subst v c) => 
+   pat n -> c (Plus (Size pat) n) -> PatBind v c pat n
 patBind pat = PatBind pat idE
 
 -- | Access the pattern of a pattern binding
-getPat :: PatBind v c p n -> p
+getPat :: PatBind v c pat n -> pat n
 getPat (PatBind pat env t) = pat
 
 -- | Access the body of a pattern binding.
 -- The pattern type determines the number of variables
 -- bound in the pattern
-unPatBind :: 
-    (Sized p, Subst v v, Subst v c) => PatBind v c p n 
-    -> c (Plus (Size p) n)
-unPatBind (PatBind pat env t) = 
-    applyE (upN (size pat) env) t
+unPatBind :: forall v c pat n.
+    (Sized pat, Subst v v, Subst v c) => PatBind v c pat n 
+    -> c (Plus (Size pat) n)
+unPatBind (PatBind (pat :: pat n) (env :: Env v m n) t) = 
+    applyE @v @c @(Plus (Size pat) m) (upN (size pat) env) t
 
 -- | Shift an environment by size `p` 
 upN :: (Subst v v) => 
         SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
 upN SZ = id
-upN (SS n) = \ e -> var FZ .: (upN n e .>> shift)
+upN (SS n) = \ e -> var FZ .: (upN n e .>> shift1E)
 
 -- | Apply a function to the pattern, suspended environment and body
 -- in a pattern binding
-unPatBindWith ::  (Sized p, SubstVar v) => 
-    (forall m. p -> Env v m n -> c (Plus (Size p) m) -> d) -> PatBind v c p n -> d
+unPatBindWith ::  (Sized pat, SubstVar v) => 
+    (forall m. pat n -> Env v m n -> c (Plus (Size pat) m) -> d) -> PatBind v c pat n -> d
 unPatBindWith f (PatBind pat r t) = f pat r t
 
-instantiatePat :: forall v c p n. (Sized p, Subst v c) => 
-   PatBind v c p n -> Env v (Size p) n -> c n
+instantiatePat :: forall v c pat n. (Sized pat, Subst v c) => 
+   PatBind v c pat n -> Env v (Size pat) n -> c n
 instantiatePat b e = unPatBindWith 
     (\ p r t -> withSNat (size p) $ applyE (e .++ r) t) b
 
-applyPatUnder :: (Sized p, Subst v v, Subst v c) => 
+applyPatUnder :: (forall n. Sized pat, Subst v v, Subst v c, Subst v pat) => 
    (forall m n. Env v m n -> c m -> c n) -> Env v n1 n2 ->
-        PatBind v c p n1 -> PatBind v c p n2
+        PatBind v c pat n1 -> PatBind v c pat n2
 applyPatUnder f r2 (PatBind p r1 t) = 
-    patBind p (f (upN (size p) (r1 .>> r2)) t)
+    PatBind p' idE (f r' t) where
+        r' = upN (size p') (r1 .>> r2)
+        p' = applyE r2 p
 
-instantiatePatWith :: (Sized p, SubstVar v) =>
+instantiatePatWith :: (Sized pat, SubstVar v) =>
          (forall m n. Env v m n -> c m -> c n) ->
-         PatBind v c p n -> Env v (Size p) n -> c n
+         PatBind v c pat n -> Env v (Size pat) n -> c n
 instantiatePatWith f b v = 
     unPatBindWith (\ p r e -> withSNat (size p) $ f (v .++ r) e) b
 
-instance Subst v v => Subst v (PatBind v c p) where
+instance (Subst v p, Subst v v) => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
-        PatBind p (env2 .>> env1) m
+        PatBind (applyE env1 p) (env2 .>> env1) m
 
+instance (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) => 
+    Strengthen (PatBind v c p) where
+
+    strengthen' (m :: SNat m) (n :: SNat n) b = 
+        case axiomM @m @(Size p) @n of
+          Refl -> 
+            case strengthen' m n (getPat b) of 
+                Just p' -> patBind p' <$> strengthen' m (sPlus (size (getPat b)) n) (unPatBind b) 
+                Nothing -> Nothing
 
 
 ----------------------------------------------------------------
--- Double binder
+-- N-ary and double binder
 ----------------------------------------------------------------
 
 -- A double binder is isomorphic to a pattern binding with 
 -- "SNat 2" as the pattern.
 
-type Bind2 v c n = PatBind v c (SNat N2) n
+data PatN p n where
+    PatN :: SNat p -> PatN p n
+instance Sized (PatN p) where
+    type Size (PatN p) = p
+    size (PatN sn) = sn
+instance (SubstVar v) => Subst v (PatN p) where
+    applyE r (PatN sn) = PatN sn
+instance Strengthen (PatN p) where
+    strengthen' m n (PatN sn) = Just (PatN sn)
+
+type Bind2 v c n = PatBind v c (PatN N2) n
 
 bind2 :: Subst v c => c (S (S n)) -> Bind2 v c n
-bind2 = patBind s2
+bind2 = patBind (PatN s2)
 
 unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
 unbind2 = unPatBind
@@ -237,50 +308,31 @@ unbind2 = unPatBind
 unbind2With :: (SubstVar v) => 
     (forall m. Env v m n -> c (S (S m)) -> d) ->
     Bind2 v c n -> d
-unbind2With f = 
-    unPatBindWith (const f)
+unbind2With f = unPatBindWith (const f)
 
 instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
 instantiate2 b v1 v2 = instantiatePat b (v1 .: (v2 .: zeroE))
 
-{-
-data Bind2 v c (n :: Nat) where
-    Bind2 :: Env v m n -> c (S (S m)) -> Bind2 v c n
+instantiate2With :: (SubstVar v) =>
+         (forall m n. Env v m n -> c m -> c n) ->
+         Bind2 v c n -> v n -> v n -> c n
+instantiate2With f b v1 v2 = 
+    unbind2With (\ r e -> f ( v1 .: (v2 .: r)) e) b
 
-bind2 :: Subst v c => c (S (S n)) -> Bind2 v c n
-bind2 = Bind2 (Env var)
-
-instance Subst v v => Subst v (Bind2 v c) where
-    applyE :: SubstVar v => Env v n m -> Bind2 v c n -> Bind2 v c m
-    applyE env1 (Bind2 env2 m) = Bind2 (env2 .>> env1) m
-
--- | access the body of the binder  (inverse of bind)
-unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
-unbind2 (Bind2 env t) = applyE (up (up env)) t
-
--- | unbind a binder and apply the function to the argument and subterm.
-unbind2With :: (SubstVar v) => 
-    (forall m. Env v m n -> c (S (S m)) -> d) ->
-    Bind2 v c n -> d
-unbind2With f (Bind2 r t) = f r t
-
--- | instantiate a binder with a term
-instantiate2 :: forall v c n. (Subst v c) => Bind2 v c n -> v n -> v n -> c n
-instantiate2 b v1 v2 = unbind2With (\ r e -> applyE (v1 .: (v2 .: r)) e) b
--}
 ----------------------------------------------------------------
 -- For dependently-typed languages
 
-weaken :: forall v c n. Subst v c => c n -> c (S n)
-weaken = applyE @v shift
+-- This is not weakening --- it increments all variables by one
+shiftC :: forall v c n. Subst v c => c n -> c (S n)
+shiftC = applyE @v shift1E
 
 type Ctx v n = Env v n n
 
-weakenCtx :: Subst v v => Env v n n -> Env v n (S n)
-weakenCtx g = g .>> shift
+shiftCtx :: Subst v v => Env v n n -> Env v n (S n)
+shiftCtx g = g .>> shift1E
 
 (+++) :: forall v n. Subst v v => Ctx v n -> v n -> Ctx v (S n)
-g +++ a = weaken @v @v a .: weakenCtx g 
+g +++ a = shiftC @v @v a .: shiftCtx g 
 
 ----------------------------------------------------------------
 toList :: SNatI n => Env v n m -> [v m]
