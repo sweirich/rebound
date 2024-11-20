@@ -3,6 +3,7 @@
 -- includes nested dependent pattern matching. It doesn't 
 -- type check yet.
 
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use lambda-case" #-}
@@ -54,8 +55,8 @@ pat0 = PPair PVar (PAnnot PVar (Var f0))
 data Pat (p :: Nat) (n :: Nat) where
   PConst :: Const -> Pat N0 n
   PVar   :: Pat N1 n
-  PApp   :: (Pat p1 n) -> (Pat p2 (Plus p1 n)) -> Pat (Plus p1 p2) n
-  PPair  :: (Pat p1 n) -> (Pat p2 (Plus p1 n)) -> Pat (Plus p1 p2) n
+  PApp   :: (Pat p1 n) -> (Pat p2 (Plus p1 n)) -> Pat (Plus p2 p1) n
+  PPair  :: (Pat p1 n) -> (Pat p2 (Plus p1 n)) -> Pat (Plus p2 p1) n
   PAnnot :: (Pat p n)  -> (Exp n)    -> Pat p n
 
 -- A single branch in a match expression. Binds a pattern 
@@ -73,23 +74,15 @@ instance Sized (Pat p) where
     size :: Pat p n -> SNat p
     size (PConst i) = s0
     size PVar = s1
-    size (PApp p1 p2) = sPlus (size p1) (size p2)
-    size (PPair p1 p2) = sPlus (size p1) (size p2)
+    size (PApp p1 p2) = sPlus (size p2) (size p1)
+    size (PPair p1 p2) = sPlus (size p2) (size p1)
     size (PAnnot p _) = size p
 
 tm0 :: Exp Z
 tm0 = Pair (Const TyBool) (Const (TmBool True))
 
 
-checkBound :: forall p n. SNat p -> Fin (Plus p n) -> Either (Fin p) (Fin n)
-checkBound SZ = Right
-checkBound (SS (p' :: SNat n2)) = \f ->
-    case f of
-        FZ -> Left FZ
-        (FS (f' :: Fin (Plus n2 n))) -> 
-            case checkBound @n2 @n p' f' of 
-               Left x -> Left (FS x)
-               Right y -> Right y
+
 
 -- >>> patternMatch pat0 tm0
 -- Just [Bool,True]
@@ -115,14 +108,14 @@ patternMatch (PApp (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) (App e1 e2)  = d
     let p2' :: Pat p2 n
         p2' = applyE r p2
     env2 <- patternMatch p2' e2
-    withSNat (size p1) $ return (env1 .++ env2)
+    withSNat (size p2) $ return (env2 .++ env1)
 patternMatch (PConst s1) (Const s2) = 
     if s1 == s2 then Just zeroE else Nothing
 patternMatch (PPair p1 p2) (Pair e1 e2) = do
     env1 <- patternMatch p1 e1
     let r = append (size p1) env1
     env2 <- patternMatch (applyE r p2) e2
-    withSNat (size p1) $ return (env1 .++ env2)   
+    withSNat (size p2) $ return (env2 .++ env1)   
 patternMatch (PAnnot p _) e = patternMatch p e
 patternMatch p (Annot e _)  = patternMatch p e
 patternMatch _ _ = Nothing
@@ -257,7 +250,7 @@ instance Strengthen (Pat p) where
     strengthen' m n (PPair (p1 :: Pat p1 n1) p2) = 
         case axiomM @m @p1 @n of
             Refl -> PPair <$> strengthen' m n p1 
-                                          <*> strengthen' m (sPlus (size p1) n) p2
+                                        <*> strengthen' m (sPlus (size p1) n) p2
     strengthen' m n (PAnnot p1 e2) = PAnnot <$> strengthen' m n p1 
                                         <*> strengthen' m n e2
 instance Strengthen Branch where
@@ -269,42 +262,51 @@ instance Strengthen Branch where
 star :: Exp n
 star = Const Star
 
-lam :: Maybe (Exp n) -> Exp (S n) ->Exp n
-lam Nothing b = Match [Branch (patBind PVar b)]
-lam (Just t) b = Match [Branch (patBind (PAnnot PVar t) b)]
+-- No annotation on the binder
+lam :: Exp (S n) ->Exp n
+lam b = Match [Branch (patBind PVar b)]
+
+-- Annotation on the binder
+alam :: Exp n -> Exp (S n) -> Exp n
+alam t b = Match [Branch (patBind (PAnnot PVar t) b)]
 
 -- The identity function "λ x. x". With de Bruijn indices
--- we write it as "λ. 0"
+-- we write it as "λ. 0", though with `Match` it looks a bit different
 t0 :: Exp Z 
-t0 = lam (Just star) (Var f0)
+t0 = lam (Var f0)
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
-t1 = lam (Just star)
-       (lam (Just star) 
-          (Var f1 `App` lam (Just star) (Var f0 `App` Var f0)))
+t1 = lam 
+       (lam 
+          (Var f1 `App` lam (Var f0 `App` Var f0)))
 
 -- To show lambda terms, we can write a simple recursive instance of 
 -- Haskell's `Show` type class. In the case of a binder, we use the `unbind` 
 -- operation to access the body of the lambda expression.
 
 -- >>> t0
--- match[("X" : *) => 0]
+-- λ_. 0
 
 -- >>> t1
--- λ. λ. 1 (λ. 0 0)
+-- λ_. (λ_. (1 (λ_. (0 0))))
 
 -- Polymorphic identity function and its type
 
 tyid = Pi star (bind (Pi (Var f0) (bind (Var f1))))
-tmid = lam (Just star) (lam (Just (Var f0)) (Var f0))
+tmid = lam (lam (Var f0))
 
 -- >>> tyid
--- Pi *.(0 -> 1)
+-- Pi *. 0 -> 1
 
 -- >>> tmid
--- λ. λ. 0
+-- λ_. (λ_. 0)
+
+
+--------------------------------------------------------
+-- * Show instances
+--------------------------------------------------------
 
 instance Show Const where
     show Star = "*"
@@ -364,11 +366,11 @@ instance Show (Exp n) where
 instance Show (Branch b) where
     showsPrec d (Branch b) =
         showsPrec 10 (getPat b) . 
-        showString " -> " .
+        showString ". " .
         showsPrec 11 (unPatBind b)
 
 instance Show (Pat p n) where
-    showsPrec d PVar = showString "v"
+    showsPrec d PVar = showString "_"
     showsPrec d (PConst c) = showsPrec d c
     showsPrec d (PApp e1 e2) = showParen (d > 0) $
                               showsPrec 10 e1 . 
@@ -382,6 +384,11 @@ instance Show (Pat p n) where
                               showsPrec 10 e1 . 
                               showString " : " .
                               showsPrec 11 e2
+
+
+--------------------------------------------------------
+-- * Alpha equivalence
+--------------------------------------------------------
 
 
 testEquality2 :: Pat m1 n -> Pat m2 n -> Maybe (m1 :~: m2)
@@ -432,19 +439,24 @@ deriving instance (Eq (Exp n))
 
 
 --------------------------------------------------------
+-- * big-step evaluation
+--------------------------------------------------------
+
+-- We can write the usual operations for evaluating 
+-- lambda terms to values
 
 
-{- We can write the usual operations for evaluating 
-   lambda terms to values -}
-
--- big-step evaluation
 
 
 
 -- >>> eval t1
--- λ(v : *) -> (λ(v : *) -> (1 (λ(v : *) -> (0 0))))
+-- λ_. (λ_. (1 (λ_. (0 0))))
 
 -- >>> eval (t1 `App` t0)
+-- λ_. (λ_. 0 (λ_. (0 0)))
+
+
+-- OLD
 -- λ. λ. 0 (λ. 0 0)
 
 eval :: SNatI n => Exp n -> Exp n
@@ -466,7 +478,7 @@ eval (Pair a b) = Pair a b
 -- small-step evaluation
 
 -- >>> step (t1 `App` t0)
--- Just (λ. λ. 0 (λ. 0 0))
+-- Just (λ_. (λ_. 0 (λ_. (0 0))))
 
 step :: SNatI n => Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
@@ -489,16 +501,19 @@ eval' e
  | Just e' <- step e = eval' e'
  | otherwise = e
 
-
+----------------------------------------------------------------
+-- Check for equality
 ----------------------------------------------------------------
 data Err where
     NotEqual :: Exp n -> Exp n -> Err
     PiExpected :: Exp n -> Err
+    PiExpectedPat :: Pat p1 n1 -> Err
     SigmaExpected :: Exp n -> Err
     VarEscapes :: Exp n -> Err
     PatternMismatch :: Pat p1 n1 -> Pat p2 n2 -> Err
     PatternTypeMismatch :: Pat p1 n1 -> Exp n1 -> Err
     AnnotationNeeded :: Exp n -> Err
+    AnnotationNeededPat :: Pat p1 n1 -> Err
       
 deriving instance (Show Err)
 
@@ -543,9 +558,7 @@ equateWHNF n1 n2 =
         equate a2 b2
     (Pi tyA1 b1, Pi tyA2 b2) -> do
         equate tyA1 tyA2 
-        unbindWith b1 (\ r1 t1 -> 
-            unbindWith b2 (\ r2 t2 ->
-                equate (applyE (up r1) t1) (applyE (up r2) t2)))
+        equate (unbind b1) (unbind b2)
     (Sigma tyA1 b1, Sigma tyA2 b2) -> do
         equate tyA1 tyA2
         equate (unbind b1) (unbind b2)
@@ -553,44 +566,10 @@ equateWHNF n1 n2 =
 
 
 ----------------------------------------------------------------
+-- * Type checking 
+----------------------------------------------------------------
 
-
--- convert a pattern to an expression
--- the expression should check in a scope where all of the variables
--- have been added to the context. 
--- Any type annotations in the pattern must also have their variables
--- weakened 
-
--- >>> pat2Exp SZ (PApp PVar (PAnnot PVar (Var f0)))
--- Prelude.undefined
-
-
--- 1 (1 : 1)
--- NO! should be:    1 (2 : 0)
-
-pat2Exp :: forall p n. SNat n -> Pat p n -> Exp (Plus p n)
-pat2Exp n PVar = Var (largest n)
-pat2Exp n (PConst c) = Const c
-pat2Exp n (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) = undefined
-{-
-    let e1 = pat2Exp p1
-        e1' = applyE (shiftRE @Exp @p1 @p2 @n (size p2)) e1
-        e2 = pat2Exp p2
-        e2' = applyE (shiftLE @Exp @p1 @p2 @n (size p1)) e2
-    in App e1' e2'
-    -}
-pat2Exp n (PApp (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) = undefined
-{-
-    let e1 = pat2Exp p1
-        e1' = applyE (shiftRE @Exp @p1 @p2 @n (size p2)) e1
-        e2 = pat2Exp p2
-        e2' = applyE (shiftLE @Exp @p1 @p2 @n (size p1)) e2
-    in App e1' e2'
-    -}
-pat2Exp n (PAnnot p1 t) = 
-    let e1 = pat2Exp n p1
-    in Annot e1 (applyE (weakenE' @_ @Exp (size p1)) t)
-
+-- | infer the type of a constant term
 inferConst :: Const -> Exp n
 inferConst Star = Const Star
 inferConst TmUnit = Const TyUnit
@@ -598,43 +577,154 @@ inferConst TyUnit = Const Star
 inferConst (TmBool _) = Const TyBool
 inferConst TyBool = Const Star
 
--- type check a pattern and produce a typing context, plus expression 
--- form of the pattern (for dependent pattern matching)
-checkPattern :: (MonadError Err m, SNatI n) => 
-  Ctx Exp n -> Pat p n -> Exp n -> 
+inferPattern :: (MonadError Err m, SNatI n) => 
+    Ctx Exp n ->      -- input context
+    Pat p n ->        -- pattern to check
+     m (Ctx Exp (Plus p n), Exp (Plus p n), Exp n)
+inferPattern g (PConst c) = 
+    pure (g, Const c, inferConst c)
+inferPattern g (PAnnot p ty) = do
+    (g', e) <- checkPattern g p ty
+    pure (g', e, ty)
+inferPattern g p = throwError (AnnotationNeededPat p) 
+
+-- | type check a pattern and produce an extended typing context, 
+-- plus expression form of the pattern (for dependent pattern matching)
+checkPattern :: forall m n p. (MonadError Err m, SNatI n) => 
+    Ctx Exp n ->      -- input context
+    Pat p n ->        -- pattern to check
+    Exp n ->          -- expected type of pattern (should be in whnf)
      m (Ctx Exp (Plus p n), Exp (Plus p n))
-checkPattern g PVar a = pure (g +++ a, var f0)
-checkPattern g (PConst c) ty 
-  | inferConst c == ty = pure (g, Const c) 
-checkPattern g (PPair p1 p2) (Sigma tyA tyB) = do
-  (g', e1) <- checkPattern g p1 tyA 
-  undefined
-{-  let tyB' = applyE (weakenE' @_ @Exp (size p1)) tyB
-  let tyB'' = whnf (instantiate tyB' e1)
-  (g'', e2) <- checkPattern g' p2 tyB''
-  return (g'', Pair e1 e2) -}
-checkPattern g (PApp p1 p2) ty = 
-  undefined
-checkPattern g (PAnnot p ty1) ty = 
-  checkPattern g p ty1
-checkPattern g p ty = throwError (PatternTypeMismatch p ty)
+checkPattern g PVar a = do
+    pure (g +++ a, var f0)
+checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) (Sigma tyA tyB) = 
+  case axiomAssoc @p2 @p1 @n of 
+    Refl ->
+        let p = size p1 in
+        withSNat (sPlus p (snat @n)) $ do
+            (g', e1) <- checkPattern g p1 tyA
+            let tyB' = applyE (weakenE' @_ @Exp p) tyB
+            let tyB'' = whnf (instantiate tyB' e1)
+            (g'', e2) <- checkPattern g' p2 tyB''
+            let e1' = applyE (weakenE' @_ @Exp (size p2)) e1
+            return (g'', Pair e1' e2) 
+checkPattern g (PApp (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) ty = 
+    case axiomAssoc @p2 @p1 @n of 
+    Refl ->
+        let p = size p1 in
+        withSNat (sPlus p (snat @n)) $ do
+            (g', e1, ty) <- inferPattern g p1
+            case whnf ty of 
+               Pi tyA tyB -> do
+                let tyA' = applyE (weakenE' @_ @Exp p) tyA
+                (g'', e2) <- checkPattern g' p2 tyA'
+                let e1' = applyE (weakenE' @_ @Exp (size p2)) e1
+                let tyB'' = whnf (instantiate (applyE (weakenE' @_ @Exp p) tyB) e1)
+                equate tyB'' (weaken' p ty)
+                return (g'', App e1' e2) 
+               _ -> throwError (PiExpectedPat p1)
+checkPattern g p ty = do
+  (g', e, ty') <- inferPattern g p 
+  equate ty ty'
+  return (g', e)
+
+-- >>> instantiate (bind (Var f1)) (Var f0)
+-- 0
+-- >>> applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
+-- Couldn't match type 'Z with 'S N0
+-- Expected: Env Exp N2 N1
+--   Actual: Env Exp ('S 'Z) N1
+-- In the first argument of `applyE', namely
+--   `(oneE (Var f0) :: Env Exp N2 N1)'
+-- In the expression:
+--   applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
+-- In an equation for `it_axvSI':
+--     it_axvSI
+--       = applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
+
+n :: SNat N1
+n = snat @N1
+
+p :: SNat N1
+p = snat @N1
+
+a :: Exp (Plus N1 N1)
+a = Const Star
+
+tyB :: Exp N3
+tyB = Var f2
+
+testEnv :: Env Exp N3 N2
+testEnv = substWeakenEnv @N1 @N1 n p a
+
+testExp :: Exp N2
+testExp = applyE testEnv tyB
+
+-- >>> testEnv
+-- [0,*,1]
+-- 
+
+-- >>> strengthenOne' (SS SZ) ((FS FZ) :: Fin N2)
+-- Nothing
+
+-- >>> :t checkBound
+-- checkBound :: SNat p -> Fin (Plus p n) -> Either (Fin p) (Fin n)
+
+
+weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (Plus n m)
+weakenFinRight SZ n = 
+    case axiomPlusZ @n of 
+        Refl -> n
+weakenFinRight (SS (m :: SNat m1)) n = 
+    case axiom @n @m1 of 
+        Refl -> weaken1Fin (weakenFinRight m n)
+
+substWeakenEnv :: forall p n. SNat n -> SNat p ->
+     Exp (Plus p n) -> Env Exp (Plus p (S n)) (Plus p n) 
+substWeakenEnv n p a = 
+    Env $ \(x :: Fin (Plus p (S n))) -> 
+             case checkBound @p @(S n) p x of
+                Left pf -> var (weakenFinRight n pf)
+                Right pf -> case pf of 
+                    FZ -> a
+                    FS (f :: Fin n) -> var (shiftN p f)
+
+    
+
+
 
 
 checkBranch :: forall m n. (MonadError Err m, SNatI n) => 
     Ctx Exp n -> Exp n -> Branch n ->  m ()
-checkBranch g (Pi tyA tyB) (Branch bnd) = 
+checkBranch g (Pi tyA tyB) (Branch (bnd :: PatBind Exp Exp (Pat p) n)) = 
    let p = size (getPat bnd) in
    withSNat (sPlus p (snat @n)) $ do
-    traceM $ "Checking pattern: " ++ show (getPat bnd)
-    traceM $ "Against type: " ++ show tyA
+    --traceM $ "***********************************"
+    --traceM $ "Scope depth is: " ++ show (snat @n)
+    --traceM $ "Checking pattern: " ++ show (getPat bnd)
+    --traceM $ "With type: " ++ show tyA
     -- find the extended context and pattern expression
-    (g', a) <- checkPattern g (getPat bnd) tyA 
-    traceM $ "New ctx: " ++ show g'
-    traceM $ "pat2tm:" ++ show a
+    (g', a) <- checkPattern g (getPat bnd) tyA
+    -- double check that a makes sense in extended context
+    -- checkType g' a (weaken' p tyA)
+    -- traceM $ "New ctx: " ++ show g'
+    -- traceM $ "pat2tm: " ++ show a
+    let bodyB :: Exp (S n)
+        bodyB = unbind tyB
+        bodyB' :: Exp (Plus p (S n))
+        -- bodyB' = weaken' p bodyB
+        bodyB' = applyE (shiftNE @Exp @p @(S n) p) bodyB
+    -- traceM $ "unbound: " ++ show bodyB
+    -- traceM $ "shifted: " ++ show bodyB'
+    let tyB'' :: Exp (Plus p n)
+        tyB'' = applyE (substWeakenEnv (snat @n) p a) bodyB'
+    -- traceM $ "substWeaken: " ++ show tyB''
     -- weaken the codomain type for the new environment
-    let tyB' = applyE (weakenE' @_ @Exp p) tyB
-    let tyB'' = whnf (instantiate tyB' a)
-    traceM $ "body type: " ++ show tyB''
+    --let tyB' = applyE (weakenE' @_ @Exp p) tyB
+    -- traceM $ "weakened B: " ++ show (unbind tyB')
+    -- need to substitute a for 0 instead of instantiate here!!!
+    -- let tyB'' = whnf (instantiate tyB' a)
+    -- traceM $ "body type: " ++ show tyB''
     let body = unPatBind bnd
     checkType g' body tyB''
 checkBranch g t e = throwError (PiExpected t)
@@ -653,8 +743,8 @@ checkType g (Pair a b) ty = do
 checkType g (Match bs) ty = do
     mapM_ (checkBranch g ty) bs
 checkType g e t1 = do
-    traceM $ "Checking exp: " ++ show e
-    traceM $ "Against type: " ++ show t1
+    -- traceM $ "Checking exp: " ++ show e
+    -- traceM $ "Against type: " ++ show t1
     t2 <- inferType g e 
     equate (whnf t2) t1
 
@@ -684,7 +774,7 @@ emptyE :: Ctx Exp Z
 emptyE = Env $ \case
 
 -- >>> tmid
--- λ(v : *) -> (λ(v : 0) -> 0)
+-- λ_. (λ_. 0)
 
 -- >>> tyid
 -- Pi *. 0 -> 1

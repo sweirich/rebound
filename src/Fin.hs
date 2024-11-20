@@ -34,10 +34,15 @@ import Unsafe.Coerce ( unsafeCoerce )
 axiom :: forall m n. Plus m (S n) :~: S (Plus m n)
 axiom = unsafeCoerce Refl
 
+axiomPlusZ :: forall m. Plus m Z :~: m
+axiomPlusZ = unsafeCoerce Refl
+
 -- that property generalized to +m
 axiomM :: forall m p n. Plus p (Plus m n) :~: Plus m (Plus p n)
 axiomM = unsafeCoerce Refl
 
+axiomAssoc :: forall p m n. Plus p (Plus m n) :~: Plus (Plus p m) n
+axiomAssoc = unsafeCoerce Refl
 
 -----------------------------------------------------
 -- Type
@@ -192,6 +197,20 @@ strengthenFin m (SS (n0 :: SNat n0)) (FS f) =
 
 
 ------------------------------------
+
+-- | compare bounded number f to see whether it is 
+-- less than p or not. If so, decrease bound. If not
+-- return the ammount that it exceeds p
+checkBound :: forall p n. SNat p -> Fin (Plus p n) -> 
+    Either (Fin p) (Fin n)
+checkBound SZ = Right
+checkBound (SS (p' :: SNat n2)) = \case 
+        FZ -> Left FZ
+        (FS (f' :: Fin (Plus n2 n))) -> 
+            case checkBound @n2 @n p' f' of 
+               Left x -> Left (FS x)
+               Right y -> Right y
+
 
 pick :: Fin N2 -> a -> a -> a
 pick f x y = case f of
