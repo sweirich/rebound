@@ -332,8 +332,8 @@ evalEnv r (Pair a b t) = applyE r (Pair a b t)
 evalEnv r (Split a b) = 
     case evalEnv r a of 
         Pair a1 a2 _ -> 
-            unbind2With (\r' e' -> 
-                evalEnv (a1 .: (a2 .: (r' .>> r))) e') b
+            unbind2With b (\r' e' -> 
+                evalEnv (a1 .: (a2 .: (r' .>> r))) e')
         t -> Split t (applyE r b)
 
 
@@ -367,7 +367,7 @@ equateWHNF n1 n2 =
         equate a2 b2
     (Split a1 b1, Split a2 b2) -> do
         equateWHNF a1 a2
-        equate (unPatBind b1) (unPatBind b2)
+        equate (unbind2 b1) (unbind2 b2)
     (Sigma tyA1 b1, Sigma tyA2 b2) -> do
         equate tyA1 tyA2
         equate (unbind b1) (unbind b2)

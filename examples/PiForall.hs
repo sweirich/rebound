@@ -65,6 +65,33 @@ data Branch (n :: Nat) =
     forall p. Branch (PatBind Exp Exp (Pat p) n)
 
 -------------------------------------------------------
+
+data Rebind p1 p2 n where
+    Rebind :: p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+
+instance (Sized p1, Sized p2) => Sized (Rebind p1 p2) where
+    type Size (Rebind p1 p2) = Plus (Size p2) (Size p1)
+    size :: Rebind p1 p2 n -> SNat (Plus (Size p2) (Size p1))
+    size (Rebind p1 p2) = sPlus (size p2) (size p1)
+
+instance (Subst v v, Sized p1, Subst v p1, Subst v p2) => Subst v (Rebind p1 p2) where
+    applyE :: (Subst v v, Sized p1, Subst v p1, Subst v p2) => 
+              Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
+    applyE r (Rebind p1 p2) = Rebind (applyE r p1) (applyE (upN (size p1) r) p2)
+
+instance (Sized p1, FV p1, FV p2) => FV (Rebind p1 p2) where
+    appearsFree :: (Sized p1, FV p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
+    appearsFree n (Rebind p1 p2) = appearsFree n p1 || appearsFree (shiftN (size p1) n) p2
+
+instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
+    strengthen' :: forall m n p. SNat m -> SNat n -> 
+            Rebind p1 p2 (Plus m n) -> Maybe (Rebind p1 p2 n)
+    strengthen' m n (Rebind p1 p2) = 
+        case axiomM @m @(Size p1) @n of
+            Refl -> Rebind <$> strengthen' m n p1 
+                           <*> strengthen' m (sPlus (size p1) n) p2
+
+-------------------------------------------------------
 -- * definitions for pattern matching 
 
 -- we can count the number of variables bound in the pattern
@@ -203,7 +230,7 @@ instance (Subst v v, Subst v c,
     appearsFree n b = 
         let pat = getPat b in
         appearsFree n pat
-          || appearsFree (shiftN (size pat) n) (unPatBind b)
+          || appearsFree (shiftN (size pat) n) (getBody b)
 
 ----------------------------------------------
 -- weakening 
@@ -367,7 +394,7 @@ instance Show (Branch b) where
     showsPrec d (Branch b) =
         showsPrec 10 (getPat b) . 
         showString ". " .
-        showsPrec 11 (unPatBind b)
+        showsPrec 11 (getBody b)
 
 instance Show (Pat p n) where
     showsPrec d PVar = showString "_"
@@ -422,7 +449,7 @@ instance Eq (Branch n) where
 instance (Eq (Exp n)) => Eq (PatBind Exp Exp (Pat m) n) where
         b1 == b2 =
             Maybe.isJust (testEquality2 (getPat b1) (getPat b2))
-             && unPatBind b1 == unPatBind b2
+             && getBody b1 == getBody b2
 
 -- To compare binders, we only need to `unbind` them
 instance Eq (Exp n) => Eq (Bind Exp Exp n) where
@@ -533,17 +560,31 @@ equate t1 t2 = do
       n2 = whnf t2  
   equateWHNF n1 n2
 
-equateBranch :: forall m n. (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
-equateBranch (Branch (b1 :: PatBind Exp Exp (Pat p1) n)) (Branch (b2 :: PatBind Exp Exp (Pat p2) n)) = 
-    let s1 = size (getPat b1)
-        s2 = size (getPat b2)
-        e1 = unPatBind b1 
-        e2 = unPatBind b2 in
-    case testEquality s1 s2 of
+equatePat :: forall p1 p2 m n. 
+   (MonadError Err m, SNatI n) => Pat p1 n -> Pat p2 n -> m ()
+equatePat PVar PVar = pure ()
+equatePat (PConst c1) (PConst c2) | c1 == c2 = pure ()
+equatePat (PPair p1 p1') (PPair p2 p2') |  
+    Just Refl <- testEquality (size p1) (size p2) =
+        withSNat (sPlus (size p1) (snat @n)) $ 
+        equatePat p1 p2 >> equatePat p1' p2'
+equatePat (PApp p1 p2) (PApp p1' p2')  |  
+    Just Refl <- testEquality (size p1) (size p1') = 
+        withSNat (sPlus (size p1) (snat @n)) $ 
+        equatePat p1 p1' >> equatePat p2 p2'
+equatePat (PAnnot p1 e1) (PAnnot p2 e2) = 
+    equatePat p1 p2 >> equate e1 e2
+equatePat p1 p2 = throwError (PatternMismatch p1 p2)
+
+equateBranch :: (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
+equateBranch (Branch b1) (Branch b2) = 
+    unPatBind b1 $ \(p1 :: Pat p1 n) body1 -> 
+    unPatBind b2 $ \(p2 :: Pat p2 n) body2 ->
+      case testEquality (size p1) (size p2) of
         Just Refl -> 
-            withSNat (sPlus (size (getPat b1)) (snat:: SNat n)) $ 
-               equate e1 e2 
-        Nothing -> throwError (PatternMismatch (getPat b1) (getPat b2))
+          equatePat p1 p2 >> equate body1 body2 
+        Nothing -> 
+          throwError (PatternMismatch (getPat b1) (getPat b2))
 
 
 equateWHNF :: (SNatI n, MonadError Err m) => Exp n -> Exp n -> m () 
@@ -628,47 +669,8 @@ checkPattern g p ty = do
   equate ty ty'
   return (g', e)
 
--- >>> instantiate (bind (Var f1)) (Var f0)
--- 0
--- >>> applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
--- Couldn't match type 'Z with 'S N0
--- Expected: Env Exp N2 N1
---   Actual: Env Exp ('S 'Z) N1
--- In the first argument of `applyE', namely
---   `(oneE (Var f0) :: Env Exp N2 N1)'
--- In the expression:
---   applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
--- In an equation for `it_axvSI':
---     it_axvSI
---       = applyE (oneE (Var f0) :: Env Exp N2 N1) ((Var f1) :: Exp N2)
 
-n :: SNat N1
-n = snat @N1
 
-p :: SNat N1
-p = snat @N1
-
-a :: Exp (Plus N1 N1)
-a = Const Star
-
-tyB :: Exp N3
-tyB = Var f2
-
-testEnv :: Env Exp N3 N2
-testEnv = substWeakenEnv @N1 @N1 n p a
-
-testExp :: Exp N2
-testExp = applyE testEnv tyB
-
--- >>> testEnv
--- [0,*,1]
--- 
-
--- >>> strengthenOne' (SS SZ) ((FS FZ) :: Fin N2)
--- Nothing
-
--- >>> :t checkBound
--- checkBound :: SNat p -> Fin (Plus p n) -> Either (Fin p) (Fin n)
 
 
 weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (Plus n m)
@@ -679,9 +681,9 @@ weakenFinRight (SS (m :: SNat m1)) n =
     case axiom @n @m1 of 
         Refl -> weaken1Fin (weakenFinRight m n)
 
-substWeakenEnv :: forall p n. SNat n -> SNat p ->
+substWeakenEnv :: forall p n.  SNat p -> SNat n ->
      Exp (Plus p n) -> Env Exp (Plus p (S n)) (Plus p n) 
-substWeakenEnv n p a = 
+substWeakenEnv p n a = 
     Env $ \(x :: Fin (Plus p (S n))) -> 
              case checkBound @p @(S n) p x of
                 Left pf -> var (weakenFinRight n pf)
@@ -689,44 +691,23 @@ substWeakenEnv n p a =
                     FZ -> a
                     FS (f :: Fin n) -> var (shiftN p f)
 
-    
-
-
-
 
 checkBranch :: forall m n. (MonadError Err m, SNatI n) => 
     Ctx Exp n -> Exp n -> Branch n ->  m ()
-checkBranch g (Pi tyA tyB) (Branch (bnd :: PatBind Exp Exp (Pat p) n)) = 
-   let p = size (getPat bnd) in
-   withSNat (sPlus p (snat @n)) $ do
-    --traceM $ "***********************************"
-    --traceM $ "Scope depth is: " ++ show (snat @n)
-    --traceM $ "Checking pattern: " ++ show (getPat bnd)
-    --traceM $ "With type: " ++ show tyA
-    -- find the extended context and pattern expression
-    (g', a) <- checkPattern g (getPat bnd) tyA
-    -- double check that a makes sense in extended context
-    -- checkType g' a (weaken' p tyA)
-    -- traceM $ "New ctx: " ++ show g'
-    -- traceM $ "pat2tm: " ++ show a
-    let bodyB :: Exp (S n)
-        bodyB = unbind tyB
-        bodyB' :: Exp (Plus p (S n))
-        -- bodyB' = weaken' p bodyB
-        bodyB' = applyE (shiftNE @Exp @p @(S n) p) bodyB
-    -- traceM $ "unbound: " ++ show bodyB
-    -- traceM $ "shifted: " ++ show bodyB'
-    let tyB'' :: Exp (Plus p n)
-        tyB'' = applyE (substWeakenEnv (snat @n) p a) bodyB'
-    -- traceM $ "substWeaken: " ++ show tyB''
-    -- weaken the codomain type for the new environment
-    --let tyB' = applyE (weakenE' @_ @Exp p) tyB
-    -- traceM $ "weakened B: " ++ show (unbind tyB')
-    -- need to substitute a for 0 instead of instantiate here!!!
-    -- let tyB'' = whnf (instantiate tyB' a)
-    -- traceM $ "body type: " ++ show tyB''
-    let body = unPatBind bnd
-    checkType g' body tyB''
+checkBranch g (Pi tyA tyB) (Branch bnd) = 
+   unPatBind bnd $ \ (pat :: Pat p n) body -> do
+     let p = size pat
+     -- find the extended context and pattern expression
+     (g', a) <- checkPattern g pat tyA
+
+     -- instantiate and shift the type of the body
+     -- while unbinding it
+     -- TODO: move this to the library somehow?
+     let  r :: Env Exp (S n) (Plus p n)
+          r = shiftNE @Exp p .>> substWeakenEnv p (snat @n) a
+     let tyB' = unbindWith tyB (\r' t -> applyE (up r' .>> r) t)
+     
+     checkType g' body tyB'
 checkBranch g t e = throwError (PiExpected t)
 
 -- should only check with a type in whnf
@@ -743,8 +724,6 @@ checkType g (Pair a b) ty = do
 checkType g (Match bs) ty = do
     mapM_ (checkBranch g ty) bs
 checkType g e t1 = do
-    -- traceM $ "Checking exp: " ++ show e
-    -- traceM $ "Against type: " ++ show t1
     t2 <- inferType g e 
     equate (whnf t2) t1
 

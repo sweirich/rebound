@@ -125,6 +125,18 @@ weakenOneE = Env (var . weaken1Fin)
 weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (Plus m n)
 weakenE' sm = Env (var . weakenFin sm)
 
+
+-- | modify an environment so that it can go under 
+-- a binder
+up :: Subst v v => Env v m n -> Env v (S m) (S n)
+up e = var FZ .: (e .>> shift1E)
+
+-- | Shift an environment by size `p` 
+upN :: (Subst v v) => 
+        SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
+upN SZ = id
+upN (SS n) = \ e -> var FZ .: (upN n e .>> shift1E)
+
 ----------------------------------------------------------------
 -- Single binders
 ----------------------------------------------------------------
@@ -156,12 +168,6 @@ instantiateWith :: (SubstVar v) =>
          (forall m n. Env v m n -> c m -> c n) ->
          c n
 instantiateWith b v f = unbindWith b (\ r e -> f ( v .: r) e)
-
-
--- | modify an environment so that it can go under 
--- a binder
-up :: Subst v v => Env v m n -> Env v (S m) (S n)
-up e = var FZ .: (e .>> shift1E)
 
 -- | access the body of the binder  (inverse of bind)
 unbind :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)
@@ -228,28 +234,30 @@ getPat (PatBind pat env t) = pat
 -- | Access the body of a pattern binding.
 -- The pattern type determines the number of variables
 -- bound in the pattern
-unPatBind :: forall v c pat n.
+getBody :: forall v c pat n.
     (Sized pat, Subst v v, Subst v c) => PatBind v c pat n 
     -> c (Plus (Size pat) n)
-unPatBind (PatBind (pat :: pat n) (env :: Env v m n) t) = 
+getBody (PatBind (pat :: pat n) (env :: Env v m n) t) = 
     applyE @v @c @(Plus (Size pat) m) (upN (size pat) env) t
 
--- | Shift an environment by size `p` 
-upN :: (Subst v v) => 
-        SNat p -> Env v m n -> Env v (Plus p m) (Plus p n)
-upN SZ = id
-upN (SS n) = \ e -> var FZ .: (upN n e .>> shift1E)
+unPatBind :: forall v c pat n d. (SNatI n, Sized pat, Subst v v, Subst v c) => 
+    PatBind v c pat n ->
+    (forall m. (SNatI m, m ~ Plus (Size pat) n) => pat n -> c m -> d) -> d
+unPatBind bnd f = 
+    withSNat (sPlus (size (getPat bnd)) (snat @n)) $ 
+    f (getPat bnd) (getBody bnd) 
 
 -- | Apply a function to the pattern, suspended environment and body
 -- in a pattern binding
-unPatBindWith ::  (Sized pat, SubstVar v) => 
-    (forall m. pat n -> Env v m n -> c (Plus (Size pat) m) -> d) -> PatBind v c pat n -> d
-unPatBindWith f (PatBind pat r t) = f pat r t
+unPatBindWithEnv ::  (Sized pat, SubstVar v) => 
+    PatBind v c pat n -> 
+    (forall m. pat n -> Env v m n -> c (Plus (Size pat) m) -> d) -> d
+unPatBindWithEnv (PatBind pat r t) f = f pat r t
 
 instantiatePat :: forall v c pat n. (Sized pat, Subst v c) => 
    PatBind v c pat n -> Env v (Size pat) n -> c n
-instantiatePat b e = unPatBindWith 
-    (\ p r t -> withSNat (size p) $ applyE (e .++ r) t) b
+instantiatePat b e = unPatBindWithEnv b
+    (\ p r t -> withSNat (size p) $ applyE (e .++ r) t)
 
 applyPatUnder :: (forall n. Sized pat, Subst v v, Subst v c, Subst v pat) => 
    (forall m n. Env v m n -> c m -> c n) -> Env v n1 n2 ->
@@ -263,7 +271,7 @@ instantiatePatWith :: (Sized pat, SubstVar v) =>
          (forall m n. Env v m n -> c m -> c n) ->
          PatBind v c pat n -> Env v (Size pat) n -> c n
 instantiatePatWith f b v = 
-    unPatBindWith (\ p r e -> withSNat (size p) $ f (v .++ r) e) b
+    unPatBindWithEnv b (\ p r e -> withSNat (size p) $ f (v .++ r) e)
 
 instance (Subst v p, Subst v v) => Subst v (PatBind v c p) where
     applyE env1 (PatBind p env2 m) = 
@@ -276,7 +284,7 @@ instance (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p)
         case axiomM @m @(Size p) @n of
           Refl -> 
             case strengthen' m n (getPat b) of 
-                Just p' -> patBind p' <$> strengthen' m (sPlus (size (getPat b)) n) (unPatBind b) 
+                Just p' -> patBind p' <$> strengthen' m (sPlus (size (getPat b)) n) (getBody b) 
                 Nothing -> Nothing
 
 
@@ -303,21 +311,22 @@ bind2 :: Subst v c => c (S (S n)) -> Bind2 v c n
 bind2 = patBind (PatN s2)
 
 unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
-unbind2 = unPatBind
+unbind2 = getBody
 
 unbind2With :: (SubstVar v) => 
+    Bind2 v c n -> 
     (forall m. Env v m n -> c (S (S m)) -> d) ->
-    Bind2 v c n -> d
-unbind2With f = unPatBindWith (const f)
+    d
+unbind2With b f = unPatBindWithEnv b (const f)
 
 instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
 instantiate2 b v1 v2 = instantiatePat b (v1 .: (v2 .: zeroE))
 
-instantiate2With :: (SubstVar v) =>
-         (forall m n. Env v m n -> c m -> c n) ->
-         Bind2 v c n -> v n -> v n -> c n
-instantiate2With f b v1 v2 = 
-    unbind2With (\ r e -> f ( v1 .: (v2 .: r)) e) b
+instantiate2With :: (SubstVar v) =>         
+         Bind2 v c n -> v n -> v n -> 
+         (forall m n. Env v m n -> c m -> c n) -> c n
+instantiate2With b v1 v2 f = 
+    unbind2With b (\ r e -> f ( v1 .: (v2 .: r)) e) 
 
 ----------------------------------------------------------------
 -- For dependently-typed languages

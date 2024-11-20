@@ -189,7 +189,7 @@ instance Show (Branch n) where
     showsPrec d (Branch bnd) = 
         shows (getPat bnd) . 
         showString " => " .
-        showsPrec d (unPatBind bnd)
+        showsPrec d (getBody bnd)
             
 
 --------------------------------------------------------------
@@ -250,7 +250,7 @@ instance Eq (Exp n) => Eq (Bind Exp Exp n) where
 instance (Eq (Exp n)) => Eq (PatBind Exp Exp (Pat m) n) where
         b1 == b2 =
             Maybe.isJust (testEquality1 (getPat b1) (getPat b2))
-             && unPatBind b1 == unPatBind b2
+             && getBody b1 == getBody b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
@@ -382,5 +382,5 @@ nf (Case e brs) =
 
 nfBr :: Branch n -> Branch n
 nfBr (Branch bnd) = 
-    Branch (patBind (getPat bnd) (nf (unPatBind bnd)))
+    Branch (patBind (getPat bnd) (nf (getBody bnd)))
     
