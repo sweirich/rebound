@@ -432,33 +432,29 @@ emptyE :: Ctx Exp Z
 emptyE = Env $ \case
 
 -- >>> inferType emptyE tmid
--- Ambiguous type variable `m0_adMT[tau:0]' arising from a use of `evalPrint'
+-- Ambiguous type variable `m0_a1vfFY[tau:0]' arising from a use of `evalPrint'
 -- prevents the constraint `(Show
---                             (m0_adMT[tau:0] (Exp 'Z)))' from being solved.
--- Probable fix: use a type annotation to specify what `m0_adMT[tau:0]' should be.
+--                             (m0_a1vfFY[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_a1vfFY[tau:0]' should be.
 -- Potentially matching instances:
---   instance (Show a, Show b) => Show (Either a b)
---     -- Defined in `Data.Either'
---   instance forall k (f :: k -> Type) (a :: k).
---            Show (f a) =>
---            Show (Alt f a)
---     -- Defined in `Data.Semigroup.Internal'
---   ...plus 30 others
+--   instance [safe] (Show a, Show b) => Show (a :-> b)
+--     -- Defined in `Test.QuickCheck.Function'
+--   instance [safe] (Show a, Show b) => Show (Fun a b)
+--     -- Defined in `Test.QuickCheck.Function'
+--   ...plus 123 others
 --   (use -fprint-potential-instances to see them all)
--- In a stmt of an interactive GHCi command: evalPrint it_adbK
+-- In a stmt of an interactive GHCi command: evalPrint it_a1vfDu
 
 -- >>> inferType emptyE (App tmid tyid)
--- Ambiguous type variable `m0_adMS[tau:0]' arising from a use of `evalPrint'
+-- Ambiguous type variable `m0_a1vh1K[tau:0]' arising from a use of `evalPrint'
 -- prevents the constraint `(Show
---                             (m0_adMS[tau:0] (Exp 'Z)))' from being solved.
--- Probable fix: use a type annotation to specify what `m0_adMS[tau:0]' should be.
+--                             (m0_a1vh1K[tau:0] (Exp 'Z)))' from being solved.
+-- Probable fix: use a type annotation to specify what `m0_a1vh1K[tau:0]' should be.
 -- Potentially matching instances:
---   instance (Show a, Show b) => Show (Either a b)
---     -- Defined in `Data.Either'
---   instance forall k (f :: k -> Type) (a :: k).
---            Show (f a) =>
---            Show (Alt f a)
---     -- Defined in `Data.Semigroup.Internal'
---   ...plus 30 others
+--   instance [safe] (Show a, Show b) => Show (a :-> b)
+--     -- Defined in `Test.QuickCheck.Function'
+--   instance [safe] (Show a, Show b) => Show (Fun a b)
+--     -- Defined in `Test.QuickCheck.Function'
+--   ...plus 123 others
 --   (use -fprint-potential-instances to see them all)
--- In a stmt of an interactive GHCi command: evalPrint it_adbW
+-- In a stmt of an interactive GHCi command: evalPrint it_a1vgZ0

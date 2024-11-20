@@ -21,6 +21,8 @@
 
 - Rationalize naming and use of implicit/explicit singleton nats
 
+- Rationalize order of arguments for unbindWith like operations
+
 - Simple interface for pattern binding when patterns do not include embedded terms
 
 - More binding types (Rebind, Rec, etc) to hide index operations in library

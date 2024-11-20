@@ -144,7 +144,7 @@ shiftR m1 f = unsafeCoerce (shiftN m1 f)
 
 -- | weaken the bound of a Fin by an arbitrary amount
 -- We don't overload this function because we can use substitution 
--- to implement weakening most of the type
+-- to implement weakening most of the time
 weakenFin :: SNat m -> Fin n -> Fin (Plus m n)
 weakenFin SZ f = f 
 weakenFin (SS m) FZ = FZ
@@ -154,6 +154,15 @@ weakenFin (SS (m :: SNat m0)) (FS (f :: Fin n0)) = case axiom @m0 @n0 of
 weaken1Fin :: Fin n -> Fin (S n)
 weaken1Fin = weakenFin s1
 
+
+-- | weaken the bound of of a Fin by an arbitrary amound on the right
+weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (Plus n m)
+weakenFinRight SZ n = 
+    case axiomPlusZ @n of 
+        Refl -> n
+weakenFinRight (SS (m :: SNat m1)) n = 
+    case axiom @n @m1 of 
+        Refl -> weaken1Fin (weakenFinRight m n)
 
 -- Strengthening cannot be implemented through substitution because it 
 -- must fail if the term uses invalid variables. Therefore, we make a 
