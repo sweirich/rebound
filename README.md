@@ -64,7 +64,7 @@ An implementation of a simple type checker for a dependent-type system. Language
 
 5. [PiForall](examples/PiForall.hs)
 
-A re-implementation of the [pi-forall](https://github.com/sweirich/pi-forall), which includes dependent pattern matching.
+A simplification of the [pi-forall](https://github.com/sweirich/pi-forall) language, which includes dependent pattern matching.
 
 ## Related libraries
 

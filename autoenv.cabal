@@ -42,6 +42,8 @@ common common-stanza
     , LambdaCase
     , QuantifiedConstraints
     , TypeFamilies
+    , AllowAmbiguousTypes
+    , UndecidableInstances
 
 library
   import:
