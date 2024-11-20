@@ -42,6 +42,10 @@ class SubstVar v => Subst v c where
     applyE :: Env v n m -> c n -> c m
 
 
+-- Does a variable appear free?
+class FV (t :: Nat -> Type) where
+    appearsFree :: Fin n -> t n -> Bool
+
 ----------------------------------------------
 -- operations on environments/substitutions
 ----------------------------------------------
@@ -195,6 +199,37 @@ instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v 
         case axiom @m @n of
           Refl -> bind <$> strengthen' m (SS n) (unbind b)
 
+
+
+-- | Create a substitution that instantiates a binder 
+-- with `a` and shifts at the same time. This is useful for 
+-- opening a pi-type after n-ary binding in pattern matching
+-- TODO: better name?
+-- TODO: more efficient implementation?
+instantiateWeakenEnv :: forall p n v c. (SubstVar v, Subst v v) => 
+     SNat p -> SNat n ->
+     v (Plus p n) -> Env v (S n) (Plus p n)
+instantiateWeakenEnv p n a =
+    shiftNE @v p .>>
+    Env (\(x :: Fin (Plus p (S n))) ->
+             case checkBound @p @(S n) p x of
+                Left pf -> var (weakenFinRight n pf)
+                Right pf -> case pf of
+                    FZ -> a
+                    FS (f :: Fin n) -> var (shiftN p f))
+
+-- | instantiate a single binder with a term from a larger scope
+-- this simultaneously shifts the body of the bind to that scope
+instantiateShift :: forall p n v c. 
+     (SubstVar v, Subst v v, Subst v c, SNatI n) => SNat p -> 
+     Bind v c n -> v (Plus p n) -> c (Plus p n)
+instantiateShift p b a = 
+    let r :: Env v (S n) (Plus p n)
+        r = instantiateWeakenEnv p (snat @n) a 
+    in 
+    applyE r (unbind b)
+
+
 ----------------------------------------------------------
 -- Patterns
 ----------------------------------------------------------
@@ -287,6 +322,13 @@ instance (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p)
                 Just p' -> patBind p' <$> strengthen' m (sPlus (size (getPat b)) n) (getBody b) 
                 Nothing -> Nothing
 
+instance (Subst v v, Subst v c,
+            Sized p, FV p, FV c) => FV (PatBind v c p) where
+    appearsFree n b =
+        let pat = getPat b in
+        appearsFree n pat
+          || appearsFree (shiftN (size pat) n) (getBody b)
+
 
 ----------------------------------------------------------------
 -- N-ary and double binder
@@ -330,6 +372,7 @@ instantiate2With b v1 v2 f =
 
 ----------------------------------------------------------------
 -- For dependently-typed languages
+----------------------------------------------------------------
 
 -- This is not weakening --- it increments all variables by one
 shiftC :: forall v c n. Subst v c => c n -> c (S n)
@@ -343,9 +386,59 @@ shiftCtx g = g .>> shift1E
 (+++) :: forall v n. Subst v v => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = shiftC @v @v a .: shiftCtx g 
 
+
+
+----------------------------------------------------------------
+-- show for environments
 ----------------------------------------------------------------
 toList :: SNatI n => Env v n m -> [v m]
 toList r = map (applyEnv r) (enumFin snat)
 
 instance (SNatI n, Show (v m)) => Show (Env v n m) where
     show x = show (toList x)
+
+
+
+
+----------------------------------------------------------
+-- Rebind
+----------------------------------------------------------
+
+
+data Rebind p1 p2 n where
+    Rebind :: p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+
+instance (Sized p1, Sized p2) => Sized (Rebind p1 p2) where
+    type Size (Rebind p1 p2) = Plus (Size p2) (Size p1)
+    size :: Rebind p1 p2 n -> SNat (Plus (Size p2) (Size p1))
+    size (Rebind p1 p2) = sPlus (size p2) (size p1)
+
+instance (Subst v v, Sized p1, Subst v p1, Subst v p2) => Subst v (Rebind p1 p2) where
+    applyE :: (Subst v v, Sized p1, Subst v p1, Subst v p2) =>
+              Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
+    applyE r (Rebind p1 p2) = Rebind (applyE r p1) (applyE (upN (size p1) r) p2)
+
+instance (Sized p1, FV p1, FV p2) => FV (Rebind p1 p2) where
+    appearsFree :: (Sized p1, FV p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
+    appearsFree n (Rebind p1 p2) = appearsFree n p1 || appearsFree (shiftN (size p1) n) p2
+
+instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
+    strengthen' :: forall m n p. SNat m -> SNat n ->
+            Rebind p1 p2 (Plus m n) -> Maybe (Rebind p1 p2 n)
+    strengthen' m n (Rebind p1 p2) =
+        case axiomM @m @(Size p1) @n of
+            Refl -> Rebind <$> strengthen' m n p1
+                           <*> strengthen' m (sPlus (size p1) n) p2
+
+unRebind :: forall p1 p2 n c.
+    (Sized p1, Sized p2, SNatI n) =>
+    Rebind p1 p2 n ->
+    ((SNatI (Size p1), SNatI (Size p2), SNatI (Plus (Size p1) n),
+    Plus (Size p2) (Plus (Size p1) n) ~ Plus (Plus (Size p2) (Size p1)) n) =>
+       p1 n -> p2 (Plus (Size p1) n) -> c) -> c
+unRebind (Rebind p1 p2) f =
+    case axiomAssoc @(Size p2) @(Size p1) @n of
+    Refl ->
+      withSNat (size p1) $ withSNat (size p2) $
+      withSNat (sPlus (size p1) (snat @n)) $
+      f p1 p2

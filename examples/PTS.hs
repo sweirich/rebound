@@ -55,16 +55,16 @@ t01 = App (Var f0) (Var f1)
 
 -- >>> appearsFree f1 t00
 -- False
-
-appearsFree :: Fin n -> Exp n -> Bool
-appearsFree n (Var x) = n == x
-appearsFree n Star = False
-appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (unbind b)
-appearsFree n (Lam a b) = appearsFree n a || appearsFree (FS n) (unbind b)
-appearsFree n (App a b) = appearsFree n a || appearsFree n b
-appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
-appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n t
-appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
+instance FV Exp where
+    appearsFree :: Fin n -> Exp n -> Bool
+    appearsFree n (Var x) = n == x
+    appearsFree n Star = False
+    appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (unbind b)
+    appearsFree n (Lam a b) = appearsFree n a || appearsFree (FS n) (unbind b)
+    appearsFree n (App a b) = appearsFree n a || appearsFree n b
+    appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
+    appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n t
+    appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (unbind2 b)
 
 
 -- >>> :t weaken' s1 t00
