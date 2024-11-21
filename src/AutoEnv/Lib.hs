@@ -1,7 +1,7 @@
 -- imports and reexports libraries for Nat / Fin / Vec
-module Lib
-  ( module Nat,
-    module Fin,
+module AutoEnv.Lib
+  ( module Data.Nat,
+    module Data.Fin,
     type Type,
     module Data.Type.Equality,
     Vec (..),
@@ -10,6 +10,6 @@ where
 
 import Data.Kind (Type)
 import Data.Type.Equality
-import Fin
-import Nat
-import Vec
+import Data.Fin
+import Data.Nat
+import Data.Vec ( Vec(..) )

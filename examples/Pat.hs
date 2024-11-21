@@ -18,8 +18,8 @@ module Pat where
 import AutoEnv
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
-import Lib
-import Vec qualified
+import AutoEnv.Pat
+import Data.Vec qualified
 
 ----------------------------------------------
 

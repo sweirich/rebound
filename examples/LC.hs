@@ -13,8 +13,7 @@
 module LC where
 
 import AutoEnv
-import Lib
-import Vec qualified
+import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
 --

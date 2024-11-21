@@ -4,12 +4,13 @@
 -- Stability   : experimental
 --
 -- An implementation of the untyped lambda calculus including let, letrec,
--- and let* expressions.
+-- and let* expressions. These examples only use single binding
+-- to implement these constructs.
 module LCLet where
 
 import AutoEnv
-import Lib
-import Vec qualified
+import AutoEnv.Bind
+import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
 data Exp (n :: Nat) where
@@ -18,18 +19,21 @@ data Exp (n :: Nat) where
   App :: Exp n -> Exp n -> Exp n
   Let ::
     Exp n ->
+    -- | single let expression
+    -- "let x = e1 in e2" where x is bound in e2
     (Bind Exp Exp n) ->
-    -- ^ "let x = e1 in e2" where x is bound in e2
     Exp n
   LetRec ::
     Bind Exp Exp n ->
+    -- | "let rec x = e1 in e2" where x is bound in both e1 and e2
     Bind Exp Exp n ->
-    -- ^ "let rec x = e1 in e2" where x is bound in both e1 and e2
     Exp n
   LetTele ::
-    Tele n ->
-    -- ^ sequence of nested lets, where each one may depend on
+    -- | sequence of nested lets, where each one may depend on
     -- the previous binding
+    -- "let x1 = e1 in x2 = e2 in ... in e" where x1 is bound
+    -- in e2, e3 ... and e, x2 is bound in e3 and e, etc.
+    Tele n ->
     Exp n
 
 data Tele n where

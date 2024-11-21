@@ -1,4 +1,4 @@
-module Nat where
+module Data.Nat where
 
 -- similar to https://hackage.haskell.org/package/fin-0.3.1/docs/Data-Nat.html#t:Nat
 -- Singleton nats are purely runtime.

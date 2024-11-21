@@ -16,6 +16,7 @@
 - Add testsuite for correctness
 
 - Extend PiForall example to include arbitrary datatype definitions and exhaustivity checking to further stress the library
+- Update PiForall example to take advantage of explicit substitutions
 
 - More examples:  mutual recursion, MLTT, DOT, OO language? 
 

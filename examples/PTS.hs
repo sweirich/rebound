@@ -3,10 +3,12 @@
 module PTS where
 
 import AutoEnv
+import AutoEnv.Pat
+import AutoEnv.Pat.PatN
+import AutoEnv.Context
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
-import Fin qualified
-import Lib
-import Vec qualified
+import Data.Fin qualified
+import Data.Vec qualified
 
 -- In a pure type system, terms and types are combined
 -- into the same syntactic class.

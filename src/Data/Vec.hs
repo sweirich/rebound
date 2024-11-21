@@ -1,4 +1,4 @@
-module Vec where
+module Data.Vec where
 
 --- replace with
 -- https://hackage.haskell.org/package/fin
@@ -9,8 +9,8 @@ module Vec where
 -- conflict with list operations in the Prelude
 
 import Data.Type.Equality
-import Fin
-import Nat
+import Data.Fin
+import Data.Nat
 import Test.QuickCheck
 import Prelude hiding (lookup, repeat, zipWith)
 

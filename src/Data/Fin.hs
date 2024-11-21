@@ -1,5 +1,5 @@
 -- |
--- Module      : Fin
+-- Module      : Data.Fin
 -- Description : Bounded natural numbers
 -- Stability   : experimental
 --
@@ -14,10 +14,10 @@
 --
 --       import Fin (Fin (..))
 --       import qualified Fin
-module Fin where
+module Data.Fin where
 
 import Data.Type.Equality
-import Nat
+import Data.Nat
 import Test.QuickCheck
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -154,43 +154,7 @@ weakenFinRight (SS (m :: SNat m1)) n =
   case axiom @n @m1 of
     Refl -> weaken1Fin (weakenFinRight m n)
 
--- Strengthening cannot be implemented through substitution because it
--- must fail if the term uses invalid variables. Therefore, we make a
--- class of nat-indexed types that can be strengthened. We also provide
--- default definitions for strengthening by one and by n. Only one of
--- these functions need to be provided
 
-class Strengthen t where
-  strengthenOne' :: SNat n -> t (S n) -> Maybe (t n)
-  strengthenOne' = strengthen' (SS SZ)
-
-  strengthen' :: SNat m -> SNat n -> t (Plus m n) -> Maybe (t n)
-  strengthen' SZ n f = Just f
-  strengthen' (SS m) SZ f = Nothing
-  strengthen' (SS m) (SS n) f = do
-    f' <- strengthenOne' (sPlus m (SS n)) f
-    strengthen' m (SS n) f'
-
-strengthen :: forall m n t. (Strengthen t, SNatI m, SNatI n) => t (Plus m n) -> Maybe (t n)
-strengthen = strengthen' (snat :: SNat m) (snat :: SNat n)
-
-instance Strengthen Fin where
-  strengthen' :: SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
-  strengthen' = strengthenFin
-
-strengthenFin :: forall m n. SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
-strengthenFin SZ SZ f = Just f
-strengthenFin (SS m) SZ f = Nothing
-strengthenFin m (SS n) FZ = Just FZ
-strengthenFin m (SS (n0 :: SNat n0)) (FS f) =
-  case axiom @m @n0 of
-    Refl -> FS <$> strengthenFin m n0 f
-
--- >>> strengthenOne' (SS (SS SZ)) (FZ :: Fin N3) :: Maybe (Fin N2)
--- Just 0
-
--- >>> strengthen' (SS (SS SZ)) (SS SZ) (FZ :: Fin N3) :: Maybe (Fin N1)
--- Just 0
 
 ------------------------------------
 
