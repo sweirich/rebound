@@ -1,4 +1,6 @@
 -- A port of https://github.com/sweirich/pi-forall
+-- just focussing on the syntax and type checker for now.
+-- will eventually include parser/prettyprinter
 module PiForall.Syntax where
 
 import AutoEnv
@@ -23,6 +25,7 @@ data Term (n :: Nat)
   = TyType
   | Lam (Bind Term Term n)
   | Var (Fin n)
+  | Global GlobalName
   | Pi (Typ n) (Bind Term Typ n)
   | Pos SourcePos (Term n)
   | Let (Term n) (Bind Term Term n)
@@ -48,21 +51,22 @@ data PatList p n where
 data Match (n :: Nat)
   = forall p. SNatI p => Branch (PatBind Term Term (Pattern p) n)
 
-
--- | Local assumptions
-data LocalEntry p n
-  = LocalDecl (Typ n) -- binding assumption
-  | LocalDef (Fin n) (Term n) -- nonbinding assumption
+-- | Local assumption
+data Local p n where
+  LocalDecl :: (Typ n) -> Local N1 n -- binding assumption
+  LocalDef  :: (Fin n) -> (Term n) -> Local N0 n -- nonbinding assumption
 
 -- Telescopes: snoc-lists of variable assumptions x1:A1, x2:A2, ....,xp:Ap
+-- That are used as typing contexts
 -- 'p' is the number of variables introduced by the telescope
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 data Telescope p n where
   Tele :: Telescope N0 n
-  TCons :: Rebind (Telescope p) (LocalEntry N0) n -> Telescope (S p) n
+  TSnoc :: Rebind (Telescope p) (Local p1) n -> Telescope (Plus p1 p) n
 
-(<:>) :: Telescope p n -> LocalEntry N0 (Plus p n) -> Telescope (S p) n
-t <:> e = TCons (Rebind t e)
+-- | add a new local entry to a telescope
+(<:>) :: Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
+t <:> e = TSnoc (Rebind t e)
 
 -- | Toplevel components of modules
 data ModuleEntry
@@ -120,10 +124,10 @@ unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
 -- * class instances (Subst, FV, Strengthening, Alpha)
 
+-- patterns do not refer to any variables
+
 class Closed t where
   coerceClosed :: t n1 -> t n2
-
--- patterns do not refer to any variables
 
 instance Closed (Pattern p) where
   coerceClosed PatVar = PatVar
@@ -139,7 +143,6 @@ instance Closed (PatList p) where
 
 instance SNatI p => Sized (Pattern p) where
     type Size (Pattern p) = p
-    
     
 instance SNatI p => Sized (PatList p) where
     type Size (PatList p) = p
@@ -161,6 +164,7 @@ instance Subst Term Term where
   applyE r (DataCon c es) = DataCon c (map (applyE r) es)
   applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
   applyE r (Var x) = applyEnv r x
+  applyE r (Global n) = Global n
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
   applyE r (Case brs) = Case (map (applyE r) brs)
   applyE r (Ann a t) = Ann (applyE r a) (applyE r t)
@@ -198,6 +202,7 @@ t01 = App (Var f0) (Var f1)
 instance FV Term where
   appearsFree n TyType = False
   appearsFree n (Var x) = n == x
+  appearsFree n (Global _) = False
   appearsFree n (Pi a b) = appearsFree n a || appearsFree n b
   appearsFree n (Lam b) = appearsFree n b
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
@@ -244,6 +249,7 @@ weakenBind' m = applyE @Term (weakenE' m)
 instance Strengthen Term where
   -- strengthen' :: SNat m -> SNat n -> Term (Plus m n) -> Maybe (Term n)
   strengthen' m n (Var x) = Var <$> strengthen' m n x
+  strengthen' m n (Global s) = pure (Global s)
   strengthen' m n TyType = pure TyType
   strengthen' m n (Lam b) = Lam <$> strengthen' m n b
   strengthen' m n (DataCon c args) = DataCon c <$> mapM (strengthen' m n)args
@@ -390,6 +396,7 @@ instance Show (Term n) where
             . showString " -> "
             . showsPrec 10 (unbind b)
   showsPrec _ (Var x) = shows (toInt x)
+  showsPrec _ (Global x) = showString x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
       showsPrec 10 e1
