@@ -1,4 +1,21 @@
-module AutoEnv.Env where
+module AutoEnv.Env(Env,
+  zeroE,
+  oneE,
+  singleton,
+  idE,
+  (.>>),
+  (.:),
+  (.++),
+  head,
+  tail,
+  appendE,
+  up,
+  upN,
+  shift1E,
+  shiftNE,
+  toList,
+  weakenE'
+  ) where
 
 import AutoEnv.Lib
 import AutoEnv.Classes

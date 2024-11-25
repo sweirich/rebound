@@ -191,3 +191,13 @@ f0 = FZ
 f1 = FS f0
 
 f2 = FS f1
+
+
+
+strengthenFin :: forall m n. SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
+strengthenFin SZ SZ f = Just f
+strengthenFin (SS m) SZ f = Nothing
+strengthenFin m (SS n) FZ = Just FZ
+strengthenFin m (SS (n0 :: SNat n0)) (FS f) =
+  case axiom @m @n0 of
+    Refl -> FS <$> strengthenFin m n0 f

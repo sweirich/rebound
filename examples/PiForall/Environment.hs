@@ -26,8 +26,8 @@ data SourceLocation where
 -- | An error that should be reported to the user
 data Err = Err [SourceLocation] (Doc ())
 
--- | The type checking Monad includes error (for error reporting), and IO
--- (for e.g.  warning messages).
+-- | The type checking Monad includes error (for error reporting) and IO
+-- (for warning messages).
 type TcMonad = ExceptT Err IO
 
 -- | Entry point for the type checking monad, given an
@@ -62,5 +62,7 @@ emptyEnv = Env {
 
 lookupGlobalTy :: 
   GlobalName -> Env n -> TcMonad (Typ N0)
-lookupGlobalTy v env = undefined
-    -- [a | ModuleDecl v' a <- globals env, v == v']
+lookupGlobalTy v env = 
+    case [a | ModuleDecl v' a <- globals env, v == v'] of
+      [a] -> return a
+      _  -> throwError undefined

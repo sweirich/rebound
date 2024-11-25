@@ -1,6 +1,8 @@
 -- A port of https://github.com/sweirich/pi-forall
 -- just focussing on the syntax and type checker for now.
 -- will eventually include parser/prettyprinter
+
+-- biggest difference is a distinction between global and local names
 module PiForall.Syntax where
 
 import AutoEnv
@@ -11,6 +13,7 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
 
 -- | names of top level declarations/definitions
+-- must be unique
 type GlobalName = String
 
 -- | names of type constructors, like 'list'
@@ -194,7 +197,6 @@ t01 :: Term N2
 t01 = App (Var f0) (Var f1)
 
 -- >>> appearsFree f0 t00
--- True
 
 -- >>> appearsFree f1 t00
 -- False
@@ -278,6 +280,24 @@ instance Strengthen Match where
 -- Alpha equivalence (Eq type class)
 --------------------------------------------------------
 
+instance PatEq (Pattern p1) (Pattern p2) where
+  patEq :: Pattern p1 n1 -> Pattern p2 n2 -> 
+     Maybe (Size (Pattern p1) :~: Size (Pattern p2))
+  patEq PatVar PatVar = Just Refl
+  patEq (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 = 
+    patEq ps1 ps2
+  patEq _ _ = Nothing
+
+instance PatEq (PatList p1) (PatList p2) where
+  patEq :: PatList p1 n1 -> PatList p2 n2 -> Maybe (p1 :~: p2)
+  patEq PNil PNil = Just Refl
+  patEq (PCons p1 ps1) (PCons p2 ps2) = do
+    Refl <- patEq p1 p2 
+    Refl <- patEq ps1 ps2
+    return Refl
+  patEq _ _ = Nothing
+
+{-
 testEquality2 :: Pattern p1 n1 -> Pattern p2 n2 -> Maybe (p1 :~: p2)
 testEquality2 PatVar PatVar = Just Refl
 testEquality2 (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 = 
@@ -291,10 +311,11 @@ testEq2 (PCons p1 ps1) (PCons p2 ps2) = do
   Refl <- testEq2 ps1 ps2
   return Refl
 testEq2 _ _ = Nothing
+-}
 
 instance Eq (Match n) where
   (Branch p1) == (Branch p2) = 
-      case testEquality2 (getPat p1) (getPat p2) of 
+      case patEq (getPat p1) (getPat p2) of 
          Just Refl -> 
             getBody p1 == getBody p2
          Nothing -> False
@@ -303,7 +324,7 @@ instance Eq (Match n) where
 -- make sure that the patterns are equal
 instance (SNatI m, Eq (Term n)) => Eq (PatBind Term Term (Pattern m) n) where
   b1 == b2 =
-    Maybe.isJust (testEquality2 (getPat b1) (getPat b2))
+    Maybe.isJust (patEq(getPat b1) (getPat b2))
       && getBody b1 == getBody b2
 
 -- To compare binders, we only need to `unbind` them
@@ -452,3 +473,4 @@ instance Show (PatList p n) where
     showString " " .
     showsPrec 11 pl
   
+

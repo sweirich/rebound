@@ -10,7 +10,7 @@ module ScopeCheck where
 import AutoEnv
 import Data.Maybe (fromJust)
 import LC qualified
-import Lib
+import AutoEnv.Lib
 
 -- | Named representation for the untyped lambda calculus
 -- The type parameter 'a' is the variable type
