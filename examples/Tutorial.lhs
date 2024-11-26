@@ -1,7 +1,6 @@
 > module Tutorial where
 
 > import AutoEnv.Lib
-> import Data.Vec
 
 This is *beautiful* code. It is an evaluator for lambda-calculus
 expressions, where bound variables are represented by de Bruijn
@@ -78,6 +77,8 @@ to a substitution-based implementation.
 
 Substitution(?)-based interpreter
 ------------------------------
+ 
+
 
 In this version, we create a type for binders, i.e. expressions with a 
 single free variable and a delayed substitution. For convenience, we represent
@@ -139,7 +140,7 @@ lambda expression. We do so with the `(.>>)` operator below.
 
 Composition of delayed substitutions means that we need to 
 apply the second substitution to all terms in the co-domain
-of the first environment. 
+of the first. 
 
 < subst :: (Fin n1 -> Exp n2) -> Exp n1 -> Exp n2
 < subst r (Var x) = r x
@@ -148,6 +149,7 @@ of the first environment.
 
 Alpha-equivalence
 -----------------
+
 
 Because we have a way to apply a delayed substituion, we can 
 implement alpha-equivalence. To do so, we first implement 
@@ -164,9 +166,9 @@ does this transformation.
 > up :: (Fin n -> Exp m) -> (Fin (S n) -> Exp (S m))
 > up e = \x -> case x of 
 >                FZ -> Var f0   -- leave binding variable alone
->                FS f -> subst (Var . FS) (e f) -- shift the indices as we go under the binder
+>                FS f -> subst (Var . FS) (e f) -- shift indices under the binder
 
-With the definition of `unbind`, we can define equality for binders and 
+With `unbind`, we can define alpha-equality for binders and 
 expressions succinctly. 
 
 > instance Eq (BindExp n) where
@@ -174,8 +176,8 @@ expressions succinctly.
 
 > deriving instance (Eq (Exp n))
 
-Implicit/slightly-less-delayed environment
-----------------------
+An Implicit Environment-passing Implementation
+----------------------------------------------
 
 We can simplify our definition of the evaluator so that it looks 
 even more like a substitution-based implementation. In the version, 
@@ -213,6 +215,8 @@ constant time.
 Making the library do the heavy lifting
 ---------------------------------------
 
+
+
 The above above are specialized for the type `Exp`. While some operations, such 
 as `(.:)` can be made more generic by abstracting `Exp`, for others, we need 
 to know how to traverse the expression (with `subst`) and how to create an 
@@ -236,12 +240,12 @@ These two classes are all that we need to create generic versions of the
 operations used above such as `(.>>)` and `up`. Furthermore, by also creating 
 a new type for binders
 
-> data Bind e n where
->     Bind :: (Fin m -> e n) -> e (S m) -> Bind e n
+> data Bind v e n where
+>     Bind :: (Fin m -> v n) -> e (S m) -> Bind v e n
 
 that generalizes our previous definition.
 
-> type BindExp = Bind Exp
+> type BindExp = Bind Exp Exp
 
 Developing a reusable library also gives us a chance to make the environment 
 type abstract. 
@@ -249,24 +253,23 @@ type abstract.
 > type Env e m n = Fin m -> e n
 
 
-
-
-
+[TODO: explain v and c in the Subst type class.]
 
 Normalization
 -------------
 
+
 What about reducing under binders? How can we do that the most 
 efficiently?
 
-> -- | Calculate the normal for with an explicit environment
+> -- | Calculate the beta-normal for with an explicit environment
 > norm :: (Fin m -> Exp n) -> Exp m -> Exp n
 > norm r (Var x) = r x
 > norm r (Lam (Bind r' b)) = 
 >     Lam (Bind var (norm (up (r' .>> r)) b))
 > norm r (App a b) = App (norm r a) (norm r b)
 
-> -- | Calculate the normal form with an *implicit* environment
+> -- | Calculate the beta-normal form with an *implicit* environment
 > nf :: Exp n -> Exp n
 > nf (Var x) = Var x
 > nf (Lam b) = Lam (Bind var (nf (unbind b)))
@@ -274,6 +277,72 @@ efficiently?
 >   case nf e1 of
 >      Lam b -> nf (instantiate b (nf e2))
 >      t -> App t (nf e2)
+
+NBE based version
+-----------------
+
+-- Inspired by https://github.com/AndrasKovacs/elaboration-zoo/blob/master/01-eval-closures-debruijn/Main.hs
+
+
+> -- a value is either a closure (i.e. delayed substitution for values)
+> -- or a path headed by a variable represented by a de Bruijn level
+> -- the index `m` isn't used by this definition
+> data Val m
+>  = VVar (Fin m)  -- level
+>  | VApp (Val m) (Val m)
+>  | forall n. VLam (VEnv n m) (Exp (S n))
+
+> weakenVal :: Val m -> Val (S m)
+> weakenVal (VVar f) = VVar (weaken1Fin f)
+> weakenVal (VApp v1 v2) = VApp (weakenVal v1) (weakenVal v2)
+> weakenVal (VLam r t) = VLam (weakenVal . r) t
+
+> type VEnv n m = Env Val n m
+
+> reflect :: forall n m. VEnv n m -> Exp n -> Val m
+> reflect env = \case
+>  Var x -> env x
+>  App t u -> case reflect env t of
+>    (VLam e0 t0) -> reflect (reflect env u .: e0) t0
+>    t0 -> VApp t0 (reflect env u)
+>  Lam b@(Bind r t) -> VLam (reflect env . r) t
+
+
+> cApp :: VEnv n m -> Exp (S n) -> Val m -> Val m
+> cApp env t u = reflect (u .: env) t
+
+
+> -- | Convert a value to a term by translating
+> -- all level-based vars to index-based vars
+> -- l is the current scoping depth 
+> quote :: forall l. SNat l -> Val l -> Exp l
+> quote l = \case
+>   VVar x   -> Var (invert l x)
+>   VApp t u -> App (quote l t) (quote l u)
+>   VLam r e -> Lam (Bind var (quote (SS l) (reflect (VVar (largest l) .: (weakenVal . r)) e )))
+
+
+> -- normalize by reflecting to one domain then
+> -- reifying the result back
+> nbe :: Exp Z -> Exp Z
+> nbe t = quote SZ (reflect (\case) t)
+
+> {- 
+> data Val n = Fn (Val -> Val)
+
+> reflect :: (Fin n -> Val) -> Exp n -> Val
+> reflect r (Var x) = r x
+> reflect r (Lam (Bind r' b)) = Fn $ \x -> reflect (compose (reflect r) r' x) b
+> reflect r (App a1 a2) = case reflect r a1 of 
+>                            Fn f -> f (reflect r a2)
+
+> reify :: Val -> Exp n
+
+> compose :: (Exp n -> Val) -> (Fin m -> Exp n) -> (Val -> (Fin (S m) -> Val))
+> compose r r' = \v x -> case x of 
+>                         FZ -> v
+>                         FS y -> r (r' y)
+> -} 
 
 > {-
 > -- delay both *substitution* and *normalization* 
