@@ -42,21 +42,32 @@ common common-stanza
     , LambdaCase
     , QuantifiedConstraints
     , TypeFamilies
+    , AllowAmbiguousTypes
+    , UndecidableInstances
 
 library
   import:
       common-stanza
   exposed-modules:
         AutoEnv
-      , Lib
-      , Nat
-      , Fin
-      , Vec
+      , AutoEnv.Classes
+      , AutoEnv.Context
+      , AutoEnv.Lib
+      , AutoEnv.Env
+      , AutoEnv.Bind
+      , AutoEnv.Pat
+      , AutoEnv.Pat.PatN
+      , AutoEnv.Pat.Rebind
+      , Data.Nat
+      , Data.Fin
+      , Data.Vec
       , LC
       , LCLet
       , PTS
       , Pat
-      , PiForall
+      , DepMatch
+      , PiForall.Syntax
+      , PiForall.Environment
   hs-source-dirs:
       src
       , examples

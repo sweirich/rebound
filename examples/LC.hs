@@ -262,10 +262,10 @@ nfEnv :: Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
 nfEnv r (Lam b) = Lam (applyUnder nfEnv r b)
 nfEnv r (App e1 e2) =
-  let n = nfEnv r e1
+  let n = nfEnv r e2
    in case nfEnv r e1 of
-        Lam b -> instantiateWith b n nfEnv
-        t -> App t (nfEnv r e2)
+        Lam b -> instantiateWith nfEnv b n
+        t -> App t n
 
 ----------------------------------------------------------------
 
