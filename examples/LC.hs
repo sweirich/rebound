@@ -13,8 +13,7 @@
 module LC where
 
 import AutoEnv
-import Lib
-import Vec qualified
+import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
 --
@@ -264,7 +263,7 @@ nfEnv r (Lam b) = Lam (applyUnder nfEnv r b)
 nfEnv r (App e1 e2) =
   let n = nfEnv r e2
    in case nfEnv r e1 of
-        Lam b -> instantiateWith nfEnv b n
+        Lam b -> instantiateWith b n nfEnv
         t -> App t n
 
 ----------------------------------------------------------------
