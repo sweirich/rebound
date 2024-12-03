@@ -36,12 +36,11 @@ instantiate b v = unbindWith b (\r e -> applyE (v .: r) e)
 -- | apply an environment-parameterized function while
 -- instantiating
 instantiateWith ::
-  (SubstVar v) =>
   Bind v c n ->
   v n ->
-  (forall m n. Env v m n -> c m -> c n) ->
-  c n
-instantiateWith b v f = unbindWith b (\r e -> f (v .: r) e)
+  (forall m n. Env v m n -> c m -> d n) ->
+  d n
+instantiateWith (Bind r a) v f = f (v .: r) a
 
 -- | access the body of the binder  (inverse of bind)
 unbind :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)

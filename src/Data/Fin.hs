@@ -95,8 +95,8 @@ instance (SNatI n) => Arbitrary (Fin n) where
 
 -- list all numbers up to some size
 
--- >>> enumFin snat3
--- Variable not in scope: snat3 :: SNat n_aa82F[sk:1]
+-- >>> enumFin s3
+-- [0,1,2]
 
 enumFin :: SNat n -> [Fin n]
 enumFin SZ = []
@@ -108,6 +108,11 @@ universe = enumFin snat
 -------------------------------------------------------------------------------
 -- Shifting
 -------------------------------------------------------------------------------
+
+-- This function adds the specified amount to the given 
+-- `Fin`
+-- >>> shiftN s1 (f1 :: Fin N2)
+-- 2
 
 -- increment by a fixed amount
 shiftN :: SNat m -> Fin n -> Fin (Plus m n)
@@ -133,9 +138,10 @@ shiftR m1 f = unsafeCoerce (shiftN m1 f)
 -- Both of these operations should be identity functions, so it would also be
 -- justified to use unsafeCoerce.
 
+-- >>> weaken1Fin f1
+-- 1
+
 -- | weaken the bound of a Fin by an arbitrary amount
--- We don't overload this function because we can use substitution
--- to implement weakening most of the time
 weakenFin :: SNat m -> Fin n -> Fin (Plus m n)
 weakenFin SZ f = f
 weakenFin (SS m) FZ = FZ
@@ -144,6 +150,7 @@ weakenFin (SS (m :: SNat m0)) (FS (f :: Fin n0)) = case axiom @m0 @n0 of
 
 weaken1Fin :: Fin n -> Fin (S n)
 weaken1Fin = weakenFin s1
+
 
 -- | weaken the bound of of a Fin by an arbitrary amound on the right
 weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (Plus n m)
@@ -154,6 +161,10 @@ weakenFinRight (SS (m :: SNat m1)) n =
   case axiom @n @m1 of
     Refl -> weaken1Fin (weakenFinRight m n)
 
+
+-- This is also an identity function
+-- >>> weakenFinRight (s1 :: SNat N1) (f1 :: Fin N2)
+-- 1
 
 
 ------------------------------------
@@ -201,3 +212,41 @@ strengthenFin m (SS n) FZ = Just FZ
 strengthenFin m (SS (n0 :: SNat n0)) (FS f) =
   case axiom @m @n0 of
     Refl -> FS <$> strengthenFin m n0 f
+
+-------------------------------------------------------------------------------
+-- Invert
+-------------------------------------------------------------------------------
+
+
+-- >>> invert s3 f0
+-- 2
+
+-- >>> invert s3 f1
+-- 1
+
+-- >>> invert s3 f2
+-- 0
+
+invert :: SNat n -> Fin n -> Fin n
+invert (SS x) FZ = largest x
+invert (SS x) (FS y) = weaken1Fin z where
+  z = invert x y
+invert SZ f = case f of {}
+
+
+
+-- convert a de Bruijn level (in scope n) to an
+-- index in the same scope
+lvl2Idx :: forall n. Int -> SNat n -> Fin n
+lvl2Idx x l = toIdx l (sNat2Int l - x - 1)  
+
+sNat2Int :: SNat n -> Int
+sNat2Int SZ = 0
+sNat2Int (SS n) = 1 + sNat2Int n
+
+-- | ensure int is in bound
+toIdx :: SNat n -> Int -> Fin n
+toIdx (SS _n) 0 = FZ
+toIdx (SS n) m | m > 0 = FS (toIdx n (m -1))
+toIdx SZ _ = error "No indices in Ix Z"
+toIdx _ _m = error "Negative index"
