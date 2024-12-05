@@ -3,6 +3,7 @@
 (In no particular order.)
 
 - Replace axioms about natural numbers with type checker nat plugin
+- Improve efficiency by changing the representations of nats
 
 - Use datatype generic programming to automate type class instances
   (a la unbound-generics)

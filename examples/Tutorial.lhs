@@ -1,7 +1,6 @@
 > module Tutorial where
 
 > import AutoEnv.Lib
-> import Data.Vec
 
 This is *beautiful* code. It is an evaluator for lambda-calculus
 expressions, where bound variables are represented by de Bruijn
@@ -78,6 +77,8 @@ to a substitution-based implementation.
 
 Substitution(?)-based interpreter
 ------------------------------
+ 
+
 
 In this version, we create a type for binders, i.e. expressions with a 
 single free variable and a delayed substitution. For convenience, we represent
@@ -134,12 +135,12 @@ definition is that in the `Lam` case, we need *compose* the
 current environment with the suspended environment in the 
 lambda expression. We do so with the `(.>>)` operator below.
 
-> (.>>) :: (Fin m  -> Exp n) -> (Fin n -> Exp p) -> (Fin m -> Exp p)
-> v1 .>> v2 = subst v2 . v1
+< (.>>) :: (Fin m  -> Exp n) -> (Fin n -> Exp p) -> (Fin m -> Exp p)
+< v1 .>> v2 = subst v2 . v1
 
 Composition of delayed substitutions means that we need to 
 apply the second substitution to all terms in the co-domain
-of the first environment. 
+of the first. 
 
 < subst :: (Fin n1 -> Exp n2) -> Exp n1 -> Exp n2
 < subst r (Var x) = r x
@@ -148,6 +149,7 @@ of the first environment.
 
 Alpha-equivalence
 -----------------
+
 
 Because we have a way to apply a delayed substituion, we can 
 implement alpha-equivalence. To do so, we first implement 
@@ -161,12 +163,12 @@ substitution so that its domain and co-domain correspond to the
 extended scope of the binder. The `up` function, shown below
 does this transformation.
 
-> up :: (Fin n -> Exp m) -> (Fin (S n) -> Exp (S m))
-> up e = \x -> case x of 
->                FZ -> Var f0   -- leave binding variable alone
->                FS f -> subst (Var . FS) (e f) -- shift the indices as we go under the binder
+< up :: (Fin n -> Exp m) -> (Fin (S n) -> Exp (S m))
+< up e = \case
+<           FZ -> Var f0   -- leave binding variable alone
+<           FS f -> subst (Var . FS) (e f) -- shift indices under the binder
 
-With the definition of `unbind`, we can define equality for binders and 
+With `unbind`, we can define alpha-equality for binders and 
 expressions succinctly. 
 
 > instance Eq (BindExp n) where
@@ -174,8 +176,8 @@ expressions succinctly.
 
 > deriving instance (Eq (Exp n))
 
-Implicit/slightly-less-delayed environment
-----------------------
+An Implicit Environment-passing Implementation
+----------------------------------------------
 
 We can simplify our definition of the evaluator so that it looks 
 even more like a substitution-based implementation. In the version, 
@@ -190,7 +192,7 @@ during beta-reduction, does all such manipulation behind the scenes.
 > eval2 (Lam b) = Lam b
 > eval2 (App a1 a2) =
 >     case eval2 a1 of 
->       Lam b -> let v = eval2 a2 in eval2 (instantiate b v)
+>       Lam b -> let a2' = eval2 a2 in eval2 (instantiate b a2')
 >       _ -> error "should be a lambda"
 
 The `instantiate` function extends the delayed substitution in 
@@ -213,7 +215,7 @@ constant time.
 Making the library do the heavy lifting
 ---------------------------------------
 
-The above above are specialized for the type `Exp`. While some operations, such 
+The above definitions are specialized for the type `Exp`. While some operations, such 
 as `(.:)` can be made more generic by abstracting `Exp`, for others, we need 
 to know how to traverse the expression (with `subst`) and how to create an 
 expression out of an index (with `Var`). By using typeclasses to overload 
@@ -224,56 +226,153 @@ these two operations, we can develop a generic library.
 
 > instance SubstVar Exp where var = Var
 
-> class Subst (e :: Nat -> Type) where
->    subst :: (Fin m -> e n) -> e m -> e n
+The `Subst` type class takes two arguments. The first, `v` describes the 
+co-domain of the deferred substitution (i.e. what type do variables 
+stand for) and the second `e` describes what type we are substituting
+into.
 
-> instance Subst Exp where
+> class (SubstVar v) => Subst (v :: Nat -> Type) (e :: Nat -> Type) where
+>    subst :: (Fin m -> v n) -> e m -> e n
+
+
+
+
+Often, these two types will be the same. For example, in the 
+lambda calculus, we can replace variables by `Exp`, when substituting
+by an `Exp` with this instance.
+
+> instance Subst Exp Exp where
 >   subst r (Var x) = r x
->   subst r (Lam (Bind r' b)) = Lam (Bind (r' .>> r) b)
+>   subst r (Lam b) = Lam (subst r b)
 >   subst r (App a1 a2) = App (subst r a1) (subst r a2)
 
 These two classes are all that we need to create generic versions of the 
-operations used above such as `(.>>)` and `up`. Furthermore, by also creating 
-a new type for binders
+operations used above such as `(.>>)` and `up`. 
 
-> data Bind e n where
->     Bind :: (Fin m -> e n) -> e (S m) -> Bind e n
+> (.>>) :: Subst v e => (Fin m -> e n) -> (Fin n -> v p) -> (Fin m -> e p)
+> r1 .>> r2 = subst r2 . r1
 
-that generalizes our previous definition.
+> up :: forall v n m. (Subst v v) => (Fin n -> v m) -> (Fin (S n) -> v (S m))
+> up e = \case  
+>           FZ -> var f0   -- leave binding variable alone
+>           FS f -> subst (var @v . FS) (e f) -- shift indices under the binder
 
-> type BindExp = Bind Exp
+Furthermore, by creating a new type for binders
+
+> data Bind v e n where
+>     Bind :: (Fin m -> v n) -> e (S m) -> Bind v e n
+
+that generalizes our previous definition
+
+> type BindExp = Bind Exp Exp
+
+we can make an instance of the `Subst` class for `Bind`. This instance
+simplifies the definition of `subst` in the `Lam case above.
+
+> instance Subst v v => Subst v (Bind v e) where
+>    subst r (Bind r' b) = Bind (r' .>> r) b
+
+We also have a "smart constructor" to construct binders.
+
+> bind :: SubstVar v => e (S n) -> Bind v e n
+> bind = Bind var
 
 Developing a reusable library also gives us a chance to make the environment 
 type abstract. 
 
 > type Env e m n = Fin m -> e n
 
-
-
-
-
+[TODO: talk about environment optimization?]
 
 Normalization
 -------------
 
-What about reducing under binders? How can we do that the most 
-efficiently?
+What about reducing under binders? How can we do that 
+efficiently? What sort of interface do we need from the binding 
+library to implement this succinctly?
 
-> -- | Calculate the normal for with an explicit environment
-> norm :: (Fin m -> Exp n) -> Exp m -> Exp n
-> norm r (Var x) = r x
-> norm r (Lam (Bind r' b)) = 
->     Lam (Bind var (norm (up (r' .>> r)) b))
-> norm r (App a b) = App (norm r a) (norm r b)
+The main difference between evaluation (`eval2` above) and the
+normalization function (`nf` below), is that this code calls itself 
+recursively in the body of the lambda expression. We already have 
+the functionality to write this code nicely: the `unbind` and 
+`bind` functions let us lift the normalization function for expressions
+to binders.
 
-> -- | Calculate the normal form with an *implicit* environment
+> -- | Calculate the beta-normal form with an *implicit* environment
 > nf :: Exp n -> Exp n
 > nf (Var x) = Var x
-> nf (Lam b) = Lam (Bind var (nf (unbind b)))
-> nf (App e1 e2) =
->   case nf e1 of
->      Lam b -> nf (instantiate b (nf e2))
->      t -> App t (nf e2)
+> nf (Lam b) = Lam (nfBind b)
+> nf (App a1 a2) =
+>   let a2' = nf a2 in
+>   case nf a1 of
+>      Lam b -> nf (instantiate b a2')
+>      a1' -> App a1' a2'
+
+> -- Calculate the beta-normal form of a binder
+> nfBind :: BindExp n -> BindExp n
+> nfBind = bind . nf . unbind
+
+Now let's consider a version with an explicit environment.  
+
+< -- | Calculate the beta-normal form with an explicit environment
+< norm :: (Fin m -> Exp n) -> Exp m -> Exp n
+< norm r (Var x) = r x
+< norm r (Lam (Bind r' a')) = Lam (bind (norm (up (r' .>> r)) a'))
+< norm r (App a1 a2) = 
+<   let a2' = norm r a2 in
+<   case norm r a of
+<      Lam (Bind r' a') -> norm (a2' .: r') a'
+<      a1' -> App a1' a2'
+
+And, by defining a few library functions, we can encapsulate the 
+environment manipulation.
+
+> -- | Calculate the beta-normal form with an explicit environment
+> norm :: (Fin m -> Exp n) -> Exp m -> Exp n
+> norm r (Var x) = r x
+> norm r (Lam b) = Lam (normBind r b)
+> norm r (App a1 a2) = 
+>   let a2' = norm r a2 in
+>   case norm r a1 of
+>      Lam b -> instantiateWith norm b a2'
+>      a1' -> App a1' a2'
+>
+> normBind :: (Fin m -> Exp n) -> BindExp m -> BindExp n
+> normBind = applyUnderEnv norm 
+
+> --TODO revise normBind with the above???
+> unbindWith :: Bind v e n -> (forall m. Env v m n -> e (S m) -> c n) -> c n
+> unbindWith (Bind r a) f = f r a
+
+> -- | apply an environment-parameterized function & environment
+> -- underneath a binder
+> applyUnderEnv :: (Subst v v, Subst v c) =>
+>    (forall m n. Env v m n -> c m -> c n) ->
+>    Env v n1 n2 -> Bind v c n1 -> Bind v c n2
+> applyUnderEnv f r2 (Bind r1 t) = Bind var (f (up (r1 .>> r2)) t)
+
+> -- | instantiate 
+> instantiateWith :: (forall m n. (Fin m -> v n) -> e m -> e n) -> Bind v e n -> v n -> e n
+> instantiateWith f (Bind r a) v = f (v .: r) a
+
+
+
+> {- 
+> data Val n = Fn (Val -> Val)
+
+> reflect :: (Fin n -> Val) -> Exp n -> Val
+> reflect r (Var x) = r x
+> reflect r (Lam (Bind r' b)) = Fn $ \x -> reflect (compose (reflect r) r' x) b
+> reflect r (App a1 a2) = case reflect r a1 of 
+>                            Fn f -> f (reflect r a2)
+
+> reify :: Val -> Exp n
+
+> compose :: (Exp n -> Val) -> (Fin m -> Exp n) -> (Val -> (Fin (S m) -> Val))
+> compose r r' = \v x -> case x of 
+>                         FZ -> v
+>                         FS y -> r (r' y)
+> -} 
 
 > {-
 > -- delay both *substitution* and *normalization* 

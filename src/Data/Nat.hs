@@ -90,6 +90,11 @@ sPlus :: SNat n1 -> SNat n2 -> SNat (Plus n1 n2)
 sPlus SZ x = x
 sPlus (SS x) y = SS (sPlus x y)
 
+spred :: SNat (S n) -> SNat n
+spred (SS n) = n
+
+
+
 ---------------------------------------------------------
 -- Implicit Singleton
 ---------------------------------------------------------
@@ -110,5 +115,3 @@ withSNat :: SNat n -> ((SNatI n) => r) -> r
 withSNat SZ k = k
 withSNat (SS n) k = withSNat n k
 
-spred :: SNat (S n) -> SNat n
-spred (SS n) = n

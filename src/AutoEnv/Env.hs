@@ -51,7 +51,7 @@ f .>> g = Env $ applyE g . applyEnv f
 
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
-(.:) :: (SubstVar v) => v m -> Env v n m -> Env v (S n) m
+(.:) :: v m -> Env v n m -> Env v (S n) m
 v .: f = Env $ \case FZ -> v; (FS x) -> applyEnv f x
 
 -- | append two environments
