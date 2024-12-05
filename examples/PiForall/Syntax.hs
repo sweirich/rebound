@@ -5,9 +5,9 @@
 -- biggest difference is a distinction between global and local names
 module PiForall.Syntax where
 
-import AutoEnv
+import AutoEnv hiding (unbind)
 import AutoEnv.Pat
-import AutoEnv.Bind
+import AutoEnv.Pat.LocalBind
 import AutoEnv.Pat.Rebind
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
@@ -26,24 +26,25 @@ type Typ = Term
 
 data Term (n :: Nat)
   = TyType
-  | Lam (Bind Term Term n)
+  | Lam (LocalBind Term Term n)
   | Var (Fin n)
   | Global GlobalName
-  | Pi (Typ n) (Bind Term Typ n)
+  | Pi (Typ n) (LocalBind Term Typ n)
   | Pos SourcePos (Term n)
-  | Let (Term n) (Bind Term Term n)
+  | Let (Term n) (LocalBind Term Term n)
   | TyCon TyConName [Typ n]
   | DataCon DataConName [Term n]
-  | Case [Match n]
+  | Case (Term n) [Match n]
   | App (Term n) (Term n)
   | Ann (Term n) (Typ n)
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
 -- `n` is the number of free variables in type annotations in the pattern
+-- LocalName is used for printing only, irrelevant for alpha-equivalence
 data Pattern (p :: Nat) (n :: Nat) where
   PatCon :: DataConName -> PatList p n -> Pattern p n
-  PatVar :: Pattern N1 n
+  PatVar :: LocalName -> Pattern N1 n
 
 data PatList p n where
   PNil :: PatList N0 n
@@ -106,7 +107,7 @@ isNumeral _ = Nothing
 
 -- | Is this pattern a variable
 isPatVar :: Pattern p n -> Bool
-isPatVar PatVar = True
+isPatVar (PatVar _) = True
 isPatVar _ = False
 
 strip :: Term n -> Term n
@@ -133,7 +134,7 @@ class Closed t where
   coerceClosed :: t n1 -> t n2
 
 instance Closed (Pattern p) where
-  coerceClosed PatVar = PatVar
+  coerceClosed (PatVar x) = PatVar x
   coerceClosed (PatCon n l) = PatCon n (coerceClosed l)
 
 instance Closed (PatList p) where
@@ -146,7 +147,7 @@ instance Closed (PatList p) where
 
 instance SNatI p => Sized (Pattern p) where
     type Size (Pattern p) = p
-    
+
 instance SNatI p => Sized (PatList p) where
     type Size (PatList p) = p
 
@@ -169,14 +170,14 @@ instance Subst Term Term where
   applyE r (Var x) = applyEnv r x
   applyE r (Global n) = Global n
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
-  applyE r (Case brs) = Case (map (applyE r) brs)
+  applyE r (Case t brs) = Case (applyE r t) (map (applyE r) brs)
   applyE r (Ann a t) = Ann (applyE r a) (applyE r t)
   applyE r (Let e1 bnd) = Let (applyE r e1) (applyE r bnd)
   applyE r (Pos sp e) = Pos sp (applyE r e)
 
 instance Subst Term (Pattern p) where
   applyE r (PatCon s ps) = PatCon s (applyE r ps)
-  applyE r PatVar = PatVar
+  applyE r (PatVar x) = PatVar x
 
 instance Subst Term Match where
   applyE r (Branch (b :: PatBind Term Term (Pattern p) n)) =
@@ -210,7 +211,7 @@ instance FV Term where
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
   appearsFree n (TyCon _ args) = any (appearsFree n) args
   appearsFree n (DataCon _ args) = any (appearsFree n) args
-  appearsFree n (Case b) = any (appearsFree n) b
+  appearsFree n (Case t b) = appearsFree n t || any (appearsFree n) b
   appearsFree n (Ann a t) = appearsFree n a || appearsFree n t
   appearsFree n (Pos _ a) = appearsFree n a
   appearsFree n (Let a b) = appearsFree n a || appearsFree n b
@@ -219,7 +220,7 @@ instance FV Match where
   appearsFree n (Branch bnd) = appearsFree n bnd
 
 instance FV (Pattern p) where
-  appearsFree n PatVar = False
+  appearsFree n (PatVar _) = False
   appearsFree n (PatCon _ ps) = False
 
 ----------------------------------------------
@@ -254,25 +255,25 @@ instance Strengthen Term where
   strengthen' m n (Global s) = pure (Global s)
   strengthen' m n TyType = pure TyType
   strengthen' m n (Lam b) = Lam <$> strengthen' m n b
-  strengthen' m n (DataCon c args) = DataCon c <$> mapM (strengthen' m n)args
+  strengthen' m n (DataCon c args) = DataCon c <$> mapM (strengthen' m n) args
   strengthen' m n (TyCon c args) = TyCon c <$> mapM (strengthen' m n) args
   strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
   strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Case b) = Case <$> mapM (strengthen' m n) b
+  strengthen' m n (Case a b) = Case <$> strengthen' m n a <*> mapM (strengthen' m n) b
   strengthen' m n (Ann a t) = Ann <$> strengthen' m n a <*> strengthen' m n t
   strengthen' m n (Pos p a) = Pos p <$> strengthen' m n a
   strengthen' m n (Let a b) = Let <$> strengthen' m n a <*> strengthen' m n b
 
 instance Strengthen (Pattern p) where
-  strengthen' m n PatVar = pure PatVar
-  strengthen' m n (PatCon c args) = 
+  strengthen' m n (PatVar x) = pure (PatVar x)
+  strengthen' m n (PatCon c args) =
       PatCon c <$> strengthen' m n args
 
 instance Strengthen (PatList p) where
   strengthen' m n PNil = pure PNil
   strengthen' m n (PCons p ps) = PCons <$> strengthen' m n p <*>
                                            strengthen' m n ps
-         
+
 instance Strengthen Match where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
 
@@ -281,10 +282,11 @@ instance Strengthen Match where
 --------------------------------------------------------
 
 instance PatEq (Pattern p1) (Pattern p2) where
-  patEq :: Pattern p1 n1 -> Pattern p2 n2 -> 
+  patEq :: Pattern p1 n1 -> Pattern p2 n2 ->
      Maybe (Size (Pattern p1) :~: Size (Pattern p2))
-  patEq PatVar PatVar = Just Refl
-  patEq (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 = 
+  -- ignore local names
+  patEq (PatVar _) (PatVar _) = Just Refl
+  patEq (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 =
     patEq ps1 ps2
   patEq _ _ = Nothing
 
@@ -292,7 +294,7 @@ instance PatEq (PatList p1) (PatList p2) where
   patEq :: PatList p1 n1 -> PatList p2 n2 -> Maybe (p1 :~: p2)
   patEq PNil PNil = Just Refl
   patEq (PCons p1 ps1) (PCons p2 ps2) = do
-    Refl <- patEq p1 p2 
+    Refl <- patEq p1 p2
     Refl <- patEq ps1 ps2
     return Refl
   patEq _ _ = Nothing
@@ -314,9 +316,9 @@ testEq2 _ _ = Nothing
 -}
 
 instance Eq (Match n) where
-  (Branch p1) == (Branch p2) = 
-      case patEq (getPat p1) (getPat p2) of 
-         Just Refl -> 
+  (Branch p1) == (Branch p2) =
+      case patEq (getPat p1) (getPat p2) of
+         Just Refl ->
             getBody p1 == getBody p2
          Nothing -> False
 
@@ -324,11 +326,11 @@ instance Eq (Match n) where
 -- make sure that the patterns are equal
 instance (SNatI m, Eq (Term n)) => Eq (PatBind Term Term (Pattern m) n) where
   b1 == b2 =
-    Maybe.isJust (patEq(getPat b1) (getPat b2))
+    Maybe.isJust (patEq (getPat b1) (getPat b2))
       && getBody b1 == getBody b2
 
 -- To compare binders, we only need to `unbind` them
-instance (Eq (Term n)) => Eq (Bind Term Term n) where
+instance (Eq (Term n)) => Eq (LocalBind Term Term n) where
   b1 == b2 = unbind b1 == unbind b2
 
 -- With the instance above the derivable equality instance
@@ -392,8 +394,8 @@ eitherRight =
     }
 
 prelude :: [ModuleEntry]
-prelude = [ModuleData unitDef, 
-           ModuleData boolDef, 
+prelude = [ModuleData unitDef,
+           ModuleData boolDef,
            ModuleData eitherDef]
 
 
@@ -437,7 +439,7 @@ instance Show (Term n) where
     showParen (d > 10) $
       showString "λ"
         . showsPrec 10 (unbind b)
-  showsPrec d (Case b) =
+  showsPrec d (Case t b) =
     showParen (d > 10) $
       showString "match"
         . showsPrec 10 b
@@ -449,13 +451,13 @@ instance Show (Term n) where
   showsPrec d (Pos p a) =
     showParen (d > 10) $
       showsPrec d a
-  showsPrec d (Let a b) = 
-    showParen (d > 10) $ 
-      showString "let _ = " . 
-      showsPrec 11 a . 
+  showsPrec d (Let a b) =
+    showParen (d > 10) $
+      showString "let _ = " .
+      showsPrec 11 a .
       showString " in " .
       showsPrec 10 (unbind b)
-        
+
 instance Show (Match b) where
   showsPrec d (Branch b) =
     showsPrec 10 (getPat b)
@@ -463,14 +465,14 @@ instance Show (Match b) where
       . showsPrec 11 (getBody b)
 
 instance Show (Pattern p n) where
-  showsPrec d PatVar = showString "_"
+  showsPrec d (PatVar x) = showString x
   showsPrec d (PatCon c ps) = showsPrec d c . showsPrec d ps
 
 instance Show (PatList p n) where
   showsPrec d PNil = id
-  showsPrec d (PCons p pl) = 
+  showsPrec d (PCons p pl) =
     showsPrec d p .
     showString " " .
     showsPrec 11 pl
-  
+
 

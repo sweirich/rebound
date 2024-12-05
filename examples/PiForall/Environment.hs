@@ -1,11 +1,11 @@
 module PiForall.Environment where
 
-import Data.List 
+import Data.List
 import Data.Maybe ( listToMaybe )
 import Control.Monad.Except
     ( MonadError(..), ExceptT, runExceptT )
 import Control.Monad.Reader
-    ( MonadReader(local), asks, ReaderT(runReaderT) )
+    ( MonadReader(local), ask, asks, ReaderT(runReaderT) )
 import Text.ParserCombinators.Parsec.Pos (SourcePos)
 import Prettyprinter ( Doc )
 
@@ -28,18 +28,18 @@ data Err = Err [SourceLocation] (Doc ())
 
 -- | The type checking Monad includes error (for error reporting) and IO
 -- (for warning messages).
-type TcMonad = ExceptT Err IO
+type TcMonad n = ReaderT (Env n) (ExceptT Err IO)
 
 -- | Entry point for the type checking monad, given an
 -- initial environment, returns either an error message
 -- or some result.
-runTcMonad :: TcMonad a -> IO (Either Err a)
-runTcMonad = runExceptT 
-    
+runTcMonad :: TcMonad N0 a -> IO (Either Err a)
+runTcMonad m = runExceptT (runReaderT m emptyEnv)
+
 
 -- | Environment manipulation and accessing functions
 -- The context 'gamma' is a list
-data Env p = Env 
+data Env p = Env
   { -- | Local variables 
     ctx :: Telescope p N0,
     -- | 
@@ -49,20 +49,24 @@ data Env p = Env
     -- has been checked.
     hints :: [ModuleEntry],
     -- | what part of the file we are in (for errors/warnings)
-    sourceLocation :: [SourceLocation] 
+    sourceLocation :: [SourceLocation]
   }
 
 emptyEnv :: Env N0
-emptyEnv = Env { 
+emptyEnv = Env {
   ctx = Tele,
   globals = prelude,
   hints = [],
   sourceLocation = []
 }
 
-lookupGlobalTy :: 
-  GlobalName -> Env n -> TcMonad (Typ N0)
-lookupGlobalTy v env = 
+lookupGlobalTy ::
+  GlobalName -> TcMonad n (Typ N0)
+lookupGlobalTy v = do
+    env <- ask
     case [a | ModuleDecl v' a <- globals env, v == v'] of
       [a] -> return a
       _  -> throwError undefined
+
+getLocalCtx :: TcMonad n (Telescope n N0)
+getLocalCtx = asks ctx
