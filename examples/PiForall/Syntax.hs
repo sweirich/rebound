@@ -1,16 +1,18 @@
 -- A port of https://github.com/sweirich/pi-forall
--- just focussing on the syntax and type checker for now.
--- will eventually include parser/prettyprinter
-
--- biggest difference is a distinction between global and local names
+-- This version distinguishes between global and local names
+-- Global names are strings (which must be unique). Local names 
+-- are represented by indices.
 module PiForall.Syntax where
 
 import AutoEnv hiding (unbind)
-import AutoEnv.Pat
-import AutoEnv.Pat.LocalBind
+import qualified AutoEnv.Pat.Simple as Pat
+import qualified AutoEnv.Pat.LocalBind as Local
 import AutoEnv.Pat.Rebind
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
+import Data.Set qualified as Set
+
+import Unsafe.Coerce (unsafeCoerce)
 
 -- | names of top level declarations/definitions
 -- must be unique
@@ -22,16 +24,18 @@ type TyConName = String
 -- | names of data constructors, like 'cons'
 type DataConName = String
 
+
+-- | types and terms (combined syntax)
 type Typ = Term
 
 data Term (n :: Nat)
   = TyType
-  | Lam (LocalBind Term Term n)
+  | Lam (Local.Bind Term Term n)
   | Var (Fin n)
   | Global GlobalName
-  | Pi (Typ n) (LocalBind Term Typ n)
+  | Pi (Typ n) (Local.Bind Term Typ n)
   | Pos SourcePos (Term n)
-  | Let (Term n) (LocalBind Term Term n)
+  | Let (Term n) (Local.Bind Term Term n)
   | TyCon TyConName [Typ n]
   | DataCon DataConName [Term n]
   | Case (Term n) [Match n]
@@ -41,57 +45,96 @@ data Term (n :: Nat)
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
 -- `n` is the number of free variables in type annotations in the pattern
+-- There are none, so this variable is always unconstrained.
 -- LocalName is used for printing only, irrelevant for alpha-equivalence
-data Pattern (p :: Nat) (n :: Nat) where
-  PatCon :: DataConName -> PatList p n -> Pattern p n
-  PatVar :: LocalName -> Pattern N1 n
+data Pattern (p :: Nat)  where
+  PatCon :: DataConName -> Pat.List Pattern p -> Pattern p
+  PatVar :: Local.LocalName -> Pattern N1
 
-data PatList p n where
-  PNil :: PatList N0 n
-  PCons :: Pattern p1 n -> PatList p2 n -> PatList (Plus p2 p1) n
+-- | lists of patterns where variables at each position bind 
+-- later in the pattern
+{-
+data PatList p where
+  PNil :: PatList N0
+  PCons :: Rebind (Pattern p1) (PatList p2) -> PatList (Plus p2 p1)
+-}
 
 -- A single branch in a match expression. Binds a pattern
 -- with expression variables, with an expression body
 data Match (n :: Nat)
-  = forall p. SNatI p => Branch (PatBind Term Term (Pattern p) n)
+  = forall p. SNatI p => Branch (Pat.Bind Term Term (Pattern p) n)
 
--- | Local assumption
+-- | Local assumption, either declarations of local variables or definitions (i.e. constraints on variables already in scope)
 data Local p n where
-  LocalDecl :: (Typ n) -> Local N1 n -- binding assumption
-  LocalDef  :: (Fin n) -> (Term n) -> Local N0 n -- nonbinding assumption
+  LocalDecl :: Local.LocalName -> (Typ n) -> Local N1 -- binding assumption
+  LocalDef  :: (Fin n) -> (Term n) -> Local N0 -- nonbinding assumption
 
--- Telescopes: snoc-lists of variable assumptions x1:A1, x2:A2, ....,xp:Ap
--- That are used as typing contexts
+-- | Telescopes: snoc-lists of local assumptions 
+-- These are scoped patterns because they include terms 
+-- that can mention variables that are already in scope
+-- or that have been bound earlier in the pattern.
 -- 'p' is the number of variables introduced by the telescope
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 data Telescope p n where
   Tele :: Telescope N0 n
   TSnoc :: Rebind (Telescope p) (Local p1) n -> Telescope (Plus p1 p) n
 
+infixl <:>
 -- | add a new local entry to a telescope
 (<:>) :: Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
 t <:> e = TSnoc (Rebind t e)
 
--- | Toplevel components of modules
-data ModuleEntry
-  = ModuleDecl { declName :: GlobalName, declType :: Typ N0 }
-  | ModuleDef  { declName :: GlobalName, declTerm :: Term N0 }
-  | ModuleData DataDef
-
+-- | 
 -- | Datatype definitions
 data DataDef = forall n.
   DataDef
-  { data_name :: TyConName,
+  { 
     data_params :: Telescope n Z,
     data_sort :: Typ Z,
     data_constructors :: [ConstructorDef n]
   }
+  
 
 data ConstructorDef n = forall m.
   ConstructorDef
   { con_name :: DataConName,
     con_arguments :: Telescope m n
   }
+
+data ScopedConstructorDef = forall n.
+  ScopedConstructorDef 
+    (Telescope n Z) (ConstructorDef n)
+
+
+-- | The names of type/data constructors used in the module
+data ConstructorNames = ConstructorNames
+  { tconNames :: Set.Set String,
+    dconNames :: Set.Set String
+  }
+
+
+-- Toplevel components of modules
+data ModuleEntry
+  = ModuleDecl { declName :: GlobalName, declType :: forall n. Typ n }
+  | ModuleDef  { declName :: GlobalName, declTerm :: forall n. Term n }
+  | ModuleData { declName :: GlobalName, declData :: DataDef }
+  
+-- | module names
+type ModuleName = String
+
+-- | A Module has a name, a list of imports, a list of declarations,
+--   and a set of constructor names (which affect parsing).
+data Module = Module
+  { moduleName :: ModuleName,
+    moduleImports :: [ModuleImport],
+    moduleEntries :: [ModuleEntry],
+    moduleConstructors :: ConstructorNames
+  }
+  
+-- | References to other modules (brings declarations and definitions into scope)
+newtype ModuleImport = ModuleImport ModuleName
+  deriving (Show, Eq, Ord)
+  
 
 -------------------------------------------------------
 
@@ -130,29 +173,30 @@ unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
 -- patterns do not refer to any variables
 
-class Closed t where
-  coerceClosed :: t n1 -> t n2
-
+{-
 instance Closed (Pattern p) where
   coerceClosed (PatVar x) = PatVar x
   coerceClosed (PatCon n l) = PatCon n (coerceClosed l)
 
 instance Closed (PatList p) where
   coerceClosed PNil = PNil
-  coerceClosed (PCons p l) = PCons (coerceClosed p) (coerceClosed l)
+  coerceClosed (PCons r) = PCons (coerceClosed r) 
+-}
 
 ----------------------------------------------
 --  Size instances
 ----------------------------------------------
 
-instance SNatI p => Sized (Pattern p) where
+instance Pat.Sized (Pattern p) where
     type Size (Pattern p) = p
+    size (PatCon _ p) = size p
+    size (PatVar _) = s1
 
-instance SNatI p => Sized (PatList p) where
+instance Pat.Sized (PatList p) where
     type Size (PatList p) = p
-
-instance SNatI p => Sized (Telescope p) where
-    type Size (Telescope p) = p
+    size PNil = s0
+    size (PCons rb) = size rb
+    
 
 ----------------------------------------------
 --  Subst instances
@@ -180,12 +224,24 @@ instance Subst Term (Pattern p) where
   applyE r (PatVar x) = PatVar x
 
 instance Subst Term Match where
-  applyE r (Branch (b :: PatBind Term Term (Pattern p) n)) =
+  applyE r (Branch (b :: Pat.Bind Term Term (Pattern p) n)) =
     Branch (applyE r b)
 
 instance Subst Term (PatList p) where
   applyE r PNil = PNil
-  applyE r (PCons p ps) = PCons (applyE r p) (applyE r ps)
+  applyE r (PCons rb) = PCons (applyE r rb) 
+
+{-
+instance Subst Term (Telescope p) where
+  applyE r Tele = Tele
+  applyE r (TSnoc rb) = TSnoc (applyE r rb)
+
+instance Subst Term (Local p) where
+  applyE r (LocalDecl t) = LocalDecl (applyE r t)
+  applyE r (LocalDef x u) = 
+    case r u of 
+-}      
+    
 
 ----------------------------------------------
 -- Free variable calculation
@@ -271,8 +327,8 @@ instance Strengthen (Pattern p) where
 
 instance Strengthen (PatList p) where
   strengthen' m n PNil = pure PNil
-  strengthen' m n (PCons p ps) = PCons <$> strengthen' m n p <*>
-                                           strengthen' m n ps
+  strengthen' m n (PCons rb) = PCons <$> strengthen' m n rb 
+                                           
 
 instance Strengthen Match where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
@@ -281,19 +337,19 @@ instance Strengthen Match where
 -- Alpha equivalence (Eq type class)
 --------------------------------------------------------
 
-instance PatEq (Pattern p1) (Pattern p2) where
+instance Pat.PatEq (Pattern p1) (Pattern p2) where
   patEq :: Pattern p1 n1 -> Pattern p2 n2 ->
-     Maybe (Size (Pattern p1) :~: Size (Pattern p2))
+     Maybe (Pat.Size (Pattern p1) :~: Pat.Size (Pattern p2))
   -- ignore local names
   patEq (PatVar _) (PatVar _) = Just Refl
   patEq (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 =
     patEq ps1 ps2
   patEq _ _ = Nothing
 
-instance PatEq (PatList p1) (PatList p2) where
+instance Pat.PatEq (PatList p1) (PatList p2) where
   patEq :: PatList p1 n1 -> PatList p2 n2 -> Maybe (p1 :~: p2)
   patEq PNil PNil = Just Refl
-  patEq (PCons p1 ps1) (PCons p2 ps2) = do
+  patEq (PCons (Rebind p1 ps1)) (PCons (Rebind p2 ps2)) = do
     Refl <- patEq p1 p2
     Refl <- patEq ps1 ps2
     return Refl
@@ -324,13 +380,13 @@ instance Eq (Match n) where
 
 -- To compare pattern binders, we need to unbind, but also
 -- make sure that the patterns are equal
-instance (SNatI m, Eq (Term n)) => Eq (PatBind Term Term (Pattern m) n) where
+instance (SNatI m, Eq (Term n)) => Eq (Pat.Bind Term Term (Pattern m) n) where
   b1 == b2 =
     Maybe.isJust (patEq (getPat b1) (getPat b2))
       && getBody b1 == getBody b2
 
 -- To compare binders, we only need to `unbind` them
-instance (Eq (Term n)) => Eq (LocalBind Term Term n) where
+instance (Eq (Term n)) => Eq (Local.Bind Term Term n) where
   b1 == b2 = unbind b1 == unbind b2
 
 -- With the instance above the derivable equality instance
@@ -342,10 +398,46 @@ deriving instance (Eq (Term n))
 -- Prelude datatypes
 -------------------------------------------------------
 
+eqDef :: DataDef
+eqDef = 
+  DataDef 
+  { 
+    data_params = Tele <:> LocalDecl @N0 TyType   -- "A"
+                       <:> LocalDecl @N1 TyType,  -- "B"
+    data_sort = TyType,
+    data_constructors = [reflCon]
+  }
+
+reflCon :: ConstructorDef N2
+reflCon = 
+  ConstructorDef
+  { con_name = "Refl",
+    con_arguments = Tele <:> LocalDef f0 (Var f1)  -- "B = A"
+  }
+
+sigmaDef :: DataDef
+sigmaDef = 
+  DataDef
+  { 
+    data_params = Tele <:> LocalDecl @N0 TyType 
+                       <:> LocalDecl @N1 (Pi (Var f0) (L.bind TyType)),
+    data_sort = TyType,
+    data_constructors = [prodCon]
+  }
+
+prodCon :: ConstructorDef N2
+prodCon = 
+  ConstructorDef 
+  { con_name = "Prod",
+    con_arguments = Tele <:> LocalDecl (Var f1) 
+                         <:> LocalDecl (App (Var f2) (Var f1))
+  }
+
+
 unitDef :: DataDef
 unitDef =
   DataDef
-    { data_name = "Unit",
+    { 
       data_params = Tele,
       data_sort = TyType,
       data_constructors = [unitCon]
@@ -361,7 +453,7 @@ unitCon =
 boolDef :: DataDef
 boolDef =
   DataDef
-    { data_name = "Bool",
+    { 
       data_params = Tele,
       data_sort = TyType,
       data_constructors = [boolCon False, boolCon True]
@@ -373,7 +465,7 @@ boolCon b = ConstructorDef {con_name = show b, con_arguments = Tele}
 eitherDef :: DataDef
 eitherDef =
   DataDef
-    { data_name = "Either",
+    { 
       data_params = Tele <:> LocalDecl TyType <:> LocalDecl TyType,
       data_sort = TyType,
       data_constructors = [eitherLeft, eitherRight]
@@ -382,21 +474,38 @@ eitherDef =
 eitherLeft :: ConstructorDef N2
 eitherLeft =
   ConstructorDef
-    { con_name = "Left",
+    { 
+      con_name = "Left",
       con_arguments = Tele <:> LocalDecl (Var f0)
     }
 
 eitherRight :: ConstructorDef N2
 eitherRight =
   ConstructorDef
-    { con_name = "Right",
+    { 
+      con_name = "Right",
       con_arguments = Tele <:> LocalDecl (Var f1)
     }
 
 prelude :: [ModuleEntry]
-prelude = [ModuleData unitDef,
-           ModuleData boolDef,
-           ModuleData eitherDef]
+prelude = [ModuleData "Unit" unitDef,
+           ModuleData "Bool" boolDef,
+           ModuleData "Either" eitherDef,
+           ModuleData "Sigma" sigmaDef,
+           ModuleData "(=)" eqDef]
+
+
+initialConstructorNames :: ConstructorNames
+initialConstructorNames = 
+  foldr g (ConstructorNames Set.empty Set.empty) prelude where
+    g (ModuleData dn (DataDef _ _ dc)) cn = 
+      ConstructorNames {
+        tconNames = Set.insert dn(tconNames cn),
+        dconNames = Set.union (Set.fromList (map con_name dc)) (dconNames cn)
+      }
+    g _ cn = cn
+
+
 
 
 --------------------------------------------------------
@@ -470,7 +579,7 @@ instance Show (Pattern p n) where
 
 instance Show (PatList p n) where
   showsPrec d PNil = id
-  showsPrec d (PCons p pl) =
+  showsPrec d (PCons (Rebind p pl)) =
     showsPrec d p .
     showString " " .
     showsPrec 11 pl

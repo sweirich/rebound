@@ -1,8 +1,8 @@
 module AutoEnv.Pat.PatN where
 
-import AutoEnv.Lib
+import Data.Nat
 import AutoEnv.Classes
-import AutoEnv.Pat
+import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.Env
 
 ----------------------------------------------------------------
@@ -10,27 +10,12 @@ import AutoEnv.Env
 ----------------------------------------------------------------
 
 -- * A pattern that binds `p` variables
-data PatN (p :: Nat) (n :: Nat) where
-  PatN :: SNat p -> PatN p n
+data PatN (p :: Nat) where
+  PatN :: SNat p -> PatN p
 
-instance Sized (PatN p) where
+instance (SNatI p) => Pat.Sized (PatN p) where
   type Size (PatN p) = p
   size (PatN sn) = sn
-
-instance (SubstVar v) => Subst v (PatN p) where
-  applyE r (PatN sn) = PatN sn
-
-instance Strengthen (PatN p) where
-  strengthen' m n (PatN sn) = Just (PatN sn)
-
-instance FV (PatN p) where
-    appearsFree _ _ = False
-
-instance Alpha (PatN p) where
-    aeq _ _ = True
-
-instance PatEq (PatN p1) (PatN p2) where
-    patEq (PatN sn1) (PatN sn2) = testEquality sn1 sn2
 
 ----------------------------------------------------------------
 -- Double binder
@@ -39,26 +24,29 @@ instance PatEq (PatN p1) (PatN p2) where
 -- A double binder is just a pattern binding with
 -- "SNat 2" as the pattern
 
-type Bind2 v c n = PatBind v c (PatN N2) n
+s2' :: SNat Z
+s2' = snat
+
+type Bind2 v c n = Pat.Bind v c (PatN N2) n
 
 bind2 :: (Subst v c) => c (S (S n)) -> Bind2 v c n
-bind2 = patBind (PatN s2)
+bind2 = Pat.bind (PatN s2)
 
 unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
-unbind2 = getBody
+unbind2 = Pat.getBody
 
 unbind2With ::
   (SubstVar v) =>
   Bind2 v c n ->
   (forall m. Env v m n -> c (S (S m)) -> d) ->
   d
-unbind2With b f = unPatBindWithEnv b (const f)
+unbind2With b f = Pat.unBindWith b (const f)
 
 instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
-instantiate2 b v1 v2 = instantiatePat b (v1 .: (v2 .: zeroE))
+instantiate2 b v1 v2 = Pat.instantiate b (v1 .: (v2 .: zeroE))
 
 instantiate2With ::
-  (SubstVar v) =>
+  (SubstVar v, SNatI n) =>
   Bind2 v c n ->
   v n ->
   v n ->

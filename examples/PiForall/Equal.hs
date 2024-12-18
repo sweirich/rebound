@@ -1,7 +1,7 @@
 module PiForall.Equal where
 
 import PiForall.Syntax
-import PiForall.Environment (TcMonad )
+import PiForall.Environment (TcMonad, Context )
 import qualified PiForall.Environment as Env
 import PiForall.PrettyPrint
 
@@ -23,8 +23,8 @@ import Control.Monad.Except (catchError)
 equate :: forall n. SNatI n => Term n -> Term n -> TcMonad ()
 equate t1 t2 | t1 == t2 = return () 
 equate t1 t2 = do
-  n1 <- whnf t1  
-  n2 <- whnf t2
+  n1 <- whnf t1 
+  n2 <- whnf t2 
   case (n1, n2) of 
     (TyType, TyType) -> return ()
     (Var x,  Var y) | x == y -> return ()
@@ -60,13 +60,10 @@ equate t1 t2 = do
       zipWithM_ matchBr brs1 brs2       
     (_,_) -> tyErr n1 n2
  where tyErr n1 n2 = do 
-          gamma <- Env.getLocalCtx
+          -- gamma <- Env.getLocalCtx
           Env.err [DS "Expected", DD n2,
-               DS "but found", DD n1,
-               DS "in context:", DD gamma]
-       
-
-{- SOLN EP -}
+                   DS "but found", DD n1]
+               
 -- | Match up args
 equateArgs :: SNatI n => [Term n] -> [Term n] -> TcMonad ()    
 equateArgs (a1:t1s) (a2:t2s) = do
@@ -74,10 +71,10 @@ equateArgs (a1:t1s) (a2:t2s) = do
   equateArgs t1s t2s
 equateArgs [] [] = return ()
 equateArgs a1 a2 = do 
-          gamma <- Env.getLocalCtx
+          -- gamma <- Env.getLocalCtx
           Env.err [DS "Expected", DD (length a2),
-                   DS "but found", DD (length a1),
-                   DS "in context:", DD gamma]
+                   DS "but found", DD (length a1) ]
+                   
 
 
 -------------------------------------------------------
@@ -96,11 +93,17 @@ ensureTCon aty = do
 -- | Convert a term to its weak-head normal form.             
 -- | TODO: add explicit environment
 whnf :: SNatI n => Term n -> TcMonad (Term n)
+whnf (Global y) = do
+  x <- Env.lookupGlobalDef y
+  return x
+     `catchError` \_ -> return (Global y)
+  
 whnf (Var x) = do      
-  maybeDef <- Env.lookupDef x
-  case maybeDef of 
-    (Just d) -> whnf d 
-    _ -> return (Var x)
+  -- maybeDef <- Env.lookupDef x
+  -- case maybeDef of 
+  --  (Just d) -> whnf d 
+  --  _ -> 
+          return (Var x)
         
 whnf (App t1 t2) = do
   nf <- whnf t1 
@@ -137,43 +140,47 @@ whnf tm = return tm
 -- If there is an obvious mismatch, fail with an error
 -- If either term is "ambiguous" (i.e. neutral), give up and 
 -- succeed with an empty list
-unify :: SNatI n => Term n -> Term n -> TcMonad [Local Z n]
-unify tx ty = do
-  txnf <- whnf tx
-  tynf <- whnf ty
+unify :: forall n p. SNatI n => SNat p -> Term (Plus p n) -> Term (Plus p n) -> TcMonad [(Fin n, Term n)]
+unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
+  (txnf :: Term (Plus p n)) <- whnf tx
+  (tynf :: Term (Plus p n)) <- whnf ty
   if txnf == tynf
     then return []
     else case (txnf, tynf) of
       (Var x, Var y) | x == y -> return []
-      (Var y, yty)   | not (y `appearsFree` yty)
-              -> return [LocalDef y yty] 
-      (yty, Var y)   | not (y `appearsFree` yty) 
-              -> return [LocalDef y yty]
+      (Var y, yty)  |
+        Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
+        Just yty' <- strengthen' p (snat :: SNat n) yty
+        -> if not (y' `appearsFree` yty')
+            then return [(y', yty')] 
+            else return [] 
+      (yty, Var y)  |
+        Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
+        Just yty' <- strengthen' p (snat :: SNat n) yty
+        -> if not (y' `appearsFree` yty')
+            then return [(y', yty')] 
+            else return [] 
       (DataCon n1 a1, DataCon n2 a2) 
-        | n1 == n2 ->  unifyArgs a1 a2
+        | n1 == n2 ->  unifyArgs p a1 a2
       (TyCon s1 tms1, TyCon s2 tms2)
-        | s1 == s2 -> unifyArgs tms1 tms2
+        | s1 == s2 -> unifyArgs p tms1 tms2
       (Lam bnd1, Lam bnd2) -> do
-        locals <- unify (L.unbind bnd1) (L.unbind bnd2)
-        -- TODO: make sure that we don't def the 
-        -- bound variable
-        undefined
+        unify @n (SS p) (L.unbind bnd1) (L.unbind bnd2)
       (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
-        ds1 <- unify tyA1 tyA2
-        ds2 <- unify (L.unbind bnd1) (L.unbind bnd2)
-        let ds2' = undefined -- strengthen!!
-        return (ds1 ++ ds2')
+        ds1 <- unify p tyA1 tyA2
+        ds2 <- unify @n (SS p) (L.unbind bnd1) (L.unbind bnd2)
+        return (ds1 ++ ds2) 
       _ ->
         if amb txnf || amb tynf
           then return []
           else Env.err [DS "Cannot equate", DD txnf, DS "and", DD tynf] 
   where
-    unifyArgs (t1 : a1s) (t2 : a2s) = do
-      ds <- unify t1 t2
-      ds' <- unifyArgs a1s a2s
+    unifyArgs p (t1 : a1s) (t2 : a2s) = do
+      ds <- unify p t1 t2
+      ds' <- unifyArgs p a1s a2s
       return $ ds ++ ds'
-    unifyArgs [] [] = return []
-    unifyArgs _ _ = Env.err [DS "internal error (unify)"] 
+    unifyArgs p [] [] = return []
+    unifyArgs _ _ _ = Env.err [DS "internal error (unify)"] 
 
 
 -- | Is a term "ambiguous" when it comes to unification?
@@ -190,27 +197,22 @@ amb _ = False
 -- otherwise throws an error
 
 -- | Compare a pattern with an expression, potentially
--- producing a substitution for all of the variables
+-- producing a substitution for variables
 -- bound in the pattern
-patternMatches :: forall p n. (SNatI n) => Term n -> Pattern p n -> TcMonad (Env Term p n)
+patternMatches :: forall p n. (SNatI n) => Term n -> Pattern p n 
+               -> TcMonad (Env Term p n)
 patternMatches e (PatVar _) = return (oneE e)
 patternMatches (DataCon n args) (PatCon l ps) 
   | l == n = patternMatchList args ps
 patternMatches nf pat = Env.err [DS "arg", DD nf, DS "doesn't match pattern", DD pat]
 
-
-patternMatchList :: (SNatI n) => [Term n] -> PatList p n -> TcMonad (Env Term p n)
+patternMatchList :: forall p n. (SNatI n) => [Term n] -> PatList p n -> TcMonad (Env Term p n)
 patternMatchList [] PNil = return zeroE
-patternMatchList (e1 : es) (PCons p1 ps)  = undefined
-patternMatchList _ _ = Env.err []
-{-
-  case axiomAssoc of
-    Refl -> do
-            env1 <- patternMatch e1 p1 
-            env2 <- patternMatchList es (applyE (env1 .++ idE) ps) 
-            return (env2 .++ env1)
-patternMatchList _ _ = Env.err []
--}
+patternMatchList (e1 : es) (PCons rb) = unRebind rb $ \p1 ps -> do
+    env1 <- patternMatches e1 p1 
+    env2 <- patternMatchList es (applyE (env1 .++ idE) ps) 
+    return (env2 .++ env1)
+patternMatchList _ _ = Env.err [DS "pattern match failure"]
 
 {-
 findBranch :: forall n. (SNatI n) => Term n -> [Match n] -> Maybe (Term n)

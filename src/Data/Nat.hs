@@ -58,16 +58,16 @@ data SNat (n :: Nat) where
   SS :: SNat n -> SNat (S n)
 
 s0 :: SNat N0
-s0 = SZ
+s0 = snat
 
 s1 :: SNat N1
-s1 = SS s0
+s1 = snat
 
 s2 :: SNat N2
-s2 = SS s1
+s2 = snat
 
 s3 :: SNat N3
-s3 = SS s2
+s3 = snat
 
 toIntSNat :: SNat n -> Int
 toIntSNat SZ = 0
@@ -107,11 +107,13 @@ instance SNatI Z where
   snat = SZ
 
 instance (SNatI n) => SNatI (S n) where
-  snat :: (SNatI n) => SNat (S n)
+  -- snat :: (SNatI n) => SNat (S n)
   snat = SS snat
+
 
 -- Construct an implicit SNat from an implicit one
 withSNat :: SNat n -> ((SNatI n) => r) -> r
 withSNat SZ k = k
 withSNat (SS n) k = withSNat n k
+
 

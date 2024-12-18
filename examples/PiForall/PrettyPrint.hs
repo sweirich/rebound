@@ -1,5 +1,5 @@
 -- | A Pretty Printer.
-module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, debug) where
+module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, debug, DispInfo, initDI) where
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
@@ -11,6 +11,7 @@ import qualified Prettyprinter as PP
 
 
 import AutoEnv.Pat
+import AutoEnv.Pat.Rebind
 import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Pat.LocalBind
@@ -34,6 +35,7 @@ class Display d where
 pp :: Display d => d -> String
 pp p = show (display p initDI)
 
+-- | For debugging
 debug :: Display d => d -> String
 debug p = show (display p debugDI) where
     debugDI = initDI{showLongNames = True, showAnnots=True}
@@ -354,7 +356,7 @@ instance Display (Pattern p n) where
 
 instance Display (PatList p n) where
   display PNil = mempty
-  display (PCons p ps) = do 
+  display (PCons (Rebind p ps)) = do 
     da <- display p 
     ds <- display ps
     return $ da <+> ds

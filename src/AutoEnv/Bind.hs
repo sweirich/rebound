@@ -29,6 +29,14 @@ instance (Subst v v, Subst v c, FV c) => FV (Bind v c) where
 bind :: (Subst v c) => c (S n) -> Bind v c n
 bind = Bind idE
 
+-- | access the body of the binder  (inverse of bind)
+unbind :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)
+unbind (Bind r t) = applyE (up r) t
+
+-- | access the body of the binder
+getBody :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)
+getBody = unbind
+
 -- | instantiate a binder with a term
 instantiate :: (Subst v c) => Bind v c n -> v n -> c n
 instantiate b v = unbindWith b (\r e -> applyE (v .: r) e)
@@ -41,10 +49,6 @@ instantiateWith ::
   (forall m n. Env v m n -> c m -> d n) ->
   d n
 instantiateWith (Bind r a) v f = f (v .: r) a
-
--- | access the body of the binder  (inverse of bind)
-unbind :: forall v c n. (Subst v v, Subst v c) => Bind v c n -> c (S n)
-unbind (Bind r t) = applyE (up r) t
 
 -- | unbind a binder and apply the function to the argument and subterm
 unbindWith ::

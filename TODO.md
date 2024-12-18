@@ -13,6 +13,7 @@
 - Improve efficiency by changing the representations of environments and nats
 
 - Add benchmarks
+   - make new entries in lambda-n-ways for this library
 
 - Add testsuite for correctness
 

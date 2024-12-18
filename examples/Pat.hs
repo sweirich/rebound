@@ -16,9 +16,10 @@
 module Pat where
 
 import AutoEnv
+import qualified AutoEnv.Bind as B
+import qualified AutoEnv.Pat.Simple as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
-import AutoEnv.Pat
 import Data.Vec qualified
 
 ----------------------------------------------
@@ -34,7 +35,7 @@ import Data.Vec qualified
 -- is a value
 data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
-  Lam :: Bind Exp Exp n -> Exp n
+  Lam :: B.Bind Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
   Con :: String -> Exp n
   -- ^ constant (or symbol) like 'cons or 'nil
@@ -45,7 +46,7 @@ data Exp (n :: Nat) where
 -- i.e. a data structure that binds m variables in some
 -- expression body with scope n
 data Branch (n :: Nat) where
-  Branch :: PatBind Exp Exp (Pat m) n -> Branch n
+  Branch :: Pat.Bind Exp Exp (Pat m) n -> Branch n
 
 -- The index `m` in the pattern is the number of occurrences of
 -- PVar, i.e. the number variables bound by the pattern.
@@ -55,13 +56,13 @@ data Branch (n :: Nat) where
 -- variables.
 -- To prevent patterns of the form "x y z", this type is split
 -- into top level patterns (Pat) and applications of constants (ConApp)
-data Pat (m :: Nat) (n :: Nat) where
-  PVar :: Pat N1 n -- binds exactly one variable
-  PHead :: ConApp m n -> Pat m n
+data Pat (m :: Nat) where
+  PVar :: Pat N1 -- binds exactly one variable
+  PHead :: ConApp m -> Pat m
 
-data ConApp (m :: Nat) (n :: Nat) where
-  PCon :: String -> ConApp N0 n -- binds zero variables
-  PApp :: ConApp m1 n -> Pat m2 n -> ConApp (Plus m1 m2) n
+data ConApp (m :: Nat) where
+  PCon :: String -> ConApp N0 -- binds zero variables
+  PApp :: ConApp m1 -> Pat m2 -> ConApp (Plus m1 m2)
 
 -- NOTE: The index `n` is the number of free variables that
 -- appear in the pattern. Patterns here does not include any
@@ -87,18 +88,18 @@ data ConApp (m :: Nat) (n :: Nat) where
 -- that number from the pattern itself by counting the number
 -- of occurrences of `PVar`.
 
-instance Sized (Pat m) where
+instance Pat.Sized (Pat m) where
   type Size (Pat m) = m
 
-  size :: Pat m n -> SNat (Size (Pat m))
+  size :: Pat m -> SNat (Pat.Size (Pat m))
   size PVar = s1
-  size (PHead p) = size p 
+  size (PHead p) = Pat.size p 
 
 
-instance Sized (ConApp m) where
+instance Pat.Sized (ConApp m) where
   type Size (ConApp m) = m
 
-  size (PApp p1 p2) = sPlus (size p1) (size p2)
+  size (PApp p1 p2) = sPlus (Pat.size p1) (Pat.size p2)
   size (PCon s) = s0
 
 -- NOTE: we could drop `size` from the type class 
@@ -130,19 +131,6 @@ instance Subst Exp Branch where
   applyE :: Env Exp n m -> Branch n -> Branch m
   applyE r (Branch bnd) = Branch (applyE r bnd)
 
--- These instances are trivial because there are no variable
--- occurrences in patterns. It would be justifiable to 
--- implement them as applyE _ p = p. However, the type 
--- system doesn't know that there are no variables, so we have to 
--- either prove it to the type system by traversing the term
--- or use unsafeCoerce
-instance Subst Exp (Pat m) where
-  applyE r PVar = PVar
-  applyE r (PHead p) = PHead (applyE r p)
-
-instance Subst Exp (ConApp m) where
-  applyE r (PApp p1 p2) = PApp (applyE r p1) (applyE r p2)
-  applyE r (PCon s) = PCon s
 
 ----------------------------------------------
 -- Example terms
@@ -151,18 +139,18 @@ instance Subst Exp (ConApp m) where
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z
-t0 = Lam (bind (Var f0))
+t0 = Lam (B.bind (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
 t1 =
   Lam
-    ( bind
+    ( B.bind
         ( Lam
-            ( bind
+            ( B.bind
                 ( Var f1
-                    `App` (Lam (bind (Var f0)) `App` Var f0)
+                    `App` (Lam (B.bind (Var f0)) `App` Var f0)
                 )
             )
         )
@@ -173,16 +161,16 @@ t1 =
 t2 :: Exp Z
 t2 =
   Lam
-    ( bind
+    ( B.bind
         ( Case
             (Var f0)
             [ Branch
-                ( patBind @_ @_ @(Pat N0)
+                ( Pat.bind @_ @_ @(Pat N0)
                     (PHead (PCon "Nil"))
                     (Var f0)
                 ),
               Branch
-                ( patBind @_ @_ @(Pat N2)
+                ( Pat.bind @_ @_ @(Pat N2)
                     (PHead (PCon "Cons" `PApp` PVar `PApp` PVar))
                     (Var f0)
                 )
@@ -225,7 +213,7 @@ instance Show (Exp n) where
   showsPrec d (Lam b) =
     showParen (d > 10) $
       showString "λ. "
-        . shows (unbind b)
+        . shows (B.unbind b)
   showsPrec d (Con s) = showString s
   showsPrec d (Case e brs) =
     showParen (d > 10) $
@@ -234,12 +222,12 @@ instance Show (Exp n) where
         . showString " of "
         . shows brs
 
-instance Show (Pat m n) where
-  showsPrec :: Int -> Pat m n -> String -> String
+instance Show (Pat m) where
+  showsPrec :: Int -> Pat m -> String -> String
   showsPrec d PVar = showString "V"
   showsPrec d (PHead p) = showsPrec d p
   
-instance Show (ConApp m n) where
+instance Show (ConApp m) where
   showsPrec d (PApp p1 p2) =
     showParen (d > 0) $
       showsPrec 10 p1
@@ -253,9 +241,9 @@ instance Show (ConApp m n) where
 instance Show (Branch n) where
   showsPrec :: Int -> Branch n -> String -> String
   showsPrec d (Branch bnd) =
-    shows (getPat bnd)
+    shows (Pat.getPat bnd)
       . showString " => "
-      . showsPrec d (getBody bnd)
+      . showsPrec d (Pat.getBody bnd)
 
 --------------------------------------------------------------
 
@@ -287,47 +275,46 @@ instance Show (Branch n) where
 -- equal. Pattern matching on this GADT brings an equality
 -- between a and b into the context of the term.)
 
-instance PatEq (Pat m1) (Pat m2) where
+instance Pat.PatEq (Pat m1) (Pat m2) where
   patEq PVar PVar = Just Refl
   patEq (PHead p1) (PHead p2) = do
-    Refl <- patEq p1 p2
+    Refl <- Pat.patEq p1 p2
     return Refl
   patEq _ _ = Nothing
 
-instance PatEq (ConApp m1) (ConApp m2) where
+instance Pat.PatEq (ConApp m1) (ConApp m2) where
   patEq (PApp p1 p2) (PApp p1' p2') = do
-    Refl <- patEq p1 p1'
-    Refl <- patEq p2 p2'
+    Refl <- Pat.patEq p1 p1'
+    Refl <- Pat.patEq p2 p2'
     return Refl
   patEq (PCon s1) (PCon s2) | s1 == s2 = Just Refl
   patEq _ _ = Nothing
 
 
 -- the generalized equality can be used for the usual equality
-instance Eq (Pat m n) where
-  (==) :: Pat m n -> Pat m n -> Bool
-  p1 == p2 = Maybe.isJust (patEq p1 p2)
+instance Eq (Pat m) where
+  p1 == p2 = Maybe.isJust (Pat.patEq p1 p2)
 
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
-  (Branch (p1 :: PatBind Exp Exp (Pat m1) n))
-    == (Branch (p2 :: PatBind Exp Exp (Pat m2) n)) =
+  (Branch (p1 :: Pat.Bind Exp Exp (Pat m1) n))
+    == (Branch (p2 :: Pat.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (size (getPat p1) :: SNat m1)
-        (size (getPat p2) :: SNat m2) of
+        (Pat.size (Pat.getPat p1) :: SNat m1)
+        (Pat.size (Pat.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
 -- To compare simple binders, we need to `unbind` them
-instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
-  b1 == b2 = unbind b1 == unbind b2
+instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
+  b1 == b2 = B.unbind b1 == B.unbind b2
 
 -- To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
-instance (Eq (Exp n)) => Eq (PatBind Exp Exp (Pat m) n) where
+instance (Eq (Exp n)) => Eq (Pat.Bind Exp Exp (Pat m) n) where
   b1 == b2 =
-    Maybe.isJust (patEq (getPat b1) (getPat b2))
-      && getBody b1 == getBody b2
+    Maybe.isJust (Pat.patEq (Pat.getPat b1) (Pat.getPat b2))
+      && Pat.getBody b1 == Pat.getBody b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
@@ -337,10 +324,10 @@ deriving instance (Eq (Exp n))
 -- Pattern matching code
 --------------------------------------------------------
 
-p1 :: Pat N2 n
+p1 :: Pat N2
 p1 = PHead $ PApp (PApp (PCon "C") PVar) PVar
 
-p2 :: Pat N2 n
+p2 :: Pat N2
 p2 = PHead $ PApp (PApp (PCon "D") PVar) PVar
 
 e1 :: Exp N0
@@ -366,15 +353,15 @@ e2 = App (App (Con "D") (Con "A")) (Con "C")
 -- bound in the pattern
 -- Note that the pattern "x y" will match the expression "e1 e2"
 -- There is no restriction that the pattern be headed by a constant
-patternMatch :: Pat p n -> Exp m -> Maybe (Env Exp p m)
+patternMatch :: Pat p -> Exp m -> Maybe (Env Exp p m)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PHead p) e = patternMatchApp p e
 
-patternMatchApp :: ConApp p n -> Exp m -> Maybe (Env Exp p m)
+patternMatchApp :: ConApp p -> Exp m -> Maybe (Env Exp p m)
 patternMatchApp (PApp p1 p2) (App e1 e2) = do
   env1 <- patternMatchApp p1 e1
   env2 <- patternMatch p2 e2
-  withSNat (size p1) $ return (env1 .++ env2)
+  withSNat (Pat.size p1) $ return (env1 .++ env2)
 patternMatchApp (PCon s1) (Con s2) =
   if s1 == s2 then Just zeroE else Nothing
 patternMatchApp _ _ = Nothing
@@ -382,8 +369,8 @@ patternMatchApp _ _ = Nothing
 findBranch :: Exp n -> [Branch n] -> Maybe (Exp n)
 findBranch e [] = Nothing
 findBranch e (Branch bind : brs) =
-  case patternMatch (getPat bind) e of
-    Just r -> Just $ instantiatePat bind r
+  case patternMatch (Pat.getPat bind) e of
+    Just r -> Just $ Pat.instantiate bind r
     Nothing -> findBranch e brs
 
 --------------------------------------------------------
@@ -409,7 +396,7 @@ eval (Lam b) = Lam b
 eval (App e1 e2) =
   let v = eval e2
    in case eval e1 of
-        Lam b -> eval (instantiate b v)
+        Lam b -> eval (B.instantiate b v)
         t -> App t v -- if cannot reduce, return neutral term
 eval (Con s) = Con s
 eval (Case e brs) =
@@ -424,7 +411,7 @@ eval (Case e brs) =
 step :: Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
 step (Lam b) = Nothing
-step (App (Lam b) e2) = Just (instantiate b e2)
+step (App (Lam b) e2) = Just (B.instantiate b e2)
 step (App e1 e2)
   | Just e1' <- step e1 = Just (App e1' e2)
   | Just e2' <- step e2 = Just (App e1 e2')
@@ -450,10 +437,10 @@ eval' e
 -- λ. λ. 0 0
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
-nf (Lam b) = Lam (bind (nf (unbind b)))
+nf (Lam b) = Lam (B.bind (nf (B.unbind b)))
 nf (App e1 e2) =
   case nf e1 of
-    Lam b -> instantiate b (nf e2)
+    Lam b -> B.instantiate b (nf e2)
     t -> App t (nf e2)
 nf (Con s) = Con s
 nf (Case e brs) =
@@ -464,4 +451,4 @@ nf (Case e brs) =
 
 nfBr :: Branch n -> Branch n
 nfBr (Branch bnd) =
-  Branch (patBind (getPat bnd) (nf (getBody bnd)))
+  Branch (Pat.bind (Pat.getPat bnd) (nf (Pat.getBody bnd)))

@@ -59,6 +59,8 @@ library
       , AutoEnv.Pat.LocalBind
       , AutoEnv.Pat.PatN
       , AutoEnv.Pat.Rebind
+      , AutoEnv.Pat.Simple
+      , AutoEnv.Pat.Scoped
       , Data.Nat
       , Data.Fin
       , Data.Vec
@@ -71,6 +73,8 @@ library
       , PiForall.Environment
       , PiForall.Equal
       , PiForall.PrettyPrint
+      , PiForall.LayoutToken
+      , PiForall.Parser
   hs-source-dirs:
       src
       , examples

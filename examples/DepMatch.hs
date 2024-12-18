@@ -7,9 +7,11 @@ module DepMatch where
 
 import AutoEnv
 import AutoEnv.Context
-import AutoEnv.Pat
-import AutoEnv.Pat.PatN
-import AutoEnv.Pat.Rebind
+
+import qualified AutoEnv.Bind as B
+import qualified AutoEnv.Pat.Scoped as Pat
+import qualified AutoEnv.Pat.PatN as PN
+
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin qualified
@@ -36,11 +38,11 @@ type DataConName = String
 -- than that, supporting a general form of pattern matching.
 data Exp (n :: Nat)
   = Const Const
-  | Pi (Exp n) (Bind Exp Exp n)
+  | Pi (Exp n) (B.Bind Exp Exp n)
   | Var (Fin n)
   | Match [Branch n]
   | App (Exp n) (Exp n)
-  | Sigma (Exp n) (Bind Exp Exp n)
+  | Sigma (Exp n) (B.Bind Exp Exp n)
   | Pair (Exp n) (Exp n)
   | Annot (Exp n) (Exp n)
 
@@ -52,14 +54,14 @@ data Exp (n :: Nat)
 data Pat (p :: Nat) (n :: Nat) where
   PConst :: Const -> Pat N0 n
   PVar :: Pat N1 n
-  PApp :: Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
-  PPair :: Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
+  PApp :: Pat.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
+  PPair :: Pat.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
 -- A single branch in a match expression. Binds a pattern
 -- with expression variables, with an expression body
 data Branch (n :: Nat)
-  = forall p. Branch (PatBind Exp Exp (Pat p) n)
+  = forall p. Branch (Pat.Bind Exp Exp (Pat p) n)
 
 -- This definitions support telescopes: variables bound earlier in the pattern
 -- can appear later.  For example, a type paired with a term of that type
@@ -69,7 +71,7 @@ data Branch (n :: Nat)
 -- in the first component are bound in expression parts of the
 -- second component
 pat0 :: Pat N2 N0
-pat0 = PPair (Rebind PVar (PAnnot PVar (Var f0)))
+pat0 = PPair (Pat.Rebind PVar (PAnnot PVar (Var f0)))
 
 -------------------------------------------------------
 -- definitions for pattern matching
@@ -77,14 +79,14 @@ pat0 = PPair (Rebind PVar (PAnnot PVar (Var f0)))
 
 -- we can count the number of variables bound in the pattern
 -- (though we probably already know it)
-instance Sized (Pat p) where
+instance Pat.Sized (Pat p) where
   type Size (Pat p) = p
   size :: Pat p n -> SNat p
   size (PConst i) = s0
   size PVar = s1
-  size (PApp rb) = size rb
-  size (PPair rb) = size rb
-  size (PAnnot p _) = size p
+  size (PApp rb) = Pat.size rb
+  size (PPair rb) = Pat.size rb
+  size (PAnnot p _) = Pat.size p
 
 tm0 :: Exp Z
 tm0 = Pair (Const (TyCon "Bool")) (Const (DataCon "True"))
@@ -97,13 +99,13 @@ tm0 = Pair (Const (TyCon "Bool")) (Const (DataCon "True"))
 -- bound in the pattern
 patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
-patternMatch (PApp rb) (App e1 e2) = unRebind rb $ \p1 p2 -> do
+patternMatch (PApp rb) (App e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
   -- NOTE: substitute in p2 before pattern matching
   env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
   return (env2 .++ env1)
 patternMatch (PConst s1) (Const s2) | s1 == s2 = Just zeroE
-patternMatch (PPair rb) (Pair e1 e2) = unRebind rb $ \p1 p2 -> do
+patternMatch (PPair rb) (Pair e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
   env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
   return (env2 .++ env1)
@@ -113,9 +115,9 @@ patternMatch _ _ = Nothing
 
 findBranch :: forall n. (SNatI n) => Exp n -> [Branch n] -> Maybe (Exp n)
 findBranch e [] = Nothing
-findBranch e (Branch (bnd :: PatBind Exp Exp (Pat p) n) : brs) =
-  case patternMatch (getPat bnd) e of
-    Just r -> Just $ instantiatePat bnd r
+findBranch e (Branch (bnd :: Pat.Bind Exp Exp (Pat p) n) : brs) =
+  case patternMatch (Pat.getPat bnd) e of
+    Just r -> Just $ Pat.instantiate bnd r
     Nothing -> findBranch e brs
 
 ----------------------------------------------
@@ -166,9 +168,9 @@ t01 = App (Var f0) (Var f1)
 instance FV Exp where
   appearsFree n (Var x) = n == x
   appearsFree n (Const c) = False
-  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (unbind b)
+  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (unbind b)
+  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
   appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
   appearsFree n (Match b) = any (appearsFree n) b
   appearsFree n (Annot a t) = appearsFree n a || appearsFree n t
@@ -196,7 +198,7 @@ instance FV (Pat p) where
 weaken' :: SNat m -> Exp n -> Exp (Plus m n)
 weaken' m = applyE @Exp (weakenE' m)
 
-weakenBind' :: SNat m -> Bind Exp Exp n -> Bind Exp Exp (Plus m n)
+weakenBind' :: SNat m -> B.Bind Exp Exp n -> B.Bind Exp Exp (Plus m n)
 weakenBind' m = applyE @Exp (weakenE' m)
 
 ----------------------------------------------
@@ -243,11 +245,11 @@ star = Const Star
 
 -- No annotation on the binder
 lam :: Exp (S n) -> Exp n
-lam b = Match [Branch (patBind PVar b)]
+lam b = Match [Branch (Pat.bind PVar b)]
 
 -- Annotation on the binder
 alam :: Exp n -> Exp (S n) -> Exp n
-alam t b = Match [Branch (patBind (PAnnot PVar t) b)]
+alam t b = Match [Branch (Pat.bind (PAnnot PVar t) b)]
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0", though with `Match` it looks a bit different
@@ -275,7 +277,7 @@ t1 =
 
 -- Polymorphic identity function and its type
 
-tyid = Pi star (bind (Pi (Var f0) (bind (Var f1))))
+tyid = Pi star (B.bind (Pi (Var f0) (B.bind (Var f1))))
 
 tmid = lam (lam (Var f0))
 
@@ -300,29 +302,29 @@ instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ (Const c) = showString (show c)
   showsPrec d (Pi a b)
-    | appearsFree FZ (unbind b) =
+    | appearsFree FZ (B.unbind b) =
         showParen (d > 10) $
           showString "Pi "
             . shows a
             . showString ". "
-            . shows (unbind b)
+            . shows (B.unbind b)
     | otherwise =
         showParen (d > 10) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (unbind b)
+            . showsPrec 10 (B.unbind b)
   showsPrec d (Sigma a b)
-    | appearsFree FZ (unbind b) =
+    | appearsFree FZ (B.unbind b) =
         showParen (d > 10) $
           showString "Sigma "
             . shows a
             . showString ". "
-            . shows (unbind b)
+            . shows (B.unbind b)
     | otherwise =
         showParen (d > 10) $
           showsPrec 11 a
             . showString " * "
-            . showsPrec 10 (unbind b)
+            . showsPrec 10 (B.unbind b)
   showsPrec _ (Var x) = shows (toInt x)
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
@@ -350,19 +352,19 @@ instance Show (Exp n) where
 
 instance Show (Branch b) where
   showsPrec d (Branch b) =
-    showsPrec 10 (getPat b)
+    showsPrec 10 (Pat.getPat b)
       . showString ". "
-      . showsPrec 11 (getBody b)
+      . showsPrec 11 (Pat.getBody b)
 
 instance Show (Pat p n) where
   showsPrec d PVar = showString "_"
   showsPrec d (PConst c) = showsPrec d c
-  showsPrec d (PApp (Rebind e1 e2)) =
+  showsPrec d (PApp (Pat.Rebind e1 e2)) =
     showParen (d > 0) $
       showsPrec 10 e1
         . showString " "
         . showsPrec 11 e2
-  showsPrec d (PPair (Rebind e1 e2)) =
+  showsPrec d (PPair (Pat.Rebind e1 e2)) =
     showParen (d > 0) $
       showsPrec 10 e1
         . showString ", "
@@ -379,13 +381,14 @@ instance Show (Pat p n) where
 
 --------------------------------------------------------
 
+-- NOTE: this is not the same type as patEq
 testEquality2 :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
 testEquality2 PVar PVar = Just Refl
-testEquality2 (PApp (Rebind p1 p2)) (PApp (Rebind p1' p2')) = do
+testEquality2 (PApp (Pat.Rebind p1 p2)) (PApp (Pat.Rebind p1' p2')) = do
   Refl <- testEquality2 p1 p1'
   Refl <- testEquality2 p2 p2'
   return Refl
-testEquality2 (PPair (Rebind p1 p2)) (PPair (Rebind p1' p2')) = do
+testEquality2 (PPair (Pat.Rebind p1 p2)) (PPair (Pat.Rebind p1' p2')) = do
   Refl <- testEquality2 p1 p1'
   Refl <- testEquality2 p2 p2'
   return Refl
@@ -398,27 +401,27 @@ testEquality2 _ _ = Nothing
 
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
-  (Branch (p1 :: PatBind Exp Exp (Pat m1) n))
-    == (Branch (p2 :: PatBind Exp Exp (Pat m2) n)) =
+  (Branch (p1 :: Pat.Bind Exp Exp (Pat m1) n))
+    == (Branch (p2 :: Pat.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (size (getPat p1) :: SNat m1)
-        (size (getPat p2) :: SNat m2) of
+        (Pat.size (Pat.getPat p1) :: SNat m1)
+        (Pat.size (Pat.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
 -- To compare pattern binders, we need to unbind, but also
 -- make sure that the patterns are equal
-instance (Eq (Exp n)) => Eq (PatBind Exp Exp (Pat m) n) where
+instance (Eq (Exp n)) => Eq (Pat.Bind Exp Exp (Pat m) n) where
   b1 == b2 =
-    Maybe.isJust (testEquality2 (getPat b1) (getPat b2))
-      && getBody b1 == getBody b2
+    Maybe.isJust (testEquality2 (Pat.getPat b1) (Pat.getPat b2))
+      && Pat.getBody b1 == Pat.getBody b2
 
 -- To compare binders, we only need to `unbind` them
-instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
-  b1 == b2 = unbind b1 == unbind b2
+instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
+  b1 == b2 = B.unbind b1 == B.unbind b2
 
-instance (Eq (Exp n)) => Eq (Bind2 Exp Exp n) where
-  b1 == b2 = unbind2 b1 == unbind2 b2
+instance (Eq (Exp n)) => Eq (PN.Bind2 Exp Exp n) where
+  b1 == b2 = PN.unbind2 b1 == PN.unbind2 b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
@@ -525,13 +528,13 @@ equatePat ::
   m ()
 equatePat PVar PVar = pure ()
 equatePat (PConst c1) (PConst c2) | c1 == c2 = pure ()
-equatePat (PPair (Rebind p1 p1')) (PPair (Rebind p2 p2'))
-  | Just Refl <- testEquality (size p1) (size p2) =
-      withSNat (sPlus (size p1) (snat @n)) $
+equatePat (PPair (Pat.Rebind p1 p1')) (PPair (Pat.Rebind p2 p2'))
+  | Just Refl <- testEquality (Pat.size p1) (Pat.size p2) =
+      withSNat (sPlus (Pat.size p1) (snat @n)) $
         equatePat p1 p2 >> equatePat p1' p2'
-equatePat (PApp (Rebind p1 p2)) (PApp (Rebind p1' p2'))
-  | Just Refl <- testEquality (size p1) (size p1') =
-      withSNat (sPlus (size p1) (snat @n)) $
+equatePat (PApp (Pat.Rebind p1 p2)) (PApp (Pat.Rebind p1' p2'))
+  | Just Refl <- testEquality (Pat.size p1) (Pat.size p1') =
+      withSNat (sPlus (Pat.size p1) (snat @n)) $
         equatePat p1 p1' >> equatePat p2 p2'
 equatePat (PAnnot p1 e1) (PAnnot p2 e2) =
   equatePat p1 p2 >> equate e1 e2
@@ -539,13 +542,13 @@ equatePat p1 p2 = throwError (PatternMismatch p1 p2)
 
 equateBranch :: (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
 equateBranch (Branch b1) (Branch b2) =
-  unPatBind b1 $ \(p1 :: Pat p1 n) body1 ->
-    unPatBind b2 $ \(p2 :: Pat p2 n) body2 ->
-      case testEquality (size p1) (size p2) of
+  Pat.unbind b1 $ \(p1 :: Pat p1 n) body1 ->
+    Pat.unbind b2 $ \(p2 :: Pat p2 n) body2 ->
+      case testEquality (Pat.size p1) (Pat.size p2) of
         Just Refl ->
           equatePat p1 p2 >> equate body1 body2
         Nothing ->
-          throwError (PatternMismatch (getPat b1) (getPat b2))
+          throwError (PatternMismatch (Pat.getPat b1) (Pat.getPat b2))
 
 equateWHNF :: (SNatI n, MonadError Err m) => Exp n -> Exp n -> m ()
 equateWHNF n1 n2 =
@@ -559,10 +562,10 @@ equateWHNF n1 n2 =
       equate a2 b2
     (Pi tyA1 b1, Pi tyA2 b2) -> do
       equate tyA1 tyA2
-      equate (unbind b1) (unbind b2)
+      equate (B.unbind b1) (B.unbind b2)
     (Sigma tyA1 b1, Sigma tyA2 b2) -> do
       equate tyA1 tyA2
-      equate (unbind b1) (unbind b2)
+      equate (B.unbind b1) (B.unbind b2)
     (_, _) -> throwError (NotEqual n1 n2)
 
 ----------------------------------------------------------------
@@ -610,21 +613,21 @@ checkPattern ::
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
 checkPattern g (PPair rb) (Sigma tyA tyB) =
-  unRebind rb $ \p1 p2 -> do
+  Pat.unRebind rb $ \p1 p2 -> do
     (g', e1) <- checkPattern g p1 tyA
-    let tyB' = weakenBind' (size p1) tyB
-    let tyB'' = whnf (instantiate tyB' e1)
+    let tyB' = weakenBind' (Pat.size p1) tyB
+    let tyB'' = whnf (B.instantiate tyB' e1)
     (g'', e2) <- checkPattern g' p2 tyB''
-    let e1' = weaken' (size p2) e1
+    let e1' = weaken' (Pat.size p2) e1
     return (g'', Pair e1' e2)
 checkPattern g (PApp rb) ty =
-  unRebind rb $ \p1 p2 -> do
+  Pat.unRebind rb $ \p1 p2 -> do
     (g', e1, ty) <- inferPattern g p1
-    case weaken' (size p1) (whnf ty) of
+    case weaken' (Pat.size p1) (whnf ty) of
       Pi tyA tyB -> do
         (g'', e2) <- checkPattern g' p2 tyA
-        equate (weaken' (size p1) ty) (instantiate tyB e1)
-        let e1' = weaken' (size p2) e1
+        equate (weaken' (Pat.size p1) ty) (B.instantiate tyB e1)
+        let e1' = weaken' (Pat.size p2) e1
         return (g'', App e1' e2)
       _ -> throwError (PiExpectedPat p1)
 checkPattern g p ty = do
@@ -648,15 +651,15 @@ checkBranch ::
   Branch n ->
   m ()
 checkBranch g (Pi tyA tyB) (Branch bnd) =
-  unPatBind bnd $ \(pat :: Pat p n) body -> do
-    let p = size pat
+  Pat.unbind bnd $ \(pat :: Pat p n) body -> do
+    let p = Pat.size pat
 
     -- find the extended context and pattern expression
     (g', a) <- checkPattern g pat tyA
 
     -- shift tyB to the scope of the pattern and instantiate it with 'a'
     -- must be done simultaneously because 'a' is from a larger scope
-    let tyB' = instantiateShift p tyB a
+    let tyB' = B.instantiateShift p tyB a
 
     -- check the body of the branch in the scope of the pattern
     checkType g' body tyB'
@@ -676,7 +679,7 @@ checkType g (Pair a b) ty = do
   case ty of
     (Sigma tyA tyB) -> do
       checkType g a tyA
-      checkType g b (instantiate tyB a)
+      checkType g b (B.instantiate tyB a)
     _ -> throwError (SigmaExpected ty)
 checkType g (Match bs) ty = do
   mapM_ (checkBranch g ty) bs
@@ -696,18 +699,18 @@ inferType g (Var x) = pure (applyEnv g x)
 inferType g (Const c) = inferConst c
 inferType g (Pi a b) = do
   checkType g a (Const Star)
-  checkType (g +++ a) (unbind b) (Const Star)
+  checkType (g +++ a) (B.unbind b) (Const Star)
   pure (Const Star)
 inferType g (App a b) = do
   tyA <- inferType g a
   case whnf tyA of
     Pi tyA1 tyB1 -> do
       checkType g b tyA1
-      pure $ instantiate tyB1 b
+      pure $ B.instantiate tyB1 b
     t -> throwError (PiExpected t)
 inferType g (Sigma a b) = do
   checkType g a (Const Star)
-  checkType (g +++ a) (unbind b) (Const Star)
+  checkType (g +++ a) (B.unbind b) (Const Star)
   pure (Const Star)
 inferType g a =
   throwError (AnnotationNeeded a)
@@ -744,7 +747,7 @@ inferType g a =
 data PatAny n = forall p. PatAny (Pat p n)
 
 extractPat :: Branch n -> PatAny n
-extractPat (Branch bnd) = PatAny (getPat bnd)
+extractPat (Branch bnd) = PatAny (Pat.getPat bnd)
 
 lookupTyCon :: (MonadError Err m) => TyConName -> m DataDef
 lookupTyCon tname =

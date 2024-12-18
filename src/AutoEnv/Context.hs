@@ -17,5 +17,8 @@ shiftC = applyE @v shift1E
 shiftCtx :: (Subst v v) => Env v n n -> Env v n (S n)
 shiftCtx g = g .>> shift1E
 
+emptyC :: Ctx v N0
+emptyC = zeroE
+
 (+++) :: forall v n. (Subst v v) => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = shiftC @v @v a .: shiftCtx g
