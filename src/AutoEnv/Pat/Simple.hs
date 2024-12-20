@@ -161,24 +161,6 @@ instance
            bind p <$> strengthen' m (sPlus (size p) n) 
               (applyE @v @c @(Plus (Size p) m') (upN (size p) env) t)
           
-
------------------------------------------------------------------
--- Pattern lists
------------------------------------------------------------------
-
--- | lists of patterns where variables at each position bind 
--- later in the pattern
-data List pat p where
-  PNil  :: List pat N0
-  PCons :: pat p1 -> List pat p2 -> List pat (Plus p2 p1)
-
-{-
-instance (forall p. Sized (pat p), SNatI p) => Sized (List pat p) where
-    type Size (List pat p) = p
-    size PNil = s0
-    size (PCons p1 p2) = sPlus (size p1) (size p2)
--}
-
 -----------------------------------------------------------------
 -- Rebind 
 ---------------------------------------------------------------

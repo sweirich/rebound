@@ -8,6 +8,7 @@
 module ScopeCheck where
 
 import AutoEnv
+import AutoEnv.Bind
 import Data.Maybe (fromJust)
 import LC qualified
 import AutoEnv.Lib
@@ -49,11 +50,11 @@ idExp = Lam "x" (Var "x")
 trueExp :: Exp String
 trueExp = Lam "x" (Lam "y" (Var "x"))
 
--- >>> toScoped idExp
--- Variable not in scope: toScoped :: Exp String -> t_a1sSrU[sk:1]
+-- >>> scopeCheck idExp
+-- Just (λ. 0)
 
--- >>> toScoped trueExp
--- Variable not in scope: toScoped :: Exp String -> t_a1sSrV[sk:1]
+-- >>> scopeCheck trueExp
+-- Just (λ. (λ. 1))
 
--- >>> toScoped (Lam "x" (Var "y"))
--- Variable not in scope: toScoped :: Exp String -> t_a1sSs9[sk:1]
+-- >>> scopeCheck (Lam "x" (Var "y"))
+-- Nothing

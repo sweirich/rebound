@@ -10,12 +10,14 @@ import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
 
-import AutoEnv.Pat
-import AutoEnv.Pat.Rebind
+import qualified AutoEnv.Pat.Scoped as Scoped
+import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.Lib
 import AutoEnv.Classes
-import AutoEnv.Pat.LocalBind
+import AutoEnv.Pat.LocalBind as Local
 import PiForall.Syntax
+
+import Data.List as List
 
 -------------------------------------------------------------------------
 
@@ -46,6 +48,8 @@ data DispInfo = DI
     showAnnots :: Bool,
     -- | names that have been used
     dispAvoid :: S.Set GlobalName,
+    -- | names currently in the local scope
+    localNames :: [LocalName],
     -- | current precedence level
     prec :: Int,
     -- | should we print internally-generated names, or user-friendly versions
@@ -62,6 +66,7 @@ data D
 initDI :: DispInfo
 initDI = DI { showAnnots = False,
               dispAvoid = S.empty,
+              localNames = [],
               prec = 0,
               showLongNames = False
             }
@@ -125,16 +130,18 @@ instance Display ModuleEntry where
     dn <- display n
     dt <- display ty
     pure $ dn <+> PP.pretty ":" <+> dt
-  display (ModuleData dataDef) = display dataDef
+  display (ModuleData n dataDef) = do
+    dn <- display n
+    dd <- display dataDef
+    pure $ PP.pretty "data" <+> dn <+> dd
 
 instance Display DataDef where
-    display (DataDef n params sort constructors) = do
-        dn <- display n
+    display (DataDef params sort constructors) = do
         dp <- display params
         ds <- display sort
         dc <- mapM display constructors
-        pure $ 
-            ( PP.pretty "data" <+> dn <+> dp
+        pure $
+            (  dp
                 <+> PP.colon
                 <+> ds
                 <+> PP.pretty "where"
@@ -244,7 +251,9 @@ brackets b = if b then PP.brackets else id
 instance Display (Term n) where
   display TyType = return $ PP.pretty "Type"
   display (Global x) = return $ PP.pretty x   -- TODO
-  display (Var n) = error "TODO"  -- TODO
+  display (Var n) = do
+    ln <- asks localNames
+    return (PP.pretty $ show $ ln !! toInt n)
   display a@(Lam b) = do
     n <- ask prec
     (binds, body) <- withPrec levelLam $ gatherBinders a
@@ -255,7 +264,7 @@ instance Display (Term n) where
     dx <- withPrec (levelApp+1) (display x)
     return $ parens (levelApp < n) $ df <+> dx
   display (Pi a bnd) = do
-    lunbind bnd $ \(n, b) -> do
+    Local.unbind bnd $ \(n, b) -> do
       p <- ask prec
       lhs <-
             if f0 `appearsFree` b
@@ -265,7 +274,7 @@ instance Display (Term n) where
                 return $ PP.parens (dn <+> PP.colon <+> da)
               else do
                 withPrec (levelArrow+1) (display a)
-      db <- withPrec levelPi (display b)
+      db <- local (push n) $ withPrec levelPi (display b)
       return $ parens (levelArrow < p) $ lhs <+> PP.pretty "->" <+> db
   display (Ann a b) = do
     sa <- ask showAnnots
@@ -276,11 +285,11 @@ instance Display (Term n) where
       else display a
   display (Pos _ e) = display e
   display (TyCon "Sigma" [tyA, Lam bnd]) =
-    lunbind bnd $ \(x, tyB) -> do
+    Local.unbind bnd $ \(x, tyB) -> do
       if f0 `appearsFree` tyB then do
         dx <- display x
         dA <- withPrec 0 $ display tyA
-        dB <- withPrec 0 $ display tyB
+        dB <- local (push x) $ withPrec 0 $ display tyB
         return $
           PP.pretty "{" <+> dx <+> PP.pretty ":" <+> dA
             <+> PP.pretty "|"
@@ -297,11 +306,11 @@ instance Display (Term n) where
     db <- withPrec levelProd $ display b
     return $ parens (levelProd < p) (da PP.<> PP.pretty "," PP.<> db)
   display (Let a bnd) = do
-    lunbind bnd $ \(x, b) -> do
+    Local.unbind bnd $ \(x, b) -> do
       p <- ask prec
       da <- display a
       dx <- display x
-      db <- display b
+      db <- local (push x) $ display b
       return $
         parens (levelLet < p) $
         PP.sep
@@ -319,47 +328,77 @@ instance Display (Term n) where
     dn <- display n
     dargs <- withPrec (levelApp+1) $ mapM display args
     return $
-      parens (levelApp < p && not (null args)) (dn <+> PP.hsep dargs)
+      parens (levelApp < p && not (null args)) (PP.hsep (dn:dargs))
   display (DataCon n args) = do
     p <- ask prec
     dn <- display n
     dargs <- withPrec (levelApp+1) $ mapM display args
     return $
-      parens (levelApp < p && not (null args)) (dn <+> PP.hsep dargs)
+      parens (levelApp < p && not (null args)) (PP.hsep (dn:dargs))
   display (Case scrut alts) = do
     p <- asks prec
-    dscrut <- withPrec 0 $ display scrut
+    dscrut <- withPrec (levelCase+1) $ display scrut
     dalts <- withPrec 0 $ mapM display alts
-    let top = PP.pretty "case" <+> dscrut <+> PP.pretty "of"
     return $
-      parens (levelCase < p) $
-        if null dalts then top <+> PP.pretty "{ }" else top <+> PP.nest 2 (PP.vcat dalts)
+      parens (levelCase < p) $ prettyCase dscrut dalts
+
+
+open        = PP.flatAlt PP.emptyDoc (PP.pretty "{ ")
+close       = PP.flatAlt PP.emptyDoc (PP.pretty  " }")
+separator   = PP.flatAlt PP.emptyDoc (PP.pretty "; ")
+prettyCase :: Doc ann -> [Doc ann] -> Doc ann
+prettyCase scrut xs =
+  let top =  PP.pretty "case" <+> scrut <+> PP.pretty "of" in
+  if null xs then top <+> PP.pretty "{ }" else
+    -- PP.nest 2 (top <> PP.line <> PP.encloseSep open close separator xs)
+    PP.nest 2 (top <> PP.hardline <> PP.vsep xs)
+--  PP.group (PP.pretty "case" <+> scrut <+> PP.pretty "of" <+> 
+--            PP.align (PP.encloseSep open close separator xs))
+
 
 instance Display (Match n) where
   display (Branch bd) = do
-      dpat <- display (getPat bd)
-      dubd <- display (getBody bd)
-      return $ (dpat <+> PP.pretty "->") <+> PP.nest 2 dubd
+    let pat = Pat.getPat bd
+    dpat <- display pat
+    dubd <- local (pushList (binders pat)) $ display (Pat.getBody bd)
+    return $ dpat <+> PP.pretty "->" <+> PP.align dubd
 
-instance Display (Pattern p n) where
+
+
+binders :: Pattern p1 -> [LocalName]
+binders (PatVar x) = [x]
+binders (PatCon c args) = bindersList args
+
+bindersList :: PatList p1 -> [LocalName]
+bindersList PNil = []
+bindersList (PCons p ps) = binders p ++ bindersList ps
+
+instance Display (Pattern p) where
   display (PatCon c PNil)   = display c
   display (PatCon c args) = do
+    p <- ask prec
     dc <- display c
-    dargs <- display args
-    return $ dc <+> dargs
+    dargs <- withPrec (levelApp+1) $ display args
+    return $
+       parens (levelApp < p && nonnil args)
+         (PP.hsep [dc,dargs])
       where
-        wrap a@(PatVar x)      = display a
-        wrap a@(PatCon _ PNil) = display a
-        wrap a@(PatCon _ _)    = PP.parens <$> display a
+        nonnil :: PatList p -> Bool
+        nonnil PNil = False
+        nonnil (PCons _ _) = True
+
 
   display (PatVar x) = display x
 
-instance Display (PatList p n) where
+instance Display (PatList p) where
   display PNil = mempty
-  display (PCons (Rebind p ps)) = do 
-    da <- display p 
+  display (PCons p ps) = do
+    da <- display p
     ds <- display ps
     return $ da <+> ds
+
+instance Display LocalName where
+  display l = display (Local.name l)
 
 -------------------------------------------------------------------------
 
@@ -367,13 +406,20 @@ instance Display (PatList p n) where
 
 -------------------------------------------------------------------------
 
+push :: LocalName -> DispInfo -> DispInfo
+push n r = r {localNames = n:localNames r}
+
+pushList :: [LocalName] -> DispInfo -> DispInfo
+pushList ns r = foldl (flip push) r ns
+
 gatherBinders :: Term n -> DispInfo -> ([Doc d], Doc d)
 gatherBinders (Lam b) =
-  lunbind b $ \(n, body) -> do
+  Local.unbind b $ \(n, body) -> do
     dn <- display n
-    (rest, body') <- gatherBinders body
+    (rest, body') <- local (push n) $ gatherBinders body
     return (dn : rest, body')
 gatherBinders body = do
   db <- display body
   return ([], db)
+
 

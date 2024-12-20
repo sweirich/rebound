@@ -5,6 +5,7 @@ import Data.Maybe qualified as Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
 
+import AutoEnv.Pat.LocalBind (LocalName(..))
 import PiForall.Syntax (ConstructorNames)
 
 -- | names of top level declarations/definitions
@@ -16,8 +17,6 @@ type TyConName = String
 
 -- | names of data constructors, like 'cons'
 type DataConName = String
-
-type LocalName = String
 
 type Typ = Term
 
@@ -34,6 +33,7 @@ data Term
   | Case Term [Match]
   | App Term Term 
   | Ann Term Typ 
+     deriving (Eq, Show)
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
@@ -42,16 +42,18 @@ data Term
 data Pattern where
   PatCon :: DataConName -> [Pattern] -> Pattern 
   PatVar :: LocalName -> Pattern
+    deriving (Eq, Show)
 
 -- A single branch in a match expression. Binds a pattern
 -- with expression variables, with an expression body
 data Match
   = Branch Pattern Term
+     deriving (Eq, Show)
 
 -- | Local assumption
 data Entry where
-  EntryDecl :: String -> Typ -> Entry -- binding assumption
-  EntryDef  :: String -> Term -> Entry -- nonbinding assumption
+  EntryDecl :: LocalName -> Typ -> Entry -- binding assumption
+  EntryDef  :: LocalName -> Term -> Entry -- nonbinding assumption
 
 -- Telescopes: snoc-lists of variable assumptions x1:A1, x2:A2, ....,xp:Ap
 -- That are used as typing contexts

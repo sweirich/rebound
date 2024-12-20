@@ -103,8 +103,8 @@ lookupTCon v = do
           DS "The current environment is",
           DD currentEnv
         ]
-    scanGamma ((ModuleData d) : g) =
-      if data_name d == v
+    scanGamma ((ModuleData n d) : g) =
+      if n == v
         then return d
         else scanGamma g
     scanGamma (_ : g) = scanGamma g
@@ -120,13 +120,13 @@ lookupDConAll v = do
   scanGamma g
   where
     scanGamma [] = return []
-    scanGamma ((ModuleData (DataDef _ delta _ cs)) : g) =
+    scanGamma ((ModuleData _ (DataDef delta _ cs)) : g) =
       case find (\(ConstructorDef v'' tele) -> v'' == v) cs of
         Nothing -> scanGamma g
         Just c -> do
           more <- scanGamma g
           return $ (v, 
-             ScopedConstructorDef (delta, c)) :  more
+             ScopedConstructorDef delta c) :  more
     scanGamma (_ : g) = scanGamma g
 
 -- | Given the name of a data constructor and the type that it should
@@ -217,7 +217,7 @@ extendTy d c@(Context {local_size=n,local_decls=gamma}) = c { local_size = SS n,
   -- (map (weakenDef s1) defs)
 
 extendLocal :: Local p n -> (Context (Plus p n) -> m a) -> (Context n -> m a)
-extendLocal (LocalDecl t) k ctx = k (extendTy t ctx)
+extendLocal (LocalDecl x t) k ctx = k (extendTy t ctx)
 extendLocal (LocalDef x u) k ctx = error "TODO: local definitions unsupported"
 
 --------------------------------------------------------------------

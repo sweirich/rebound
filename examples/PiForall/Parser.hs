@@ -10,9 +10,12 @@ module PiForall.Parser
   )
   where
 
+import AutoEnv.Pat.LocalBind (LocalName(..))
 
 import PiForall.ConcreteSyntax hiding (moduleImports)
 import PiForall.Syntax (ConstructorNames(..), initialConstructorNames)
+import qualified PiForall.Syntax as Syntax
+
 import qualified PiForall.LayoutToken as Token
 
 import Text.Parsec hiding (State,Empty)
@@ -112,7 +115,7 @@ Optional components in this BNF are marked with < >
 
 -- | Default name (for parsing 'A -> B' as '(_:A) -> B') 
 wildcardName :: LocalName
-wildcardName = "_"
+wildcardName = Box "_"
 
 liftError :: (MonadError e m) => Either e a -> m a
 liftError (Left e) = throwError e
@@ -120,7 +123,7 @@ liftError (Right a) = return a
 
 -- | Parse a module declaration from the given filepath.
 parseModuleFile :: (MonadError ParseError m, MonadIO m) =>
-   ConstructorNames -> String -> m Module
+   Syntax.ConstructorNames -> String -> m Module
 parseModuleFile cnames name = do
   liftIO $ putStrLn $ "Parsing File " ++ show name
   contents <- liftIO $ readFile name
@@ -136,7 +139,7 @@ parseModuleImports name = do
      runParserT (do { whiteSpace; moduleImports }) [] name contents
 
 -- | Test an 'LParser' on a String.
-testParser :: ConstructorNames -> LParser t -> String -> Either ParseError t
+testParser :: Syntax.ConstructorNames -> LParser t -> String -> Either ParseError t
 testParser cn parser str =
    flip evalState cn $
      runParserT (do { whiteSpace; v <- parser; eof; return v}) [] "<interactive>" str
@@ -149,7 +152,7 @@ parseExpr = testParser initialConstructorNames expr
 type LParser a = ParsecT
                     String                      -- The input is a sequence of Char
                     [Column]                   -- The internal state for Layout tabs 
-                    (State ConstructorNames)
+                    (State Syntax.ConstructorNames)
                     a                           -- the type of the object being parsed
 
 -- Based on Parsec's haskellStyle (which we can not use directly since
@@ -189,7 +192,7 @@ piforallStyle = Token.LanguageDef
                  ["!","?","\\",":",".",",","<", "=", "+", "-", "*", "^", "()", "_","|","{", "}"]
                 }
 
-tokenizer :: Token.GenTokenParser String [Column] (State ConstructorNames)
+tokenizer :: Token.GenTokenParser String [Column] (State Syntax.ConstructorNames)
 layout :: forall a t. LParser a -> LParser t -> LParser [a]
 (tokenizer, Token.LayFun layout) = Token.makeTokenParser piforallStyle  "{" ";" "}"
 
@@ -206,12 +209,14 @@ variable =
      if i `S.member` tconNames cnames ||
         i `S.member` dconNames cnames
        then fail "Expected a variable, but a constructor was found"
-       else return i
+       else return (Box i)
 
 
 {- SOLN DATA -}
 wildcard :: LParser LocalName
-wildcard = reservedOp "_" >> return wildcardName
+wildcard = do
+  reservedOp "_" 
+  return wildcardName
 
 varOrWildcard :: LParser LocalName
 varOrWildcard = try wildcard <|> variable
@@ -244,7 +249,7 @@ varOrCon = do i <- identifier
                 then return (DataCon i [] )
                 else if  i `S.member` tconNames cnames
                        then return (TyCon i [])
-                       else return (Var i)
+                       else return (Var (Box i))
 
 colon, dot, comma :: LParser ()
 colon = void (Token.colon tokenizer)
@@ -354,11 +359,11 @@ constructorDef = do
   <?> "Constructor"
 
 declDef = do
-  n <- try (variable >>= \v -> colon >> return v)
+  Box n <- try (variable >>= \v -> colon >> return v)
   ModuleDecl n <$> expr
 
 valDef = do
-  n <- try (do {n <- variable; reservedOp "="; return n})
+  Box n <- try (do {n <- variable; reservedOp "="; return n})
   ModuleDef n <$> expr
 
 
@@ -391,8 +396,7 @@ expr = do
                  [ifixM AssocRight "->" mkArrowType],
                  [ifixM AssocRight "*" mkTupleType]
                 ]
-{- SOLN EQUAL -}
-        ifix  assoc op f = Infix (reservedOp op >> return f) assoc {- STUBWITH -}
+        ifix  assoc op f = Infix (reservedOp op >> return f) assoc
         ifixM assoc op f = Infix (reservedOp op >> f) assoc
         mkArrowType  =
           do let n = wildcardName
@@ -401,9 +405,7 @@ expr = do
         mkTupleType =
           do let n = wildcardName
              return $ \tyA tyB ->
-{- SOLN DATA -}
-               TyCon sigmaName [Arg Rel tyA, Arg Rel $ Lam Rel (Unbound.bind n tyB)]
-{- STUBWITH               TySigma tyA (Unbound.bind n tyB) -}
+               TyCon "Sigma" [tyA, Lam n tyB]
 
 -- A "term" is either a function application or a constructor
 -- application.  Breaking it out as a seperate category both
@@ -415,15 +417,15 @@ term =  try dconapp <|> try tconapp <|> funapp
 dconapp :: LParser Term
 dconapp = do
   c <- dconstructor
-  args <- many expr
+  args <- many factor
   return $ DataCon c args
 
 tconapp :: LParser Term
 tconapp = do
   c <- tconstructor
-  ts <- many expr
+  ts <- many factor
   return $ TyCon c ts
-{- STUBWITH -}
+
 
 funapp :: LParser Term
 funapp = do
@@ -438,11 +440,11 @@ factor = choice [ varOrCon   <?> "a variable or nullary data constructor"
 
                 , natenc     <?> "a literal"
                 , caseExpr   <?> "a case"
-                , substExpr  <?> "a subst"
+{-                , substExpr  <?> "a subst"
                 , refl       <?> "Refl"
                 , contra     <?> "a contra"
                 , trustme    <?> "TRUSTME"
-                , printme    <?> "PRINTME"
+                , printme    <?> "PRINTME" -}
 
                 , bconst     <?> "a constant"
                 , ifExpr     <?> "an if expression"
@@ -477,11 +479,11 @@ lambda = do reservedOp "\\"
 
 
 bconst  :: LParser Term
-bconst = choice [reserved "Bool"  >> return (TyCon boolName []),
-                 reserved "False" >> return (DataCon falseName []),
-                 reserved "True"  >> return (DataCon trueName []),
-                 reserved "Unit"  >> return (TyCon tyUnitName []),
-                 reserved "()"    >> return (DataCon litUnitName [])]
+bconst = choice [reserved "Bool"  >> return (TyCon "Bool" []),
+                 reserved "False" >> return (DataCon "False" []),
+                 reserved "True"  >> return (DataCon "True" []),
+                 reserved "Unit"  >> return (TyCon "Unit" []),
+                 reserved "()"    >> return (DataCon "()" [])]
 
 ifExpr :: LParser Term
 ifExpr =
@@ -491,11 +493,8 @@ ifExpr =
      b <- expr
      reserved "else"
      c <- expr
-{- SOLN DATA -}
-     return (Case a [Branch (PatCon trueName []) b,
-                     Branch (PatCon falseName []) c])
-{- STUBWITH
-     return (If a b c ) -}
+     return (Case a [Branch (PatCon "True" []) b,
+                     Branch (PatCon "False" []) c])
 
 
 -- 
@@ -506,7 +505,7 @@ letExpr =
      reservedOp "="
      rhs <- expr
      reserved "in"
-     Let rhs x <$> expr
+     Let x rhs <$> expr
 
 letPairExp :: LParser Term
 letPairExp = do
@@ -520,7 +519,7 @@ letPairExp = do
     scrut <- expr
     reserved "in"
     a <- expr
-    let pat = PatCon prodName [(PatVar x, Rel), (PatVar y, Rel)]
+    let pat = PatCon "Prod" [PatVar x, PatVar y]
     return $ Case scrut [Branch  pat a]
 
 
@@ -554,16 +553,13 @@ expProdOrAnnotOrParens =
        case bd of
          Colon (Var x) a ->
            option (Ann (Var x) a)
-                  (do Pi x <$> afterBinder)
+                  (do Pi a x <$> afterBinder)
          Colon a b -> return $ Ann a b
 
          Comma a b ->
-{- SOLN DATA -}
-           return $ DataCon prodName [Arg Rel a, Arg Rel b]
-{- STUBWITH            return $ Prod a b -}
+           return $ DataCon "Prod" [a, b]
          Nope a    -> return a
 
-{- SOLN DATA -}
 -- patterns are 
 -- p :=  x
 --       _
@@ -577,18 +573,17 @@ pattern :: LParser Pattern
 pattern =  try (PatCon <$> dconstructor <*> many arg_pattern)
        <|> atomic_pattern
   where
-    arg_pattern    =  ((,Irr) <$> brackets pattern)
-                  <|> ((,Rel) <$> atomic_pattern)
+    arg_pattern    =  brackets pattern
+                  <|> atomic_pattern
     paren_pattern  = do
       pattern >>= \p ->
-        ( (reservedOp ")" >> pure p)
+        (reservedOp ")" >> pure p)
        <|> reservedOp "," *> (atomic_pattern >>= \q ->
-                              pure (PatCon prodName [(p, Rel), (q, Rel)]))
-        )
+                              pure (PatCon "Prod" [p, q]))
     atomic_pattern =  reservedOp "(" *> paren_pattern
-                  <|> reserved "True" *> pure (PatCon trueName [])
-                  <|> reserved "False" *> pure (PatCon falseName [])
-                  <|> reserved "()" *> pure (PatCon litUnitName [])
+                  <|> (reserved "True" $> PatCon "True" [])
+                  <|> (reserved "False" $> PatCon "False" [])
+                  <|> (reserved "()" $> PatCon "()" [])
                   <|> PatVar <$> wildcard
                   <|> do t <- varOrCon
                          case t of
@@ -623,7 +618,7 @@ sigmaTy = do
   reservedOp "|"
   b <- expr
   reservedOp "}"
-  return $ TyCon sigmaName [a, (Lam x b)]
+  return $ TyCon "Sigma" [a, Lam x b]
 
 
 

@@ -69,12 +69,15 @@ library
       , PTS
       , Pat
       , DepMatch
+      , PiForall.Arbitrary
       , PiForall.Syntax
+      , PiForall.ConcreteSyntax
       , PiForall.Environment
       , PiForall.Equal
       , PiForall.PrettyPrint
       , PiForall.LayoutToken
       , PiForall.Parser
+      , PiForall.ScopeCheck
   hs-source-dirs:
       src
       , examples

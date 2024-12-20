@@ -4,10 +4,12 @@
 -- are represented by indices.
 module PiForall.Syntax where
 
-import AutoEnv hiding (unbind)
+import AutoEnv
+import qualified AutoEnv.Bind as B
 import qualified AutoEnv.Pat.Simple as Pat
+import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.LocalBind as Local
-import AutoEnv.Pat.Rebind
+
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
 import Data.Set qualified as Set
@@ -41,6 +43,7 @@ data Term (n :: Nat)
   | Case (Term n) [Match n]
   | App (Term n) (Term n)
   | Ann (Term n) (Typ n)
+    
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
@@ -48,16 +51,16 @@ data Term (n :: Nat)
 -- There are none, so this variable is always unconstrained.
 -- LocalName is used for printing only, irrelevant for alpha-equivalence
 data Pattern (p :: Nat)  where
-  PatCon :: DataConName -> Pat.List Pattern p -> Pattern p
+  PatCon :: DataConName -> PatList p -> Pattern p
   PatVar :: Local.LocalName -> Pattern N1
 
 -- | lists of patterns where variables at each position bind 
 -- later in the pattern
-{-
+
 data PatList p where
   PNil :: PatList N0
-  PCons :: Rebind (Pattern p1) (PatList p2) -> PatList (Plus p2 p1)
--}
+  PCons :: Pattern p1 -> PatList p2 -> PatList (Plus p2 p1)
+
 
 -- A single branch in a match expression. Binds a pattern
 -- with expression variables, with an expression body
@@ -66,8 +69,8 @@ data Match (n :: Nat)
 
 -- | Local assumption, either declarations of local variables or definitions (i.e. constraints on variables already in scope)
 data Local p n where
-  LocalDecl :: Local.LocalName -> (Typ n) -> Local N1 -- binding assumption
-  LocalDef  :: (Fin n) -> (Term n) -> Local N0 -- nonbinding assumption
+  LocalDecl :: Local.LocalName -> Typ n -> Local N1 n -- binding assumption
+  LocalDef  :: Fin n -> Term n -> Local N0 n -- nonbinding assumption
 
 -- | Telescopes: snoc-lists of local assumptions 
 -- These are scoped patterns because they include terms 
@@ -77,12 +80,12 @@ data Local p n where
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 data Telescope p n where
   Tele :: Telescope N0 n
-  TSnoc :: Rebind (Telescope p) (Local p1) n -> Telescope (Plus p1 p) n
+  TSnoc :: Scoped.Rebind (Telescope p) (Local p1) n -> Telescope (Plus p1 p) n
 
 infixl <:>
 -- | add a new local entry to a telescope
 (<:>) :: Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
-t <:> e = TSnoc (Rebind t e)
+t <:> e = TSnoc (Scoped.Rebind t e)
 
 -- | 
 -- | Datatype definitions
@@ -149,7 +152,7 @@ isNumeral (DataCon c [t]) | c == "Succ" =
 isNumeral _ = Nothing
 
 -- | Is this pattern a variable
-isPatVar :: Pattern p n -> Bool
+isPatVar :: Pattern p -> Bool
 isPatVar (PatVar _) = True
 isPatVar _ = False
 
@@ -168,35 +171,30 @@ unPosFlaky :: Term n -> SourcePos
 unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
 ----------------------------------------------
-
--- * class instances (Subst, FV, Strengthening, Alpha)
-
--- patterns do not refer to any variables
-
-{-
-instance Closed (Pattern p) where
-  coerceClosed (PatVar x) = PatVar x
-  coerceClosed (PatCon n l) = PatCon n (coerceClosed l)
-
-instance Closed (PatList p) where
-  coerceClosed PNil = PNil
-  coerceClosed (PCons r) = PCons (coerceClosed r) 
--}
-
 ----------------------------------------------
 --  Size instances
 ----------------------------------------------
 
 instance Pat.Sized (Pattern p) where
     type Size (Pattern p) = p
-    size (PatCon _ p) = size p
+    size (PatCon _ p) = Pat.size p
     size (PatVar _) = s1
+
 
 instance Pat.Sized (PatList p) where
     type Size (PatList p) = p
     size PNil = s0
-    size (PCons rb) = size rb
-    
+    size (PCons p1 p2) = sPlus (Pat.size p2) (Pat.size p1)
+
+instance Scoped.Sized (Local p) where
+    type Size (Local p) = p
+    size (LocalDecl _ _) = s1
+    size (LocalDef _ _) = s0
+
+instance Scoped.Sized (Telescope p) where
+    type Size (Telescope p) = p
+    size Tele = s0
+    size (TSnoc rb) = Scoped.size rb
 
 ----------------------------------------------
 --  Subst instances
@@ -219,19 +217,26 @@ instance Subst Term Term where
   applyE r (Let e1 bnd) = Let (applyE r e1) (applyE r bnd)
   applyE r (Pos sp e) = Pos sp (applyE r e)
 
+{-
 instance Subst Term (Pattern p) where
   applyE r (PatCon s ps) = PatCon s (applyE r ps)
   applyE r (PatVar x) = PatVar x
-
+-}
 instance Subst Term Match where
   applyE r (Branch (b :: Pat.Bind Term Term (Pattern p) n)) =
     Branch (applyE r b)
 
+{-
 instance Subst Term (PatList p) where
   applyE r PNil = PNil
   applyE r (PCons rb) = PCons (applyE r rb) 
+-}
 
 {-
+-- substitution could fail if the constraints in the 
+-- telescope are not satisifiable. So we define a 
+-- special purpose substitution operation for that 
+
 instance Subst Term (Telescope p) where
   applyE r Tele = Tele
   applyE r (TSnoc rb) = TSnoc (applyE r rb)
@@ -240,7 +245,7 @@ instance Subst Term (Local p) where
   applyE r (LocalDecl t) = LocalDecl (applyE r t)
   applyE r (LocalDef x u) = 
     case r u of 
--}      
+-}
     
 
 ----------------------------------------------
@@ -275,10 +280,15 @@ instance FV Term where
 instance FV Match where
   appearsFree n (Branch bnd) = appearsFree n bnd
 
+instance FV (Local p) where
+  appearsFree n (LocalDecl x y) = appearsFree n y
+  appearsFree n (LocalDef x y) = n == x || appearsFree n y
+
+{-
 instance FV (Pattern p) where
   appearsFree n (PatVar _) = False
   appearsFree n (PatCon _ ps) = False
-
+-}
 ----------------------------------------------
 -- weakening (convenience functions)
 ----------------------------------------------
@@ -292,7 +302,7 @@ instance FV (Pattern p) where
 weaken' :: SNat m -> Term n -> Term (Plus m n)
 weaken' m = applyE @Term (weakenE' m)
 
-weakenBind' :: SNat m -> Bind Term Term n -> Bind Term Term (Plus m n)
+weakenBind' :: SNat m -> B.Bind Term Term n -> B.Bind Term Term (Plus m n)
 weakenBind' m = applyE @Term (weakenE' m)
 
 ----------------------------------------------
@@ -319,7 +329,7 @@ instance Strengthen Term where
   strengthen' m n (Ann a t) = Ann <$> strengthen' m n a <*> strengthen' m n t
   strengthen' m n (Pos p a) = Pos p <$> strengthen' m n a
   strengthen' m n (Let a b) = Let <$> strengthen' m n a <*> strengthen' m n b
-
+{-
 instance Strengthen (Pattern p) where
   strengthen' m n (PatVar x) = pure (PatVar x)
   strengthen' m n (PatCon c args) =
@@ -328,7 +338,7 @@ instance Strengthen (Pattern p) where
 instance Strengthen (PatList p) where
   strengthen' m n PNil = pure PNil
   strengthen' m n (PCons rb) = PCons <$> strengthen' m n rb 
-                                           
+-}                                         
 
 instance Strengthen Match where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
@@ -337,21 +347,38 @@ instance Strengthen Match where
 -- Alpha equivalence (Eq type class)
 --------------------------------------------------------
 
+instance Eq (Term n) where
+  (Pos _ a) == b = a == b
+  a == Pos _ b = a == b
+  TyType == TyType = True
+  Lam b1 == Lam b2 = b1 == b2
+  Var x == Var y = x == y
+  Global x == Global y = x == y
+  Pi a1 b1 == Pi a2 b2 = a1 == a2 && b1 == b2
+  Let a1 b1 == Let a2 b2 = a1 == a2 && b1 == b2
+  TyCon n1 a1 == TyCon n2 a2 = n1 == n2 && a1 == a2
+  DataCon n1 a1 == DataCon n2 a2 = n1 == n2 && a1 == a2
+  Case a1 b1 == Case a2 b2 = a1 == a2 && b1 == b2
+  App a1 b1 == App a2 b2 =  a1 == a2 && b1 == b2
+  Ann a1 b1 == Ann a2 b2 =  a1 == a2 && b1 == b2
+  _ == _ = False
+
 instance Pat.PatEq (Pattern p1) (Pattern p2) where
-  patEq :: Pattern p1 n1 -> Pattern p2 n2 ->
+  patEq :: Pattern p1 -> Pattern p2 ->
      Maybe (Pat.Size (Pattern p1) :~: Pat.Size (Pattern p2))
   -- ignore local names
   patEq (PatVar _) (PatVar _) = Just Refl
   patEq (PatCon s1 ps1) (PatCon s2 ps2) | s1 == s2 =
-    patEq ps1 ps2
+    Pat.patEq ps1 ps2
   patEq _ _ = Nothing
 
+
 instance Pat.PatEq (PatList p1) (PatList p2) where
-  patEq :: PatList p1 n1 -> PatList p2 n2 -> Maybe (p1 :~: p2)
+  patEq :: PatList p1 -> PatList p2 -> Maybe (p1 :~: p2)
   patEq PNil PNil = Just Refl
-  patEq (PCons (Rebind p1 ps1)) (PCons (Rebind p2 ps2)) = do
-    Refl <- patEq p1 p2
-    Refl <- patEq ps1 ps2
+  patEq (PCons p1 ps1) (PCons p2 ps2) = do
+    Refl <- Pat.patEq p1 p2
+    Refl <- Pat.patEq ps1 ps2
     return Refl
   patEq _ _ = Nothing
 
@@ -373,25 +400,25 @@ testEq2 _ _ = Nothing
 
 instance Eq (Match n) where
   (Branch p1) == (Branch p2) =
-      case patEq (getPat p1) (getPat p2) of
+      case Pat.patEq (Pat.getPat p1) (Pat.getPat p2) of
          Just Refl ->
-            getBody p1 == getBody p2
+            Pat.getBody p1 == Pat.getBody p2
          Nothing -> False
 
 -- To compare pattern binders, we need to unbind, but also
 -- make sure that the patterns are equal
 instance (SNatI m, Eq (Term n)) => Eq (Pat.Bind Term Term (Pattern m) n) where
   b1 == b2 =
-    Maybe.isJust (patEq (getPat b1) (getPat b2))
-      && getBody b1 == getBody b2
+    Maybe.isJust (Pat.patEq (Pat.getPat b1) (Pat.getPat b2))
+      && Pat.getBody b1 == Pat.getBody b2
 
 -- To compare binders, we only need to `unbind` them
 instance (Eq (Term n)) => Eq (Local.Bind Term Term n) where
-  b1 == b2 = unbind b1 == unbind b2
+  b1 == b2 = Local.getBody b1 == Local.getBody b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
-deriving instance (Eq (Term n))
+-- deriving instance (Eq (Term n))
 
 
 -------------------------------------------------------
@@ -402,8 +429,9 @@ eqDef :: DataDef
 eqDef = 
   DataDef 
   { 
-    data_params = Tele <:> LocalDecl @N0 TyType   -- "A"
-                       <:> LocalDecl @N1 TyType,  -- "B"
+    data_params = 
+        Tele <:> LocalDecl @N0 (Local.Box "A") TyType   -- "A"
+             <:> LocalDecl @N1 (Local.Box "B") TyType,  -- "B"
     data_sort = TyType,
     data_constructors = [reflCon]
   }
@@ -412,15 +440,17 @@ reflCon :: ConstructorDef N2
 reflCon = 
   ConstructorDef
   { con_name = "Refl",
-    con_arguments = Tele <:> LocalDef f0 (Var f1)  -- "B = A"
+    con_arguments = 
+      Tele <:> LocalDef f0 (Var f1)  -- "B = A"
   }
 
 sigmaDef :: DataDef
 sigmaDef = 
   DataDef
   { 
-    data_params = Tele <:> LocalDecl @N0 TyType 
-                       <:> LocalDecl @N1 (Pi (Var f0) (L.bind TyType)),
+    data_params = 
+      Tele <:> LocalDecl @N0 (Local.Box "A") TyType 
+           <:> LocalDecl @N1 (Local.Box "B") (Pi (Var f0) (Local.bind (Local.Box "x") TyType)),
     data_sort = TyType,
     data_constructors = [prodCon]
   }
@@ -429,8 +459,10 @@ prodCon :: ConstructorDef N2
 prodCon = 
   ConstructorDef 
   { con_name = "Prod",
-    con_arguments = Tele <:> LocalDecl (Var f1) 
-                         <:> LocalDecl (App (Var f2) (Var f1))
+    con_arguments = Tele 
+    <:> LocalDecl (Local.Box "a") (Var f1) 
+    <:> LocalDecl (Local.Box "b")
+         (App (Var f2) (Var f1))
   }
 
 
@@ -466,7 +498,10 @@ eitherDef :: DataDef
 eitherDef =
   DataDef
     { 
-      data_params = Tele <:> LocalDecl TyType <:> LocalDecl TyType,
+      data_params = 
+          Tele 
+          <:> LocalDecl (Local.Box "A") TyType 
+          <:> LocalDecl (Local.Box "B") TyType,
       data_sort = TyType,
       data_constructors = [eitherLeft, eitherRight]
     }
@@ -476,7 +511,8 @@ eitherLeft =
   ConstructorDef
     { 
       con_name = "Left",
-      con_arguments = Tele <:> LocalDecl (Var f0)
+      con_arguments = Tele 
+         <:> LocalDecl (Local.Box "a") (Var f0)
     }
 
 eitherRight :: ConstructorDef N2
@@ -484,7 +520,8 @@ eitherRight =
   ConstructorDef
     { 
       con_name = "Right",
-      con_arguments = Tele <:> LocalDecl (Var f1)
+      con_arguments = Tele <:> 
+        LocalDecl (Local.Box "b") (Var f1)
     }
 
 prelude :: [ModuleEntry]
@@ -512,21 +549,34 @@ initialConstructorNames =
 -- Show instances
 --------------------------------------------------------
 
+deriving instance (Show (Term n))
+deriving instance (Show (Match n))
+deriving instance (Show (Pattern p))
+deriving instance (Show (PatList p))
+
+instance Show (Pat.Bind Term Term (Pattern p) n) where
+  show b = show (Pat.getPat b) ++ "=>" ++ show (Pat.getBody b)
+
+instance Show (Local.Bind Term Term n) where
+  show b = Local.unbind b $ \(x, body) -> show x ++ "." ++ show body
+
+{-
 instance Show (Term n) where
   showsPrec :: Int -> Term n -> String -> String
   showsPrec _ TyType = showString "Type"
   showsPrec d (Pi a b)
-    | appearsFree FZ (unbind b) =
+    | appearsFree FZ (Local.getBody b) =
+        Local.unbind b $ \(x,body) ->
         showParen (d > 10) $
-          showString "Pi "
+          showString ("Pi " ++ Local.name x ++ ":")
             . shows a
             . showString ". "
-            . shows (unbind b)
+            . shows body
     | otherwise =
         showParen (d > 10) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (unbind b)
+            . showsPrec 10 (Local.getBody b)
   showsPrec _ (Var x) = shows (toInt x)
   showsPrec _ (Global x) = showString x
   showsPrec d (App e1 e2) =
@@ -547,7 +597,7 @@ instance Show (Term n) where
   showsPrec d (Lam b) =
     showParen (d > 10) $
       showString "λ"
-        . showsPrec 10 (unbind b)
+        . showsPrec 10 (Local.getBody b)
   showsPrec d (Case t b) =
     showParen (d > 10) $
       showString "match"
@@ -565,23 +615,23 @@ instance Show (Term n) where
       showString "let _ = " .
       showsPrec 11 a .
       showString " in " .
-      showsPrec 10 (unbind b)
+      showsPrec 10 (Local.getBody b)
 
 instance Show (Match b) where
   showsPrec d (Branch b) =
-    showsPrec 10 (getPat b)
+    showsPrec 10 (Pat.getPat b)
       . showString ". "
-      . showsPrec 11 (getBody b)
+      . showsPrec 11 (Pat.getBody b)
 
-instance Show (Pattern p n) where
-  showsPrec d (PatVar x) = showString x
+instance Show (Pattern p) where
+  showsPrec d (PatVar x) = showsPrec d x
   showsPrec d (PatCon c ps) = showsPrec d c . showsPrec d ps
 
-instance Show (PatList p n) where
+instance Show (PatList p) where
   showsPrec d PNil = id
-  showsPrec d (PCons (Rebind p pl)) =
+  showsPrec d (PCons p pl) =
     showsPrec d p .
     showString " " .
     showsPrec 11 pl
-
+-}
 

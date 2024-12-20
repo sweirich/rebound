@@ -7,9 +7,9 @@ import PiForall.PrettyPrint
 
 import AutoEnv.Env as Env
 import AutoEnv
-import AutoEnv.Pat
+import AutoEnv.Pat.Simple as Pat
 import AutoEnv.Pat.LocalBind as L
-import AutoEnv.Pat.Rebind
+import AutoEnv.Pat.Scoped as Scoped
 
 
 
@@ -29,16 +29,16 @@ equate t1 t2 = do
     (TyType, TyType) -> return ()
     (Var x,  Var y) | x == y -> return ()
     (Lam bnd1, Lam bnd2) -> do
-      equate @(S n) (L.unbind bnd1) (L.unbind bnd2)
+      equate @(S n) (L.getBody bnd1) (L.getBody bnd2)
     (App a1 a2, App b1 b2) ->
       equate a1 b1 >> equate a2 b2
     (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do 
       equate tyA1 tyA2                                             
-      equate (L.unbind bnd1) (L.unbind bnd2)
+      equate (L.getBody bnd1) (L.getBody bnd2)
       
     (Let rhs1 bnd1, Let rhs2 bnd2) -> do
       equate rhs1 rhs2
-      equate (L.unbind bnd1) (L.unbind bnd2)            
+      equate (L.getBody bnd1) (L.getBody bnd2)            
     (TyCon c1 ts1, TyCon c2 ts2) | c1 == c2 -> 
       zipWithM_ equateArgs [ts1] [ts2]
     (DataCon d1 a1, DataCon d2 a2) | d1 == d2 -> do
@@ -51,9 +51,9 @@ equate t1 t2 = do
       let 
         matchBr :: Match n -> Match n -> TcMonad ()
         matchBr (Branch bnd1) (Branch bnd2) = 
-            unPatBind bnd1 $ \p1 a1 -> 
-            unPatBind bnd2 $ \p2 a2 ->
-            case patEq p1 p2 of
+            Pat.unbind bnd1 $ \p1 a1 -> 
+            Pat.unbind bnd2 $ \p2 a2 ->
+            case Pat.patEq p1 p2 of
               Just Refl -> equate a1 a2
               _ -> Env.err [DS "Cannot match branches in",
                               DD n1, DS "and", DD n2]
@@ -123,9 +123,9 @@ whnf (Case scrut mtchs) = do
   case nf of 
     (DataCon d args) -> f mtchs where
       f (Branch bnd : alts) = (do
-          let pat = getPat bnd
+          let pat = Pat.getPat bnd
           ss <- patternMatches nf pat 
-          whnf (instantiatePat bnd ss)) 
+          whnf (Pat.instantiate bnd ss)) 
             `catchError` \ _ -> f alts
       f [] = Env.err $ [DS "Internal error: couldn't find a matching",
                     DS "branch for", DD nf, DS "in"] ++ map DD mtchs
@@ -165,10 +165,10 @@ unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
       (TyCon s1 tms1, TyCon s2 tms2)
         | s1 == s2 -> unifyArgs p tms1 tms2
       (Lam bnd1, Lam bnd2) -> do
-        unify @n (SS p) (L.unbind bnd1) (L.unbind bnd2)
+        unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)
       (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
         ds1 <- unify p tyA1 tyA2
-        ds2 <- unify @n (SS p) (L.unbind bnd1) (L.unbind bnd2)
+        ds2 <- unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)
         return (ds1 ++ ds2) 
       _ ->
         if amb txnf || amb tynf
@@ -199,19 +199,20 @@ amb _ = False
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for variables
 -- bound in the pattern
-patternMatches :: forall p n. (SNatI n) => Term n -> Pattern p n 
+patternMatches :: forall p n. (SNatI n) => Term n -> Pattern p 
                -> TcMonad (Env Term p n)
 patternMatches e (PatVar _) = return (oneE e)
 patternMatches (DataCon n args) (PatCon l ps) 
   | l == n = patternMatchList args ps
 patternMatches nf pat = Env.err [DS "arg", DD nf, DS "doesn't match pattern", DD pat]
 
-patternMatchList :: forall p n. (SNatI n) => [Term n] -> PatList p n -> TcMonad (Env Term p n)
+patternMatchList :: forall p n. (SNatI n) => [Term n] -> PatList p -> TcMonad (Env Term p n)
 patternMatchList [] PNil = return zeroE
-patternMatchList (e1 : es) (PCons rb) = unRebind rb $ \p1 ps -> do
+patternMatchList (e1 : es) (PCons p1 ps) = do
     env1 <- patternMatches e1 p1 
-    env2 <- patternMatchList es (applyE (env1 .++ idE) ps) 
-    return (env2 .++ env1)
+    env2 <- patternMatchList es ps
+    withSNat (Pat.size ps) $
+      return (env2 .++ env1)
 patternMatchList _ _ = Env.err [DS "pattern match failure"]
 
 {-
