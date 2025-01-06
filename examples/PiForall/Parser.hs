@@ -259,7 +259,7 @@ reserved = Token.reserved tokenizer
 reservedOp = Token.reservedOp tokenizer
 
 parens, brackets, braces :: LParser a -> LParser a
-parens = Token.parens tokenizer
+parens = \p -> try (Token.parens tokenizer p) <|> Token.brackets tokenizer p
 brackets = Token.brackets tokenizer
 braces = Token.braces tokenizer
 
@@ -318,7 +318,7 @@ telebindings = many teleBinding
 
     teleBinding :: LParser ([Entry] -> [Entry])
     teleBinding =
-      (    parens annot
+      (    try (parens annot)
        <|> try (brackets imp)
        <|> brackets equal) <?> "binding"
 
@@ -463,11 +463,10 @@ typen =
      return TyType
 
 
-
-  -- Lambda abstractions have the syntax '\x . e' 
+  -- Lambda abstractions have the syntax '\x [y] z . e' 
 lambda :: LParser Term
 lambda = do reservedOp "\\"
-            binds <- many1 variable
+            binds <- many1 (try (brackets variable) <|> variable)
             dot
             body <- expr
             return $ foldr Lam body binds
@@ -575,10 +574,12 @@ pattern =  try (PatCon <$> dconstructor <*> many arg_pattern)
                   <|> atomic_pattern
     paren_pattern  = do
       pattern >>= \p ->
-        (reservedOp ")" >> pure p)
+           try (reservedOp ")" >> pure p)
+       <|> try (reservedOp "]" >> pure p)
        <|> reservedOp "," *> (atomic_pattern >>= \q ->
                               pure (PatCon "Prod" [p, q]))
-    atomic_pattern =  reservedOp "(" *> paren_pattern
+    atomic_pattern =  try (reservedOp "(" *> paren_pattern)
+                  <|> try (reservedOp "[" *> paren_pattern)
                   <|> (reserved "True" $> PatCon "True" [])
                   <|> (reserved "False" $> PatCon "False" [])
                   <|> (reserved "()" $> PatCon "()" [])

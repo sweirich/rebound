@@ -67,8 +67,7 @@ equate t1 t2 s = do
  where tyErr n1 n2 s = do 
           -- gamma <- Env.getLocalCtx
           -- TODO: use scope in Env.err
-          Env.errScope s [DS "Expected", DD n2,
-                   DS "but found", DD n1]
+          Env.errScope s [DS "Expected", DD n2, DS "but found", DD n1]
                
 -- | Match up args
 equateArgs :: SNatI n => [Term n] -> [Term n] -> Scope n -> TcMonad ()    

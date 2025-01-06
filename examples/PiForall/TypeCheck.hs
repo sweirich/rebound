@@ -549,7 +549,7 @@ tcEntry (ModuleDef n term) =
             DD term'
           ]) 
   `catchError` \_ -> do
-      traceM $ "checking def of " ++ n
+      traceM $ "checking def " ++ n
       lkup <- Env.lookupHint n
       case lkup of
         Nothing -> do
@@ -573,8 +573,12 @@ tcEntry (ModuleDef n term) =
 tcEntry decl@(ModuleDecl x ty) = do
   duplicateTypeBindingCheck decl
   tcType ty Env.emptyContext
-  return $ AddHint x ty
-
+  return (AddHint x ty)
+    `Env.extendErr` 
+                disp [ 
+                    DS "when checking the type declaration",
+                    DD x, DS ":", DD ty
+                  ]
 -- rule Entry_data
 tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) = 
   case axiomPlusZ @n of 
@@ -589,6 +593,9 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) =
             -- Env.extendSourceLocation pos defn $
               tcTypeTele theta ctx'
               return ()
+                `Env.extendErr` 
+                   disp [ DS "when checking the constructor declaration",
+                          DD defn ]
       Env.extendCtx (ModuleData n (DataDef delta s [])) 
                 $ mapM_ checkConstructorDef cs
       -- Implicitly, we expect the constructors to actually be different...
@@ -596,8 +603,12 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) =
       unless (length cnames == length (nub cnames)) $
         Env.err [DS "Datatype definition", DD n, 
                  DS "contains duplicated constructors"]
-      return $ AddCtx [decl]
-
+      return (AddCtx [decl])
+        `Env.extendErr` 
+                disp [ 
+                    DS "when checking the datatype declaration",
+                    DD decl
+                  ]
 
 -- | Make sure that we don't have the same name twice in the
 -- environment. (We don't rename top-level module definitions.)

@@ -33,8 +33,8 @@ plus = \ x y. case x of
 -- Dependently-typed data constructor arguments
 
 data SillyBool : Type where      
-  ImTrue  of (b : Bool) (_ : b = True)
-  ImFalse of (b: Bool)  (_ : b = False)
+  ImTrue  of (b:Bool) [b = True]
+  ImFalse of (b:Bool) [b = False]
 
 --
 -- Another example, Days of the week.
@@ -63,6 +63,7 @@ next_weekday = \d . case d of
 neg : Type -> Type
 neg = \ x . (x -> Void)
 
+{-
 next_is_not_saturday : (d: Day) -> neg (next_weekday d = Saturday) 
 next_is_not_saturday = \ d. 
   \pf. case d of
@@ -73,7 +74,7 @@ next_is_not_saturday = \ d.
      Friday -> contra pf
      Saturday -> contra pf
      Sunday -> contra pf
-
+-}
 
 -- parameterized datatypes
 

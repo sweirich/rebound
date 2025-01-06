@@ -265,7 +265,7 @@ instance Monoid Err where
 -- TODO: preserve passed in di for printing the term???
 displayErr :: Err -> DispInfo -> Doc ()
 displayErr (Err [] msg) di = msg
-displayErr (Err ((SourceLocation p term s) : _) msg) di =
+displayErr (Err ((SourceLocation p term s) : ss) msg) di =
     let sdi = namesDI (toList (scope_locals s)) in
     display p di
       <+> nest 2 msg

@@ -17,6 +17,15 @@ import qualified PiForall.Syntax as S
 import AutoEnv.Lib
              
 
+push :: a -> [(a, Fin n)] -> [(a, Fin (S n))]
+push x vs = (x, FZ) : map (fmap FS) vs
+
+snoc :: forall n a. a -> [(a, Fin n)] -> [(a, Fin (Plus n N1))]
+snoc x [] = case axiom @n @N0 of { Refl -> [(x, FZ)] }
+snoc x ((y, fy) : vs)  = 
+  case (axiomPlusZ @n, axiom @n @N0) of 
+    (Refl, Refl) -> (y, weaken1Fin fy) : snoc x vs
+
 data ScopedPattern n = forall p. SNatI p =>
    ScopedPattern (S.Pattern p) 
     [(L.LocalName, Fin (Plus p n))]
@@ -48,11 +57,16 @@ scopeCheckData (C.DataDef delta s cs) = do
   ScopedTele scope delta' <- scopeCheckTele [] delta
   S.DataDef delta' <$> scopeCheck s <*> mapM (scopeCheckConstructor scope) cs
 
-scopeCheckTele :: SNatI n => [(L.LocalName, Fin n)] -> C.Telescope -> Maybe (ScopedTele n)
+scopeCheckTele :: forall n. SNatI n => [(L.LocalName, Fin n)] -> C.Telescope -> Maybe (ScopedTele n)
 scopeCheckTele scope [] = Just $ ScopedTele [] S.Tele
-scopeCheckTele scope (C.EntryDecl n ty :entries) = do 
+scopeCheckTele scope (C.EntryDecl n ty : entries) = do 
   ty' <- to scope ty 
-  undefined
+  -- error "TODO: scopeCheckTele"
+  ScopedTele ss (tele' :: S.Telescope p (S n)) <- scopeCheckTele (push n scope) entries
+  let ret = S.TCons (Scoped.Rebind (S.LocalDecl n ty') tele')
+  case (axiom @p @N0, axiomPlusZ @p) of 
+    (Refl, Refl) -> return $ ScopedTele (push n ss) ret
+  
 scopeCheckTele scope (C.EntryDef n tm : entries) = do
   tm' <- to scope tm
   ScopedTele ss (tele' :: S.Telescope p n) <- scopeCheckTele scope entries
