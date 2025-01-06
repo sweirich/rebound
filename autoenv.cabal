@@ -78,6 +78,8 @@ library
       , PiForall.LayoutToken
       , PiForall.Parser
       , PiForall.ScopeCheck
+      , PiForall.Modules
+      , PiForall.TypeCheck
   hs-source-dirs:
       src
       , examples

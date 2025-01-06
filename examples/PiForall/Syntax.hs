@@ -13,8 +13,46 @@ import qualified AutoEnv.Pat.LocalBind as Local
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
 import Data.Set qualified as Set
+import Data.Vec qualified as Vec
+
 
 import Unsafe.Coerce (unsafeCoerce)
+
+
+data Scope n = Scope { 
+  scope_size   :: SNat n, 
+  scope_locals :: Vec n Local.LocalName   --- this scope grows in reverse order (like a stack)
+}
+
+pushScope :: Local.LocalName -> (Scope (S n) -> a) -> (Scope n -> a)
+pushScope ln k s = k $ Scope { scope_size = SS (scope_size s),
+                               scope_locals = ln ::: scope_locals s }
+
+pushPatScope :: forall m n a. Pattern m -> (Scope (Plus m n) -> a) -> Scope n -> a 
+pushPatScope pat k s = 
+  k $ Scope { scope_size = 
+                 sPlus (Pat.size pat) (scope_size s),
+              scope_locals = 
+                 Vec.append (patLocals pat) (scope_locals s) }
+
+
+inScope :: Scope n -> (SNatI n => a) -> a 
+inScope s = withSNat (scope_size s)               
+
+emptyScope :: Scope Z
+emptyScope = Scope { scope_size = SZ , scope_locals = VNil } 
+
+patLocals :: Pattern p -> Vec p Local.LocalName
+patLocals (PatVar x) = x ::: VNil
+patLocals (PatCon _ p) = patListLocals p
+
+patListLocals :: PatList p -> Vec p Local.LocalName
+patListLocals PNil = VNil
+patListLocals (PCons (p :: Pattern p) (ps :: PatList ps)) = 
+  Vec.append @ps @p (patListLocals ps) (patLocals p)
+
+getScope :: Pattern p -> Scope p
+getScope p = Scope { scope_size = Pat.size p, scope_locals = patLocals p }
 
 -- | names of top level declarations/definitions
 -- must be unique
@@ -43,7 +81,7 @@ data Term (n :: Nat)
   | Case (Term n) [Match n]
   | App (Term n) (Term n)
   | Ann (Term n) (Typ n)
-    
+     
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
@@ -72,7 +110,7 @@ data Local p n where
   LocalDecl :: Local.LocalName -> Typ n -> Local N1 n -- binding assumption
   LocalDef  :: Fin n -> Term n -> Local N0 n -- nonbinding assumption
 
--- | Telescopes: snoc-lists of local assumptions 
+-- | Telescopes: lists of local assumptions 
 -- These are scoped patterns because they include terms 
 -- that can mention variables that are already in scope
 -- or that have been bound earlier in the pattern.
@@ -80,19 +118,34 @@ data Local p n where
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 data Telescope p n where
   Tele :: Telescope N0 n
-  TSnoc :: Scoped.Rebind (Telescope p) (Local p1) n -> Telescope (Plus p1 p) n
+  TCons :: Scoped.Rebind (Local p) (Telescope p1) n -> Telescope (Plus p1 p) n
 
-infixl <:>
--- | add a new local entry to a telescope
-(<:>) :: Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
-t <:> e = TSnoc (Scoped.Rebind t e)
+(<:>) :: forall p p1 n. Local p n -> Telescope p1 (Plus p n) 
+  -> Telescope (Plus p1 p) n
+e <:> t = TCons (Scoped.Rebind e t)
+
+infixr <:>
+
+{-
+-- | TODO snoc a new local entry to a telescope
+(<:>) :: forall p1 p n. Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
+Tele <:> e = 
+  case axiomPlusZ @p1 of
+    Refl -> TCons (Scoped.Rebind e Tele)
+TCons (Scoped.Rebind (x :: Local p2 n) (t :: Telescope p3 (Plus p2 n))) <:> e = 
+  case axiomAssoc @p1 @p3 @p2 of 
+    Refl -> undefined
+      -- let e' :: Local p1 (Plus (Plus p3 p2) n)
+      --     e' = _  in
+      -- TCons (Scoped.Rebind x (t <:> e'))
+-}
 
 -- | 
 -- | Datatype definitions
 data DataDef = forall n.
   DataDef
   { 
-    data_params :: Telescope n Z,
+    data_delta :: Telescope n Z,
     data_sort :: Typ Z,
     data_constructors :: [ConstructorDef n]
   }
@@ -101,7 +154,7 @@ data DataDef = forall n.
 data ConstructorDef n = forall m.
   ConstructorDef
   { con_name :: DataConName,
-    con_arguments :: Telescope m n
+    con_theta :: Telescope m n
   }
 
 data ScopedConstructorDef = forall n.
@@ -118,8 +171,8 @@ data ConstructorNames = ConstructorNames
 
 -- Toplevel components of modules
 data ModuleEntry
-  = ModuleDecl { declName :: GlobalName, declType :: forall n. Typ n }
-  | ModuleDef  { declName :: GlobalName, declTerm :: forall n. Term n }
+  = ModuleDecl { declName :: GlobalName, declType :: Typ Z }
+  | ModuleDef  { declName :: GlobalName, declTerm :: Term Z }
   | ModuleData { declName :: GlobalName, declData :: DataDef }
   
 -- | module names
@@ -194,7 +247,7 @@ instance Scoped.Sized (Local p) where
 instance Scoped.Sized (Telescope p) where
     type Size (Telescope p) = p
     size Tele = s0
-    size (TSnoc rb) = Scoped.size rb
+    size (TCons rb) = Scoped.size rb
 
 ----------------------------------------------
 --  Subst instances
@@ -232,20 +285,22 @@ instance Subst Term (PatList p) where
   applyE r (PCons rb) = PCons (applyE r rb) 
 -}
 
-{-
+
 -- substitution could fail if the constraints in the 
 -- telescope are not satisifiable. So we define a 
 -- special purpose substitution operation for that 
 
 instance Subst Term (Telescope p) where
   applyE r Tele = Tele
-  applyE r (TSnoc rb) = TSnoc (applyE r rb)
+  applyE r (TCons rb) = TCons (applyE r rb)
 
 instance Subst Term (Local p) where
-  applyE r (LocalDecl t) = LocalDecl (applyE r t)
+  applyE r (LocalDecl ln t) = LocalDecl ln (applyE r t)
   applyE r (LocalDef x u) = 
-    case r u of 
--}
+    case applyE r (Var x) of
+      Var y -> LocalDef y (applyE r u)
+      _ -> error "TODO! can only rename LocalDefs"
+
     
 
 ----------------------------------------------
@@ -429,9 +484,9 @@ eqDef :: DataDef
 eqDef = 
   DataDef 
   { 
-    data_params = 
-        Tele <:> LocalDecl @N0 (Local.Box "A") TyType   -- "A"
-             <:> LocalDecl @N1 (Local.Box "B") TyType,  -- "B"
+    data_delta = 
+        LocalDecl (Local.Box "A") TyType <:>  -- "A"
+        LocalDecl (Local.Box "B") TyType <:> Tele,  -- "B"
     data_sort = TyType,
     data_constructors = [reflCon]
   }
@@ -440,17 +495,17 @@ reflCon :: ConstructorDef N2
 reflCon = 
   ConstructorDef
   { con_name = "Refl",
-    con_arguments = 
-      Tele <:> LocalDef f0 (Var f1)  -- "B = A"
+    con_theta = 
+      LocalDef f0 (Var f1) <:> Tele -- "B = A"
   }
 
 sigmaDef :: DataDef
 sigmaDef = 
   DataDef
   { 
-    data_params = 
-      Tele <:> LocalDecl @N0 (Local.Box "A") TyType 
-           <:> LocalDecl @N1 (Local.Box "B") (Pi (Var f0) (Local.bind (Local.Box "x") TyType)),
+    data_delta = 
+      LocalDecl @N0 (Local.Box "A") TyType <:>
+      LocalDecl @N1 (Local.Box "B") (Pi (Var f0) (Local.bind (Local.Box "x") TyType)) <:> Tele,
     data_sort = TyType,
     data_constructors = [prodCon]
   }
@@ -459,10 +514,11 @@ prodCon :: ConstructorDef N2
 prodCon = 
   ConstructorDef 
   { con_name = "Prod",
-    con_arguments = Tele 
-    <:> LocalDecl (Local.Box "a") (Var f1) 
+    con_theta = 
+    LocalDecl (Local.Box "a") (Var f1) 
     <:> LocalDecl (Local.Box "b")
          (App (Var f2) (Var f1))
+    <:> Tele
   }
 
 
@@ -470,7 +526,7 @@ unitDef :: DataDef
 unitDef =
   DataDef
     { 
-      data_params = Tele,
+      data_delta = Tele,
       data_sort = TyType,
       data_constructors = [unitCon]
     }
@@ -479,29 +535,29 @@ unitCon :: ConstructorDef N0
 unitCon =
   ConstructorDef
     { con_name = "()",
-      con_arguments = Tele
+      con_theta = Tele
     }
 
 boolDef :: DataDef
 boolDef =
   DataDef
     { 
-      data_params = Tele,
+      data_delta = Tele,
       data_sort = TyType,
       data_constructors = [boolCon False, boolCon True]
     }
 
 boolCon :: Bool -> ConstructorDef N0
-boolCon b = ConstructorDef {con_name = show b, con_arguments = Tele}
+boolCon b = ConstructorDef {con_name = show b, con_theta = Tele}
 
 eitherDef :: DataDef
 eitherDef =
   DataDef
     { 
-      data_params = 
-          Tele 
-          <:> LocalDecl (Local.Box "A") TyType 
-          <:> LocalDecl (Local.Box "B") TyType,
+      data_delta = 
+          LocalDecl (Local.Box "A") TyType 
+          <:> LocalDecl (Local.Box "B") TyType
+          <:> Tele,
       data_sort = TyType,
       data_constructors = [eitherLeft, eitherRight]
     }
@@ -511,8 +567,7 @@ eitherLeft =
   ConstructorDef
     { 
       con_name = "Left",
-      con_arguments = Tele 
-         <:> LocalDecl (Local.Box "a") (Var f0)
+      con_theta = LocalDecl (Local.Box "a") (Var f0) <:> Tele
     }
 
 eitherRight :: ConstructorDef N2
@@ -520,8 +575,8 @@ eitherRight =
   ConstructorDef
     { 
       con_name = "Right",
-      con_arguments = Tele <:> 
-        LocalDecl (Local.Box "b") (Var f1)
+      con_theta = 
+        LocalDecl (Local.Box "b") (Var f1) <:> Tele
     }
 
 prelude :: [ModuleEntry]

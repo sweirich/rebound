@@ -1,5 +1,5 @@
 -- | A Pretty Printer.
-module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, debug, DispInfo, initDI) where
+module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
@@ -37,13 +37,16 @@ class Display d where
 pp :: Display d => d -> String
 pp p = show (display p initDI)
 
+disp :: Display d => d -> Doc e
+disp x = display x initDI
+
 -- | For debugging
 debug :: Display d => d -> String
 debug p = show (display p debugDI) where
     debugDI = initDI{showLongNames = True, showAnnots=True}
 
 -- | The data structure for information about the display
-data DispInfo = DI
+data DispInfo = forall n. DI
   { -- | should we show type annotations?
     showAnnots :: Bool,
     -- | names that have been used
@@ -63,13 +66,16 @@ data D
   | -- | Displayable value
     forall a. Display a => DD a
 
-initDI :: DispInfo
+initDI :: DispInfo 
 initDI = DI { showAnnots = False,
               dispAvoid = S.empty,
               localNames = [],
               prec = 0,
               showLongNames = False
             }
+
+namesDI :: [LocalName] -> DispInfo
+namesDI s = initDI { localNames = s }
 
 
 -------------------------------------------------------------------------
@@ -102,19 +108,19 @@ instance Display SourcePos where
 
 -------------------------------------------------------------------------
 
-{-
+
 instance Display Module where
   display m = do
     dn <- display (moduleName m)
     di <- mapM display (moduleImports m)
     de <- mapM display (moduleEntries m)
-    pure $ PP.pretty "module" <+> dn <+> PP.pretty "where"
-      $$ PP.vcat di
-      $$ PP.vcat de
+    pure $ PP.vcat $ [PP.pretty "module" <+> dn <+> PP.pretty "where"]
+                    ++ di ++ de
+
 
 instance Display ModuleImport where
   display (ModuleImport i) = pure $ PP.pretty "import" <+> disp i
--}
+
 
 instance Display [ModuleEntry] where
   display ds = do
@@ -158,7 +164,7 @@ instance Display (ConstructorDef n) where
 -- TODO
 instance Display (Telescope m n) where
    display Tele = mempty
-   display (TSnoc rbnd) = undefined
+   display (TCons rbnd) = undefined
 
 -------------------------------------------------------------------------
 
@@ -248,12 +254,19 @@ parens b = if b then PP.parens else id
 brackets :: Bool -> Doc d -> Doc d
 brackets b = if b then PP.brackets else id
 
+nthOpt :: [a] -> Int -> Maybe a 
+nthOpt (x:xs) 0 = Just x
+nthOpt (x:xs) n = nthOpt xs (n - 1)
+nthOpt [] _ = Nothing
+
 instance Display (Term n) where
   display TyType = return $ PP.pretty "Type"
   display (Global x) = return $ PP.pretty x   -- TODO
   display (Var n) = do
     ln <- asks localNames
-    return (PP.pretty $ show $ ln !! toInt n)
+    case nthOpt ln (toInt n) of
+      Just x -> return (PP.pretty $ show $ x)
+      Nothing -> return (PP.pretty $ "V" ++ show (toInt n))
   display a@(Lam b) = do
     n <- ask prec
     (binds, body) <- withPrec levelLam $ gatherBinders a
@@ -406,9 +419,9 @@ instance Display LocalName where
 
 -------------------------------------------------------------------------
 
-push :: LocalName -> DispInfo -> DispInfo
-push n r = r {localNames = n:localNames r}
-
+push :: LocalName -> DispInfo -> DispInfo 
+push n r = r { localNames = n:localNames r} 
+    
 pushList :: [LocalName] -> DispInfo -> DispInfo
 pushList ns r = foldl (flip push) r ns
 

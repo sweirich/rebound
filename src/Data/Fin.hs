@@ -109,15 +109,27 @@ universe = enumFin snat
 -- Shifting
 -------------------------------------------------------------------------------
 
--- This function adds the specified amount to the given 
+-- These functions add the specified amount to the given 
 -- `Fin`
+
+
 -- >>> shiftN s1 (f1 :: Fin N2)
 -- 2
 
--- increment by a fixed amount
+-- increment by a fixed amount (on the left)
 shiftN :: SNat m -> Fin n -> Fin (Plus m n)
 shiftN SZ f = f
 shiftN (SS n) f = FS (shiftN n f)
+
+-- >>> shiftRN s1 (f1 :: Fin N2)
+-- 2
+
+-- TODO: remove unsafeCoerce here
+shiftRN :: forall m n. SNat n -> Fin m -> Fin (Plus m n)
+shiftRN m f = unsafeCoerce (shiftN m f)
+
+-- >>> shiftL @N2 @N2 @N1 s2 (FZ :: Fin N3)
+-- 2
 
 -- increment by a fixed amount
 -- TODO: remove unsafeCoerce here

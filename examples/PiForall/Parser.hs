@@ -12,8 +12,8 @@ module PiForall.Parser
 
 import AutoEnv.Pat.LocalBind (LocalName(..))
 
-import PiForall.ConcreteSyntax hiding (moduleImports)
-import PiForall.Syntax (ConstructorNames(..), initialConstructorNames)
+import PiForall.ConcreteSyntax hiding (moduleImports,ModuleImport)
+import PiForall.Syntax (ConstructorNames(..), initialConstructorNames, ModuleImport(..))
 import qualified PiForall.Syntax as Syntax
 
 import qualified PiForall.LayoutToken as Token
@@ -211,8 +211,6 @@ variable =
        then fail "Expected a variable, but a constructor was found"
        else return (Box i)
 
-
-{- SOLN DATA -}
 wildcard :: LParser LocalName
 wildcard = do
   reservedOp "_" 
@@ -348,7 +346,7 @@ dataDef = do
   forM_ cs
     (\(ConstructorDef s cname _) ->
        modify (\cnames -> cnames{ dconNames = S.insert cname (dconNames cnames)}))
-  return $ ModuleData (DataDef name params TyType cs)
+  return $ ModuleData name (DataDef params TyType cs)
 
 constructorDef :: LParser ConstructorDef
 constructorDef = do
@@ -620,5 +618,7 @@ sigmaTy = do
   reservedOp "}"
   return $ TyCon "Sigma" [a, Lam x b]
 
+
+--------------------------------------------------------------------------
 
 

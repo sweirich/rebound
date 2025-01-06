@@ -6,7 +6,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 
 import AutoEnv.Pat.LocalBind (LocalName(..))
-import PiForall.Syntax (ConstructorNames)
+import PiForall.Syntax (ConstructorNames, ModuleImport(..))
 
 -- | names of top level declarations/definitions
 -- must be unique
@@ -69,12 +69,12 @@ t <:> e = t ++ [e]
 data ModuleEntry
   = ModuleDecl { declName :: GlobalName, declType :: Typ }
   | ModuleDef  { declName :: GlobalName, declTerm :: Term }
-  | ModuleData DataDef
+  | ModuleData { declName :: GlobalName, declData :: DataDef }
 
 -- | Datatype definitions
 data DataDef = 
   DataDef
-  { data_name :: TyConName,
+  { 
     data_params :: Telescope,
     data_sort :: Typ,
     data_constructors :: [ConstructorDef]
@@ -103,10 +103,6 @@ data Module = Module
     moduleEntries :: [ModuleEntry],
     moduleConstructors :: ConstructorNames
   }
-
--- | References to other modules (brings declarations and definitions into scope)
-newtype ModuleImport = ModuleImport ModuleName
-
 
 -------------------------------------------------------
 

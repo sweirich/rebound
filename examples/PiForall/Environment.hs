@@ -1,6 +1,7 @@
 module PiForall.Environment where
 
 import Data.List
+import Data.Foldable (toList)
 import Data.Maybe ( listToMaybe )
 import Control.Monad.Except
     ( MonadError(..), ExceptT, runExceptT )
@@ -12,6 +13,7 @@ import Prettyprinter ( Doc, vcat, sep, (<+>), nest, pretty )
 import AutoEnv.Context
 
 import AutoEnv
+import qualified AutoEnv.Pat.LocalBind as Local
 import AutoEnv.Pat.Rebind
 import PiForall.Syntax
 import PiForall.PrettyPrint
@@ -43,7 +45,7 @@ data TcEnv = TcEnv
     -- | Type declarations: it's not safe to
     -- put these in the context until a corresponding term
     -- has been checked.
-    hints :: [ModuleEntry],
+    hints :: [(GlobalName, Typ Z)],
     -- | what part of the file we are in (for errors/warnings)
     sourceLocation :: [SourceLocation]
   }
@@ -60,16 +62,14 @@ emptyEnv = TcEnv {
 
 --------------------------------------------------------------------
 -- Globals
-
-
 -- | Find a name's user supplied type signature
-lookupHint :: (MonadReader TcEnv m) => GlobalName -> m (Maybe ModuleEntry)
+lookupHint :: (MonadReader TcEnv m) => GlobalName -> m (Maybe (Typ Z))
 lookupHint v = do
   hints <- asks hints
-  return $ listToMaybe [ sig | sig <- hints, v == declName sig]
+  return $ listToMaybe [ ty | (x,ty) <- hints, v == x]
 
 lookupGlobalTy ::
-  GlobalName -> TcMonad (Typ n)
+  GlobalName -> TcMonad (Typ Z)
 lookupGlobalTy v = do
     env <- ask
     case [a | ModuleDecl v' a <- globals env, v == v'] of
@@ -77,8 +77,7 @@ lookupGlobalTy v = do
       _  -> err [ DS ("The variable " ++ show v ++ " was not found."),
             DS "in the global context."
                       ]
-lookupGlobalDef ::
-  GlobalName -> TcMonad (Term n)
+lookupGlobalDef :: GlobalName -> TcMonad (Term Z)
 lookupGlobalDef v = do
     env <- ask
     case [a | ModuleDef v' a <- globals env, v == v'] of
@@ -120,12 +119,12 @@ lookupDConAll v = do
   scanGamma g
   where
     scanGamma [] = return []
-    scanGamma ((ModuleData _ (DataDef delta _ cs)) : g) =
+    scanGamma ((ModuleData tn (DataDef delta _ cs)) : g) =
       case find (\(ConstructorDef v'' tele) -> v'' == v) cs of
         Nothing -> scanGamma g
         Just c -> do
           more <- scanGamma g
-          return $ (v, 
+          return $ (tn, 
              ScopedConstructorDef delta c) :  more
     scanGamma (_ : g) = scanGamma g
 
@@ -159,15 +158,22 @@ lookupDCon c tname = do
 -- include local definitions). 
 data Context n = Context {
     local_size  :: SNat n,
-    local_decls :: Ctx Term n
+    local_decls :: Ctx Term n,
+    local_names :: Vec n Local.LocalName
     -- local_defs  :: Env Term m n 
 }
+
+toScope :: Context n -> Scope n
+toScope c = Scope { scope_size = local_size c,
+                    scope_locals = local_names c
+                  }
+
 
 weakenDef :: SNat n -> (Fin p, Term p) -> (Fin (Plus n p), Term (Plus n p))
 weakenDef m (x,y) = (weakenFin m x, applyE @Term (weakenE' m) y)
 
 emptyContext :: Context N0
-emptyContext = Context s0 emptyC -- emptyE
+emptyContext = Context s0 emptyC VNil -- emptyE
 
 instance Display (Context n) where
   display (Context { local_decls = decls}) di = pretty "TODO <display context>"
@@ -212,25 +218,30 @@ lookupTy :: Fin n -> Context n -> Term n
 lookupTy x (Context {local_decls = gamma}) = applyEnv gamma x
 
 -- | Extend the context with a new declaration
-extendTy :: Term n -> Context n -> Context (S n) 
-extendTy d c@(Context {local_size=n,local_decls=gamma}) = c { local_size = SS n,local_decls =gamma +++ d }
+extendTy :: Local.LocalName -> Typ n -> Context n -> Context (S n) 
+extendTy ln d c@(Context {local_size=n,local_decls=gamma,local_names=names}) = 
+    c { local_size = SS n,local_decls =gamma +++ d,local_names=ln:::names}
   -- (map (weakenDef s1) defs)
 
+extendDef :: Fin n -> Term n -> Context n -> Context n
+extendDef d = error "TODO: local definitions unsupported"
+
 extendLocal :: Local p n -> (Context (Plus p n) -> m a) -> (Context n -> m a)
-extendLocal (LocalDecl x t) k ctx = k (extendTy t ctx)
+extendLocal (LocalDecl x t) k ctx = k (extendTy x t ctx)
 extendLocal (LocalDef x u) k ctx = error "TODO: local definitions unsupported"
+
 
 --------------------------------------------------------------------
 -- Source locations 
 
 -- | Marked locations in the source code
 data SourceLocation where
-  SourceLocation :: forall a. Display a => SourcePos -> a -> SourceLocation
+  SourceLocation :: forall a n. Display a => SourcePos -> a -> Scope n -> SourceLocation
 
 -- | Push a new source position on the location stack.
-extendSourceLocation :: (MonadReader TcEnv m, Display t) => SourcePos -> t -> m a -> m a
-extendSourceLocation p t =
-  local (\e@TcEnv {sourceLocation = locs} -> e {sourceLocation = SourceLocation p t : locs})
+extendSourceLocation :: (MonadReader TcEnv m, Display t) => SourcePos -> t -> Scope n -> m a -> m a
+extendSourceLocation p t s =
+  local (\e@TcEnv {sourceLocation = locs} -> e {sourceLocation = SourceLocation p t s : locs})
 
 -- | access current source location
 getSourceLocation :: MonadReader TcEnv m => m [SourceLocation]
@@ -251,13 +262,15 @@ instance Monoid Err where
   mempty = Err [] mempty
 
 -- | display an error
+-- TODO: preserve passed in di for printing the term???
 displayErr :: Err -> DispInfo -> Doc ()
 displayErr (Err [] msg) di = msg
-displayErr (Err ((SourceLocation p term) : _) msg) di =
+displayErr (Err ((SourceLocation p term s) : _) msg) di =
+    let sdi = namesDI (toList (scope_locals s)) in
     display p di
       <+> nest 2 msg
-      <+> nest 2 (pretty "In the expression" 
-                 <> nest 2 (display term di))
+      <+> nest 2 (pretty "in the expression" 
+                 <+> nest 2 (display term sdi))
 
 -- | Throw an error
 err :: (Display a, MonadError Err m, MonadReader TcEnv m) => [a] -> m b
@@ -265,10 +278,46 @@ err d = do
   loc <- getSourceLocation
   throwError $ Err loc (sep $ map (`display` initDI) d)
 
+errCtx :: (Display a, MonadError Err m, MonadReader TcEnv m) => Context n -> [a] -> m b
+errCtx ctx d = do
+  loc <- getSourceLocation
+  throwError $ Err loc (sep $ map (`display` namesDI (toList (local_names ctx))) d)
+
+errScope :: (Display a, MonadError Err m, MonadReader TcEnv m) => Scope n -> [a] -> m b
+errScope ctx d = do
+  loc <- getSourceLocation
+  throwError $ Err loc (sep $ map (`display` namesDI (toList (scope_locals ctx))) d)
+
+
+
 -- | Augment an error message with addition information (if thrown)
 extendErr :: MonadError Err m => m a -> Doc () -> m a
 extendErr ma msg' =
   ma `catchError` \(Err ps msg) ->
     throwError $ Err ps (vcat [msg, msg'])
 
+--------------------------------------------------------------
+-- Modules
 
+-- | Add a type hint
+extendHints :: (MonadReader TcEnv m) => (GlobalName, Typ Z) -> m a -> m a
+extendHints h = local (\m@TcEnv {hints = hs} -> m {hints = h : hs})
+
+-- | Extend the global environment with a new entry
+extendCtx :: (MonadReader TcEnv m) => ModuleEntry -> m a -> m a
+extendCtx d =
+  local (\m@TcEnv{globals = cs} -> m {globals = d : cs})
+
+-- | Extend the context with a list of global bindings
+extendCtxs :: (MonadReader TcEnv m) => [ModuleEntry] -> m a -> m a
+extendCtxs ds =
+  local (\m@TcEnv {globals = cs} -> m {globals = ds ++ cs})
+
+-- | Extend the context with a module
+-- Note we must reverse the order
+extendCtxMod :: (MonadReader TcEnv m) => Module -> m a -> m a
+extendCtxMod m = extendCtxs (reverse $ moduleEntries m)
+
+-- | Extend the context with a list of modules
+extendCtxMods :: (MonadReader TcEnv m) => [Module] -> m a -> m a
+extendCtxMods mods k = foldr extendCtxMod k mods

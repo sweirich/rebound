@@ -49,3 +49,7 @@ repeat (SS n) x = x ::: repeat n x
 zipWith :: (a -> b -> c) -> Vec n a -> Vec n b -> Vec n c
 zipWith f VNil VNil = VNil
 zipWith f (x ::: xs) (y ::: ys) = f x y ::: zipWith f xs ys
+
+append :: forall n m a. Vec n a -> Vec m a -> Vec (Plus n m) a
+append VNil v = v
+append (x ::: v) w = x ::: append v w

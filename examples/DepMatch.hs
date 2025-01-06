@@ -1,7 +1,8 @@
--- A dependent type system, loosely based on pi-forall (version4)
--- This is an advanced usage of the binding library and
--- includes nested dependent pattern matching.
--- However, it does not attempt to use explicit environments
+-- A dependent type system, with nested dependent pattern matching
+-- This is an advanced usage of the binding library 
+-- It doesn't correspond to any current system, but has its own elegance
+-- (Maybe deserves to be written up on its own?)
+-- However, this implementation does not attempt to use explicit environments
 -- to optimize the execution.
 module DepMatch where
 
@@ -31,25 +32,33 @@ type TyConName = String
 -- | names of data constructors, like 'cons'
 type DataConName = String
 
--- In this system, `Match` introduces a Pi type and generalizes a lambda
--- expression.
+-- In this system, `Match` introduces a Pi type and generalizes 
+-- dependent functions
 -- If the pattern is a single variable, or an annotated variable,
--- then the term is just a function. But the pattern could be more
--- than that, supporting a general form of pattern matching.
+-- then the Match term is just a normal lambda expression. 
+-- But the pattern could be more structured than that, supporting 
+-- a general form of pattern matching
 data Exp (n :: Nat)
   = Const Const
   | Pi (Exp n) (B.Bind Exp Exp n)
   | Var (Fin n)
-  | Match [Branch n]
+  | Match [Branch n]  -- n-way abstractions
   | App (Exp n) (Exp n)
   | Sigma (Exp n) (B.Bind Exp Exp n)
   | Pair (Exp n) (Exp n)
   | Annot (Exp n) (Exp n)
 
--- | Patterns with embedded type annotations
+-- | A single branch in a match expression. Binds a pattern
+-- with expression variables, within some expression body
+data Branch (n :: Nat)
+  = forall p. Branch (Pat.Bind Exp Exp (Pat p) n)
+
+
+-- | Patterns, which may include embedded type annotations
 -- `p` is the number of variables bound by the pattern
 -- `n` is the number of free variables in type annotations in the pattern
--- In the App/Pair patterns, we increase the scope so that variables
+-- Patterns are "telescopic"
+-- In App/Pair pattern, we increase the scope so that variables
 -- bound in the left subterm can be referred to in the right subterm.
 data Pat (p :: Nat) (n :: Nat) where
   PConst :: Const -> Pat N0 n
@@ -58,16 +67,14 @@ data Pat (p :: Nat) (n :: Nat) where
   PPair :: Pat.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
--- A single branch in a match expression. Binds a pattern
--- with expression variables, with an expression body
-data Branch (n :: Nat)
-  = forall p. Branch (Pat.Bind Exp Exp (Pat p) n)
 
 -- This definitions support telescopes: variables bound earlier in the pattern
--- can appear later.  For example, a type paired with a term of that type
--- can look like this (and have a Sigma type)
---   (x, (y :: x)) : Sigma x:*.x
--- The "Rebind" type creates a pair where the pattern variables
+-- can appear later.  For example, the pattern for a type paired with 
+-- a term of that type can look like this 
+--     (x, (y :: x)) 
+-- The type of this pattern is
+--     Sigma x:Star.x
+-- "Rebind" creates a pair where the pattern variables
 -- in the first component are bound in expression parts of the
 -- second component
 pat0 :: Pat N2 N0
@@ -77,8 +84,8 @@ pat0 = PPair (Pat.Rebind PVar (PAnnot PVar (Var f0)))
 -- definitions for pattern matching
 -------------------------------------------------------
 
--- we can count the number of variables bound in the pattern
--- (though we probably already know it)
+-- For any pattern type, we need to be able to calculate
+-- the number of binding variables, both statically and dynamically
 instance Pat.Sized (Pat p) where
   type Size (Pat p) = p
   size :: Pat p n -> SNat p
@@ -101,14 +108,16 @@ patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PApp rb) (App e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
-  -- NOTE: substitute in p2 before pattern matching
-  env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
+  -- NOTE: substitute in p2 with env1 before pattern matching
+  let p2' = applyE (env1 .++ idE) p2
+  env2 <- patternMatch p2' e2
   return (env2 .++ env1)
 patternMatch (PConst s1) (Const s2) | s1 == s2 = Just zeroE
 patternMatch (PPair rb) (Pair e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
   env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
   return (env2 .++ env1)
+-- ignore type annotates when pattern matching
 patternMatch (PAnnot p _) e = patternMatch p e
 patternMatch p (Annot e _) = patternMatch p e
 patternMatch _ _ = Nothing

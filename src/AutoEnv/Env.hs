@@ -13,7 +13,8 @@ module AutoEnv.Env(Env,
   upN,
   shift1E,
   shiftNE,
-  toList,
+  tabulate,
+  fromTable,
   weakenE'
   ) where
 
@@ -131,10 +132,21 @@ upN SZ = id
 upN (SS n) = \e -> var FZ .: (upN n e .>> shift1E)
 
 ----------------------------------------------------------------
+-- 
+----------------------------------------------------------------
+
+tabulate :: (SNatI n) => Env v n m -> [v m]
+tabulate r = map (applyEnv r) (enumFin snat)
+
+
+fromTable :: SubstVar v => [(Fin n, v n)] -> Env v n n
+fromTable rho = Env $ \f -> case lookup f rho of 
+                                    Just t -> t 
+                                    Nothing -> var f
+
+----------------------------------------------------------------
 -- show for environments
 ----------------------------------------------------------------
-toList :: (SNatI n) => Env v n m -> [v m]
-toList r = map (applyEnv r) (enumFin snat)
 
 instance (SNatI n, Show (v m)) => Show (Env v n m) where
-  show x = show (toList x)
+  show x = show (tabulate x)
