@@ -10,7 +10,7 @@ module PiForall.Parser
   )
   where
 
-import AutoEnv.Pat.LocalBind (LocalName(..))
+import AutoEnv.LocalName
 
 import PiForall.ConcreteSyntax hiding (moduleImports,ModuleImport)
 import PiForall.Syntax (ConstructorNames(..), initialConstructorNames, ModuleImport(..))
@@ -115,7 +115,7 @@ Optional components in this BNF are marked with < >
 
 -- | Default name (for parsing 'A -> B' as '(_:A) -> B') 
 wildcardName :: LocalName
-wildcardName = Box "_"
+wildcardName = internalName
 
 liftError :: (MonadError e m) => Either e a -> m a
 liftError (Left e) = throwError e
@@ -209,7 +209,7 @@ variable =
      if i `S.member` tconNames cnames ||
         i `S.member` dconNames cnames
        then fail "Expected a variable, but a constructor was found"
-       else return (Box i)
+       else return (LocalName i)
 
 wildcard :: LParser LocalName
 wildcard = do
@@ -247,7 +247,7 @@ varOrCon = do i <- identifier
                 then return (DataCon i [] )
                 else if  i `S.member` tconNames cnames
                        then return (TyCon i [])
-                       else return (Var (Box i))
+                       else return (Var (LocalName i))
 
 colon, dot, comma :: LParser ()
 colon = void (Token.colon tokenizer)
@@ -357,11 +357,11 @@ constructorDef = do
   <?> "Constructor"
 
 declDef = do
-  Box n <- try (variable >>= \v -> colon >> return v)
+  LocalName n <- try (variable >>= \v -> colon >> return v)
   ModuleDecl n <$> expr
 
 valDef = do
-  Box n <- try (do {n <- variable; reservedOp "="; return n})
+  LocalName n <- try (do {n <- variable; reservedOp "="; return n})
   ModuleDef n <$> expr
 
 

@@ -7,9 +7,13 @@ import PiForall.PrettyPrint
 
 import AutoEnv.Env as Env
 import AutoEnv
+import AutoEnv.LocalName
+import AutoEnv.MonadScoped
 import AutoEnv.Pat.Simple as Pat
 import AutoEnv.Pat.LocalBind as L
 import AutoEnv.Pat.Scoped as Scoped
+
+import Prettyprinter as PP
 
 import Debug.Trace
 
@@ -20,64 +24,64 @@ import Control.Monad.Except (catchError)
 -- first check if they are alpha equivalent then
 -- if not, weak-head normalize and compare
 -- throw an error if they cannot be matched up
-equate :: forall n. SNatI n => Term n -> Term n -> Scope n -> TcMonad ()
-equate t1 t2 s | t1 == t2 = return () 
-equate t1 t2 s = do
-  n1 <- whnf t1 s 
-  n2 <- whnf t2 s
+equate :: forall n. SNatI n => Term n -> Term n -> TcMonad n ()
+equate t1 t2 | t1 == t2 = return () 
+equate t1 t2 = do
+  n1 <- whnf t1 
+  n2 <- whnf t2
   case (n1, n2) of 
     (TyType, TyType) -> return ()
     (Var x,  Var y) | x == y -> return ()
     (Lam bnd1, Lam bnd2) -> do
-      pushScope (L.getLocalName bnd1)  
-        (equate @(S n) (L.getBody bnd1) (L.getBody bnd2)) s
+      push (Pat.getPat bnd1)
+         (equate @(S n) (L.getBody bnd1) (L.getBody bnd2))
     (App a1 a2, App b1 b2) ->
-      equate a1 b1 s >> equate a2 b2 s
+      equate a1 b1 >> equate a2 b2 
     (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do 
-      equate tyA1 tyA2  s  
-      pushScope (L.getLocalName bnd1)                                           
-        (equate (L.getBody bnd1) (L.getBody bnd2)) s
+      equate tyA1 tyA2  
+      push (L.getLocalName bnd1)                                           
+        (equate (L.getBody bnd1) (L.getBody bnd2)) 
       
     (Let rhs1 bnd1, Let rhs2 bnd2) -> do
-      equate rhs1 rhs2 s
-      pushScope (L.getLocalName bnd1) 
-        (equate (L.getBody bnd1) (L.getBody bnd2)) s
+      equate rhs1 rhs2 
+      push (L.getLocalName bnd1) 
+        (equate (L.getBody bnd1) (L.getBody bnd2)) 
     (TyCon c1 ts1, TyCon c2 ts2) | c1 == c2 -> 
-      zipWithM_ (\a1 a2 -> equateArgs a1 a2 s) [ts1] [ts2]
+      zipWithM_ (\a1 a2 -> equateArgs a1 a2) [ts1] [ts2]
     (DataCon d1 a1, DataCon d2 a2) | d1 == d2 -> do
-      equateArgs a1 a2 s
+      equateArgs a1 a2 
     (Case s1 brs1, Case s2 brs2) 
       | length brs1 == length brs2 -> do
-      equate s1 s2 s
+      equate s1 s2 
       -- require branches to be in the same order
       -- on both expressions
       let 
-        matchBr :: Match n -> Match n -> Scope n -> TcMonad ()
-        matchBr (Branch bnd1) (Branch bnd2) s = 
+        matchBr :: Match n -> Match n -> TcMonad n ()
+        matchBr (Branch bnd1) (Branch bnd2) = 
             Pat.unbind bnd1 $ \p1 a1 -> 
             Pat.unbind bnd2 $ \p2 a2 ->
             case Pat.patEq p1 p2 of
               Just Refl -> 
-                pushPatScope p1
-                  (equate a1 a2) s
+                push p1 (equate a1 a2) 
               _ -> Env.err [DS "Cannot match branches in",
                               DD n1, DS "and", DD n2]
-      zipWithM_ (\m1 m2 -> matchBr m1 m2 s) brs1 brs2       
-    (_,_) -> tyErr n1 n2 s
- where tyErr n1 n2 s = do 
+      zipWithM_ (\m1 m2 -> matchBr m1 m2) brs1 brs2       
+    (_,_) -> tyErr n1 n2 
+ where tyErr n1 n2 = do 
           -- gamma <- Env.getLocalCtx
           -- TODO: use scope in Env.err
-          Env.errScope s [DS "Expected", DD n2, DS "but found", DD n1]
+          Env.err [DS "Expected", DD n2,
+                   DS "but found", DD n1]
                
 -- | Match up args
-equateArgs :: SNatI n => [Term n] -> [Term n] -> Scope n -> TcMonad ()    
-equateArgs (a1:t1s) (a2:t2s) s = do
-  equate a1 a2 s
-  equateArgs t1s t2s s
-equateArgs [] [] s = return ()
-equateArgs a1 a2 s = do 
+equateArgs :: SNatI n => [Term n] -> [Term n] -> TcMonad n ()    
+equateArgs (a1:t1s) (a2:t2s)  = do
+  equate a1 a2 
+  equateArgs t1s t2s 
+equateArgs [] []  = return ()
+equateArgs a1 a2  = do 
           -- TODO used scope in Env.err
-          Env.errScope s [DS "Expected", DD (length a2),
+          Env.err [DS "Expected", DD (length a2),
                    DS "but found", DD (length a1) ]
                    
 
@@ -87,9 +91,9 @@ equateArgs a1 a2 s = do
 -- | Ensure that the given type 'ty' is some tycon applied to 
 --  params (or could be normalized to be such)
 -- Throws an error if this is not the case 
-ensureTCon :: SNatI n => Term n -> Scope n -> TcMonad (TyConName, [Term n])
-ensureTCon aty s = do
-  nf <- whnf aty s
+ensureTCon :: SNatI n => Term n -> TcMonad n (TyConName, [Term n])
+ensureTCon aty = do
+  nf <- whnf aty 
   case nf of 
     TyCon n params -> return (n, params)    
     _ -> Env.err [DS "Expected a data type but found", DD nf]
@@ -97,49 +101,51 @@ ensureTCon aty s = do
 -------------------------------------------------------
 -- | Convert a term to its weak-head normal form.             
 -- | TODO: add explicit environment
-whnf :: forall n. SNatI n => Term n -> Scope n -> TcMonad (Term n)
-whnf (Global y) s = do
+whnf :: forall n. SNatI n => Term n -> TcMonad n (Term n)
+whnf (Global y) = do
   x <- Env.lookupGlobalDef y
   whnf (case axiomPlusZ @n of 
-             Refl -> weaken' (snat @n) x) s
+             Refl -> weaken' (snat @n) x) 
      `catchError` \_ -> return (Global y)
   
-whnf (Var x) s = do      
+whnf (Var x)  = do      
   -- maybeDef <- Env.lookupDef x
   -- case maybeDef of 
   --  (Just d) -> whnf d 
   --  _ -> 
           return (Var x)
         
-whnf (App t1 t2) s = do
-  nf <- whnf t1 s
+whnf (App t1 t2)  = do
+  nf <- whnf t1 
   case nf of 
     (Lam  bnd) -> do
-      whnf (L.instantiate bnd t2) s
+      whnf (L.instantiate bnd t2) 
     _ -> do
       return (App nf t2)
 -- ignore/remove type annotations and source positions when normalizing  
-whnf (Ann tm _) s = whnf tm s
-whnf (Pos _ tm) s = whnf tm s
-whnf (Let rhs bnd) s = do
-   whnf (L.instantiate bnd rhs) s
+whnf (Ann tm _)  = whnf tm 
+whnf (Pos _ tm)  = whnf tm 
+whnf (Let rhs bnd) = do
+   whnf (L.instantiate bnd rhs) 
  
-whnf (Case scrut mtchs) s = do
-  nf <- whnf scrut s      
+whnf (Case scrut mtchs) = do
+  nf <- whnf scrut      
   case nf of 
-    (DataCon d args) -> f mtchs s where
-      f (Branch bnd : alts) s = (do
+    (DataCon d args) -> f mtchs  where
+      f (Branch bnd : alts)  = (do
           let pat = Pat.getPat bnd
           ss <- patternMatches nf pat 
-          whnf (Pat.instantiate bnd ss) s) 
-            `catchError` \ _ -> f alts s
-      f [] s = Env.err $ [DS "Internal error: couldn't find a matching",
+          whnf (Pat.instantiate bnd ss)) 
+            `catchError` \ _ -> f alts 
+      f [] = Env.err $ [DS "Internal error: couldn't find a matching",
                     DS "branch for", DD nf, DS "in"] ++ map DD mtchs
     _ -> return (Case nf mtchs){- STUBWITH -}            
 -- all other terms are already in WHNF
 -- don't do anything special for them
-whnf tm s = do
+whnf tm = do
   return tm
+
+
 
 -- | 'Unify' the two terms, producing a list of definitions that 
 -- must hold for the terms to be equal
@@ -147,50 +153,50 @@ whnf tm s = do
 -- If there is an obvious mismatch, fail with an error
 -- If either term is "ambiguous" (i.e. neutral), give up and 
 -- succeed with an empty list
-unify :: forall n p. SNatI n => SNat p -> Term (Plus p n) -> Term (Plus p n) -> Scope (Plus p n) -> TcMonad [(Fin n, Term n)]
-unify p tx ty s = withSNat (sPlus p (snat :: SNat n)) $ do
-  (txnf :: Term (Plus p n)) <- whnf tx s
-  (tynf :: Term (Plus p n)) <- whnf ty s
+unify :: forall n p. SNatI n => SNat p -> Term (Plus p n) -> Term (Plus p n) -> TcMonad (Plus p n) (Refinement Term n)
+unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
+  (txnf :: Term (Plus p n)) <- whnf tx 
+  (tynf :: Term (Plus p n)) <- whnf ty 
   if txnf == tynf
-    then return []
+    then return mempty
     else case (txnf, tynf) of
-      (Var x, Var y) | x == y -> return []
+      (Var x, Var y) | x == y -> return mempty
       (Var y, yty)  |
         Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
         Just yty' <- strengthen' p (snat :: SNat n) yty
         -> if not (y' `appearsFree` yty')
-            then return [(y', yty')] 
-            else return [] 
+            then return (Env.singletonRefinement (y', yty'))
+            else return mempty 
       (yty, Var y)  |
         Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
         Just yty' <- strengthen' p (snat :: SNat n) yty
         -> if not (y' `appearsFree` yty')
-            then return [(y', yty')] 
-            else return [] 
+            then return (Env.singletonRefinement (y', yty'))
+            else return mempty 
       (DataCon n1 a1, DataCon n2 a2) 
-        | n1 == n2 ->  unifyArgs p a1 a2 s
+        | n1 == n2 ->  unifyArgs p a1 a2 
       (TyCon s1 tms1, TyCon s2 tms2)
-        | s1 == s2 -> unifyArgs p tms1 tms2 s
+        | s1 == s2 -> unifyArgs p tms1 tms2 
       (Lam bnd1, Lam bnd2) -> do
-        pushScope (L.getLocalName bnd1) 
-          (unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)) s
+        push (L.getLocalName bnd1) 
+          (unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)) 
       (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
-        ds1 <- unify p tyA1 tyA2 s
+        ds1 <- unify p tyA1 tyA2 
         ds2 <- 
-          pushScope (L.getLocalName bnd1)
-            (unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)) s
-        return (ds1 ++ ds2) 
+          push (L.getLocalName bnd1)
+            (unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)) 
+        return (ds1 <> ds2) 
       _ ->
         if amb txnf || amb tynf
-          then return []
+          then return mempty
           else Env.err [DS "Cannot equate", DD txnf, DS "and", DD tynf] 
   where
-    unifyArgs p (t1 : a1s) (t2 : a2s) s = do
-      ds <- unify p t1 t2 s
-      ds' <- unifyArgs p a1s a2s s
-      return $ ds ++ ds'
-    unifyArgs p [] [] _ = return []
-    unifyArgs _ _ _ _ = Env.err [DS "internal error (unify)"] 
+    unifyArgs p (t1 : a1s) (t2 : a2s) = do
+      ds <- unify p t1 t2 
+      ds' <- unifyArgs p a1s a2s 
+      return $ ds <> ds'
+    unifyArgs p [] [] = return mempty
+    unifyArgs _ _ _ = Env.err [DS "internal error (unify)"] 
 
 
 -- | Is a term "ambiguous" when it comes to unification?
@@ -211,13 +217,13 @@ amb _ = False
 -- producing a substitution for variables
 -- bound in the pattern
 patternMatches :: forall p n. (SNatI n) => Term n -> Pattern p 
-               -> TcMonad (Env Term p n)
+               -> TcMonad n (Env Term p n)
 patternMatches e (PatVar _) = return (oneE e)
 patternMatches (DataCon n args) (PatCon l ps) 
   | l == n = patternMatchList args ps
 patternMatches nf pat = Env.err [DS "arg", DD nf, DS "doesn't match pattern", DD pat]
 
-patternMatchList :: forall p n. (SNatI n) => [Term n] -> PatList p -> TcMonad (Env Term p n)
+patternMatchList :: forall p n. (SNatI n) => [Term n] -> PatList p -> TcMonad n (Env Term p n)
 patternMatchList [] PNil = return zeroE
 patternMatchList (e1 : es) (PCons p1 ps) = do
     env1 <- patternMatches e1 p1 

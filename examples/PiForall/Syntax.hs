@@ -5,10 +5,13 @@
 module PiForall.Syntax where
 
 import AutoEnv
+import AutoEnv.LocalName
 import qualified AutoEnv.Bind as B
 import qualified AutoEnv.Pat.Simple as Pat
 import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.LocalBind as Local
+
+import AutoEnv.MonadScoped
 
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
@@ -18,38 +21,8 @@ import Data.Vec qualified as Vec
 
 import Unsafe.Coerce (unsafeCoerce)
 
-
-data Scope n = Scope { 
-  scope_size   :: SNat n, 
-  scope_locals :: Vec n Local.LocalName   --- this scope grows in reverse order (like a stack)
-}
-
-pushScope :: Local.LocalName -> (Scope (S n) -> a) -> (Scope n -> a)
-pushScope ln k s = k $ Scope { scope_size = SS (scope_size s),
-                               scope_locals = ln ::: scope_locals s }
-
-pushPatScope :: forall m n a. Pattern m -> (Scope (Plus m n) -> a) -> Scope n -> a 
-pushPatScope pat k s = 
-  k $ Scope { scope_size = 
-                 sPlus (Pat.size pat) (scope_size s),
-              scope_locals = 
-                 Vec.append (patLocals pat) (scope_locals s) }
-
-
 inScope :: Scope n -> (SNatI n => a) -> a 
-inScope s = withSNat (scope_size s)               
-
-emptyScope :: Scope Z
-emptyScope = Scope { scope_size = SZ , scope_locals = VNil } 
-
-patLocals :: Pattern p -> Vec p Local.LocalName
-patLocals (PatVar x) = x ::: VNil
-patLocals (PatCon _ p) = patListLocals p
-
-patListLocals :: PatList p -> Vec p Local.LocalName
-patListLocals PNil = VNil
-patListLocals (PCons (p :: Pattern p) (ps :: PatList ps)) = 
-  Vec.append @ps @p (patListLocals ps) (patLocals p)
+inScope s = withSNat (scope_size s) 
 
 getScope :: Pattern p -> Scope p
 getScope p = Scope { scope_size = Pat.size p, scope_locals = patLocals p }
@@ -90,7 +63,7 @@ data Term (n :: Nat)
 -- LocalName is used for printing only, irrelevant for alpha-equivalence
 data Pattern (p :: Nat)  where
   PatCon :: DataConName -> PatList p -> Pattern p
-  PatVar :: Local.LocalName -> Pattern N1
+  PatVar :: LocalName -> Pattern N1
 
 -- | lists of patterns where variables at each position bind 
 -- later in the pattern
@@ -107,7 +80,7 @@ data Match (n :: Nat)
 
 -- | Local assumption, either declarations of local variables or definitions (i.e. constraints on variables already in scope)
 data Local p n where
-  LocalDecl :: Local.LocalName -> Typ n -> Local N1 n -- binding assumption
+  LocalDecl :: LocalName -> Typ n -> Local N1 n -- binding assumption
   LocalDef  :: Fin n -> Term n -> Local N0 n -- nonbinding assumption
 
 -- | Telescopes: lists of local assumptions 
@@ -157,7 +130,7 @@ data ConstructorDef n = forall m.
     con_theta :: Telescope m n
   }
 
-data ScopedConstructorDef = forall n.
+data ScopedConstructorDef = forall n. 
   ScopedConstructorDef 
     (Telescope n Z) (ConstructorDef n)
 
@@ -228,26 +201,55 @@ unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 --  Size instances
 ----------------------------------------------
 
+-- simple patterns
+
 instance Pat.Sized (Pattern p) where
     type Size (Pattern p) = p
     size (PatCon _ p) = Pat.size p
     size (PatVar _) = s1
-
 
 instance Pat.Sized (PatList p) where
     type Size (PatList p) = p
     size PNil = s0
     size (PCons p1 p2) = sPlus (Pat.size p2) (Pat.size p1)
 
-instance Scoped.Sized (Local p) where
-    type Size (Local p) = p
+instance Named (Pattern p) where
+  patLocals :: Pattern p -> Vec p LocalName
+  patLocals (PatVar x) = x ::: VNil
+  patLocals (PatCon _ p) = patLocals p
+
+instance Named (PatList p) where
+  patLocals :: PatList p -> Vec p LocalName
+  patLocals PNil = VNil
+  patLocals (PCons (p1 :: Pattern p1) (ps :: PatList ps)) = 
+    Vec.append @ps @p1 (patLocals ps) (patLocals p1)
+
+-- scoped patterns
+
+instance Pat.Sized (Local p n) where
+    type Size (Local p n) = p
     size (LocalDecl _ _) = s1
     size (LocalDef _ _) = s0
 
+instance Scoped.Sized (Local p) where
+    type Size (Local p) = p
+
+instance Named (Local p n) where
+  patLocals (LocalDecl x _) = x ::: VNil
+  patLocals (LocalDef _ _) = VNil
+
+instance Pat.Sized (Telescope p n) where
+    type Size (Telescope p n) = p
+    size Tele = s0
+    size (TCons rb) = Pat.size rb
+
 instance Scoped.Sized (Telescope p) where
     type Size (Telescope p) = p
-    size Tele = s0
-    size (TCons rb) = Scoped.size rb
+
+instance Named (Telescope p n) where
+  patLocals Tele = VNil
+  patLocals (TCons (Scoped.Rebind (p :: Local p1 n) (ps :: Telescope ps (Plus p1 n)))) = 
+    Vec.append @ps @p1 (patLocals ps) (patLocals p)
 
 ----------------------------------------------
 --  Subst instances
@@ -485,8 +487,8 @@ eqDef =
   DataDef 
   { 
     data_delta = 
-        LocalDecl (Local.Box "A") TyType <:>  -- "A"
-        LocalDecl (Local.Box "B") TyType <:> Tele,  -- "B"
+        LocalDecl (LocalName "A") TyType <:>  -- "A"
+        LocalDecl (LocalName "B") TyType <:> Tele,  -- "B"
     data_sort = TyType,
     data_constructors = [reflCon]
   }
@@ -504,8 +506,8 @@ sigmaDef =
   DataDef
   { 
     data_delta = 
-      LocalDecl @N0 (Local.Box "A") TyType <:>
-      LocalDecl @N1 (Local.Box "B") (Pi (Var f0) (Local.bind (Local.Box "x") TyType)) <:> Tele,
+      LocalDecl @N0 (LocalName "A") TyType <:>
+      LocalDecl @N1 (LocalName "B") (Pi (Var f0) (Local.bind (LocalName "x") TyType)) <:> Tele,
     data_sort = TyType,
     data_constructors = [prodCon]
   }
@@ -515,9 +517,9 @@ prodCon =
   ConstructorDef 
   { con_name = "Prod",
     con_theta = 
-    LocalDecl (Local.Box "a") (Var f1) 
-    <:> LocalDecl (Local.Box "b")
-         (App (Var f2) (Var f1))
+    LocalDecl (LocalName "a") (Var f1) 
+    <:> LocalDecl (LocalName "b")
+         (App (Var f1) (Var f0))
     <:> Tele
   }
 
@@ -555,8 +557,8 @@ eitherDef =
   DataDef
     { 
       data_delta = 
-          LocalDecl (Local.Box "A") TyType 
-          <:> LocalDecl (Local.Box "B") TyType
+          LocalDecl (LocalName "A") TyType 
+          <:> LocalDecl (LocalName "B") TyType
           <:> Tele,
       data_sort = TyType,
       data_constructors = [eitherLeft, eitherRight]
@@ -567,7 +569,7 @@ eitherLeft =
   ConstructorDef
     { 
       con_name = "Left",
-      con_theta = LocalDecl (Local.Box "a") (Var f0) <:> Tele
+      con_theta = LocalDecl (LocalName "a") (Var f0) <:> Tele
     }
 
 eitherRight :: ConstructorDef N2
@@ -576,7 +578,7 @@ eitherRight =
     { 
       con_name = "Right",
       con_theta = 
-        LocalDecl (Local.Box "b") (Var f1) <:> Tele
+        LocalDecl (LocalName "b") (Var f1) <:> Tele
     }
 
 prelude :: [ModuleEntry]

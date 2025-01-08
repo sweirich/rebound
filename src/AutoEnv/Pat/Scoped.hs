@@ -10,6 +10,8 @@ import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Env
 
+import AutoEnv.Pat.Simple qualified as Pat
+
 -- A scoped pattern is any type that can be made an instance of the
 -- `Sized` type class below
 
@@ -17,22 +19,33 @@ import AutoEnv.Env
 -- Sized type class for patterns
 ----------------------------------------------------------
 
+-- A quantified constraint that the Scoped size is equal
+-- to the nonscoped size
+-- https://blog.poisson.chat/posts/2022-09-21-quantified-constraint-trick.html
+class (Pat.Sized (t n), Pat.Size (t n) ~ Size t) => PatSize t n
+instance (Pat.Sized (t n), Pat.Size (t n) ~ Size t) => PatSize t n
+
 -- | Calculate the number of binding variables in the pattern
 -- This number does not need to be an explicit parameter of the type
 -- so that we have more flexibility about what types we can use as 
 -- patterns. However, the scope of the pattern needs to be the last 
 -- parameter.
-class Sized (t :: Nat -> Type) where
+class (forall n. PatSize t n) => Sized (t :: Nat -> Type) where
   type Size t :: Nat
   -- recover the size of the pattern as a dynamic term
   -- it is usually not a good idea to use this function, if it 
   -- can be avoided 
   size :: t n -> SNat (Size t)
-  -- size _ = snat @(Size t)
+  size = Pat.size
+
 
 -- | Pairs of types that can be compared with each other as patterns
 class PatEq (t1 :: Nat -> Type) (t2 :: Nat -> Type) where
     patEq :: t1 n1 -> t2 n2 -> Maybe (Size t1 :~: Size t2)
+
+-- instance Sized t => Pat.Sized (t n) where
+--  type Size t n = Size t
+--  size x = size x
 
 
 ----------------------------------------------------------
@@ -173,11 +186,14 @@ instance
 data Rebind p1 p2 n where
   Rebind :: p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
 
-instance (Sized p1, Sized p2) =>
-    Sized (Rebind p1 p2) where
+instance ((forall n. PatSize p1 n), (forall m. PatSize p2 m)) => 
+  Pat.Sized (Rebind p1 p2 n) where
+    type Size (Rebind p1 p2 n) = Plus (Size p2) (Size p1)
+    size (Rebind p1 p2) = sPlus @(Size p2) @(Size p1) (Pat.size p2) (Pat.size p1)
+
+instance (Sized p1, Sized p2) => Sized (Rebind p1 p2) where
   type Size (Rebind p1 p2) = Plus (Size p2) (Size p1)
   size (Rebind p1 p2) = sPlus (size p2) (size p1)
-
 
 instance
   (Subst v v, Sized p1, Subst v p1, Subst v p2) =>

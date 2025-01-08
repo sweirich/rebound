@@ -1,24 +1,25 @@
 -- single binder, but includes a cached name
-module AutoEnv.Pat.LocalBind where
+module AutoEnv.Pat.LocalBind
+   (module AutoEnv.Classes,
+    module AutoEnv.LocalName,
+    type Bind,
+    bind,
+    getLocalName,
+    internalBind,
+    getBody,
+    unbind,
+    instantiate,
+    applyUnder
+    ) where
 
 import AutoEnv.Classes
+import AutoEnv.LocalName
+import AutoEnv.MonadScoped(Named)
 import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.Lib
 import AutoEnv.Env
 
 
-newtype LocalName = Box { name :: String}
-  deriving (Eq)
-
-instance Show LocalName where
-  show (Box x) = x
-  
-internalName :: LocalName
-internalName = Box "_internal"
-
-instance Pat.Sized LocalName where
-  type Size LocalName = N1
-  size _ = s1
 
 {-
 instance Pat.PatEq LocalName LocalName where
@@ -31,6 +32,11 @@ instance Eq LocalName where
 -- LocalBind operations (convenience wrappers)
 
 type Bind v c n = Pat.Bind v c LocalName n
+
+-- deriving instance (Eq (Bind v c n))
+-- deriving instance (Subst v (Bind v c))
+-- deriving instance (FV (Bind v c))
+-- deriving instance (Strengthen (Bind v c))
 
 bind :: (SNatI n, Subst v c) => LocalName -> c (S n) -> Bind v c n
 bind = Pat.bind

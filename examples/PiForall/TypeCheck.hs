@@ -5,17 +5,19 @@ import Control.Monad.IO.Class
 import Control.Monad.Except
 
 import Data.List (nub)
+import Data.Foldable
 import Data.Maybe ( catMaybes )
 
 import PiForall.Environment (TcMonad, Context)
 import PiForall.Environment qualified as Env
 import PiForall.Equal qualified as Equal
-import PiForall.PrettyPrint (Display (..), D(..), disp, pp, debug)
+import PiForall.PrettyPrint (Display (..), D(..), W(..), disp, pp, debug)
 import PiForall.Syntax
 import Debug.Trace
 
 import AutoEnv.Lib
 import AutoEnv
+import AutoEnv.MonadScoped
 import qualified AutoEnv.Bind as B
 import qualified AutoEnv.Pat.Simple as Pat
 import qualified AutoEnv.Pat.Scoped as Scoped
@@ -27,7 +29,7 @@ import Prettyprinter (pretty)
 ---------------------------------------------------------------------
 
 -- | Infer/synthesize the type of a term
-inferType :: forall n. SNatI n => Term n -> Context n -> TcMonad (Typ n)
+inferType :: forall n. SNatI n => Term n -> Context n -> TcMonad n (Typ n)
 inferType a ctx = case a of
   -- i-var
   (Var x) -> 
@@ -44,18 +46,18 @@ inferType a ctx = case a of
   (Pi tyA bnd) -> do
     tcType tyA ctx
     Local.unbind bnd $ \(x,tyB) -> do
-       Env.extendLocal (LocalDecl x tyA) (tcType tyB) ctx
-       return TyType
+      push x (tcType tyB (Env.extendTy tyA ctx))
+      return TyType
 
   -- i-app
   (App a b) -> do
     ty1 <- inferType a ctx
-    ty1' <- Equal.whnf ty1 (Env.toScope ctx)
+    ty1' <- Equal.whnf ty1 
     case ty1' of 
       (Pi tyA bnd) -> do
           checkType b tyA ctx
           return (Local.instantiate bnd b)
-      _ -> Env.errCtx ctx [DS "Expected a function type but found ", DD ty1]
+      _ -> Env.errScope [WS "Expected a function type but found ", WD ty1]
 
   -- i-ann
   (Ann a tyA) -> do
@@ -66,19 +68,19 @@ inferType a ctx = case a of
   -- Practicalities
   -- remember the current position in the type checking monad
   (Pos p a) ->
-    Env.extendSourceLocation p a (Env.toScope ctx) $ inferType a ctx
+    Env.extendSourceLocation p a $ inferType a ctx
 
   -- Type constructor application
   (TyCon c params) -> do
     (DataDef delta _ cs) <- Env.lookupTCon c
     unless (length params == toInt (Scoped.size delta)) $
-      Env.errCtx ctx
-        [ DS "Datatype constructor",
-          DD c,
-          DS $
+      Env.errScope
+        [ WS "Datatype constructor",
+          WS c,
+          WS $
             "should have " ++ show (Scoped.size delta)
               ++ "parameters, but was given",
-          DD (length params)
+          WC (length params)
         ]
     let delta' = applyE @Term (weakenE' (snat :: SNat n)) delta
     case axiomPlusZ @n of 
@@ -97,14 +99,14 @@ inferType a ctx = case a of
                     Tele (ConstructorDef _ (thetai :: Telescope m Z))) ] -> do
         let numArgs = toInt $ Scoped.size thetai
         unless (length args == numArgs) $
-          Env.errCtx ctx
-            [ DS "Constructor",
-              DS c,
-              DS "should have",
-              DD numArgs,
-              DS "data arguments, but was given",
-              DD (length args),
-              DS "arguments."
+          Env.errScope
+            [ WS "Constructor",
+              WS c,
+              WS "should have",
+              WC numArgs,
+              WS "data arguments, but was given",
+              WC (length args),
+              WS "arguments."
             ]
         case axiomPlusZ @n of
           Refl -> do
@@ -112,28 +114,28 @@ inferType a ctx = case a of
             _ <- tcArgTele args thetai' ctx
             return $ TyCon tname []
       [_] ->
-        Env.errCtx ctx
-          [ DS "Cannot infer the parameters to data constructors.",
-            DS "Add an annotation."
+        Env.errScope
+          [ WS "Cannot infer the parameters to data constructors.",
+            WS "Add an annotation."
           ]
-      _ -> Env.errCtx ctx [DS "Ambiguous data constructor", DS c] 
+      _ -> Env.errScope [WS "Ambiguous data constructor", WC c] 
 
   -- cannot synthesize the type of the term
   _ -> 
-    Env.errCtx ctx [DS "Must have a type annotation for", DD a] 
+    Env.errScope [WS "Must have a type annotation for", WD a] 
 
 
 -------------------------------------------------------------------------
 
 -- | Make sure that the term is a "type" (i.e. that it has type 'Type')
-tcType :: SNatI n => Term n -> Context n -> TcMonad ()
+tcType :: SNatI n => Term n -> Context n -> TcMonad n ()
 tcType tm = checkType tm TyType
 
 -------------------------------------------------------------------------
 -- | Check that the given term has the expected type
-checkType :: forall n. SNatI n => Term n -> Typ n -> Context n -> TcMonad ()
+checkType :: forall n. SNatI n => Term n -> Typ n -> Context n -> TcMonad n ()
 checkType tm ty ctx = do
-  ty' <- Equal.whnf ty (Env.toScope ctx)
+  ty' <- Equal.whnf ty
   case tm of 
     -- c-lam: check the type of a function
     (Lam bnd) -> case ty' of
@@ -141,12 +143,12 @@ checkType tm ty ctx = do
         -- unbind the variables in the lambda expression and pi type
         let tyB = Local.getBody bnd2
         -- check the type of the body of the lambda expression
-        Env.extendLocal (LocalDecl x tyA) (checkType body tyB) ctx
-      _ -> Env.errCtx ctx [DS "Lambda expression should have a function type, not", DD ty']
+        push x (checkType body tyB (Env.extendTy tyA ctx))
+      _ -> Env.errScope [WS "Lambda expression should have a function type, not", WD ty']
 
     -- Practicalities
     (Pos p a) -> 
-      Env.extendSourceLocation p a (Env.toScope ctx) $ checkType a ty' ctx 
+      Env.extendSourceLocation p a $ checkType a ty' ctx 
 {-
     TrustMe -> return ()
 
@@ -159,7 +161,7 @@ checkType tm ty ctx = do
     (Let a bnd) ->  Local.unbind bnd $ \ (x, b) -> do
       tyA <- inferType a ctx
       -- TODO: add definition x = a to the local context
-      Env.extendLocal (LocalDecl x tyA) (checkType b (weaken' s1 ty')) ctx
+      push x (checkType b (weaken' s1 ty') (Env.extendTy tyA ctx))
 
 {-
     Refl -> case ty' of 
@@ -210,45 +212,52 @@ checkType tm ty ctx = do
     (DataCon c args) -> do
       case ty' of
         (TyCon tname params) -> do
-          ScopedConstructorDef delta (ConstructorDef cn deltai) <- Env.lookupDCon c tname
-          let numArgs = toInt $ Scoped.size deltai
+          ScopedConstructorDef delta (ConstructorDef cn theta) <- Env.lookupDCon c tname
+          let numArgs = toInt $ Scoped.size theta
           unless (length args == numArgs) $
-            Env.errCtx ctx
-              [ DS "Constructor",
-                DS c,
-                DS "should have",
-                DD numArgs,
-                DS "data arguments, but was given",
-                DD (length args),
-                DS "arguments."
+            Env.errScope
+              [ WS "Constructor",
+                WS c,
+                WS "should have",
+                WC numArgs,
+                WS "data arguments, but was given",
+                WC (length args),
+                WS "arguments."
               ]
           case axiomPlusZ @n of 
             Refl -> do
-              newTele <- substTele delta params deltai
+              newTele <- 
+                 withSNat (Scoped.size delta) $ substTele delta params theta
               tcArgTele args newTele ctx
               return ()
         _ ->
-          Env.errCtx ctx [DS "Unexpected type", DD ty', DS "for data constructor", DD tm]
+          Env.errScope [WS "Unexpected type", WD ty', WS "for data constructor", WD tm]
 
     (Case scrut alts) -> do
       sty <- inferType scrut ctx
-      (c, args) <- Equal.ensureTCon sty (Env.toScope ctx)
-      scrut' <- Equal.whnf scrut (Env.toScope ctx)
+      (c, args) <- Equal.ensureTCon sty
+      scrut' <- Equal.whnf scrut 
       let 
-        checkAlt :: Match n -> TcMonad ()
+        checkAlt :: Match n -> TcMonad n ()
         checkAlt (Branch bnd) = Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
             -- add variables from pattern to context
             -- could fail if branch is in-accessible
-            (ctx', pat' :: Term (Plus p n)) <- declarePat pat (TyCon c args) ctx
+            (ctx', tm' :: Term (Plus p n)) <-
+                declarePat pat (TyCon c args) ctx
             let 
-              scrut' :: Term (Plus p n)
-              scrut' = weaken' (snat @p) scrut
+              scrut'' :: Term (Plus p n)
+              scrut'' = applyE @Term (shiftNE (snat @p)) scrut'
             -- could fail if branch is inaccessible
-            defs <- Equal.unify @n (snat @p) scrut' pat' (Env.toScope ctx')
-            let r = fromTable defs
-            let ty'' = weaken' (snat :: SNat p) (applyE r ty')
-            -- TODO also refine context
-            checkType body ty'' ctx'
+            (Refinement defs :: Refinement Term (Plus p n))  <- 
+              push pat $ 
+                 Equal.unify @(Plus p n) SZ scrut'' tm' 
+            let 
+              r :: Env Term (Plus p n) (Plus p n)
+              r = fromTable defs
+            let ty1 = applyE @Term (shiftNE (snat @p)) ty'
+            let ty'' = applyE r ty1
+            push pat $ do
+               checkType body ty'' ctx'
       mapM_ checkAlt alts
       -- TODO
       -- exhaustivityCheck scrut' sty alts
@@ -259,7 +268,7 @@ checkType tm ty ctx = do
     -- c-infer
     _ -> do
       tyA <- inferType tm ctx
-      Equal.equate tyA ty' (Env.toScope ctx)
+      Equal.equate tyA ty' 
     
 ---------------------------------------------------------------------
 -- type checking datatype definitions, type constructor applications and 
@@ -273,7 +282,7 @@ checkType tm ty ctx = do
 --   Theta :: Telescope p2 p1 
 --      a telescope of parameters to each data constructor
 --      may include definitions, in the scope of Delta
--- Check Delta and each Theta when checking top-level datatype definition (DONE)
+-- Check Delta and each Theta when checking top-level datatype definition
 -- Check Type constructor arguments against Delta
 -- Instantiate Theta with type constructor arguments (could fail)
 -- Check Data constructor arguments against Theta
@@ -282,7 +291,7 @@ checkType tm ty ctx = do
 
 -- | Check all of the types contained within a telescope
 tcTypeTele :: forall p1 n. SNatI n =>
-   Telescope p1 n -> Context n -> TcMonad (Context (Plus p1 n))
+   Telescope p1 n -> Context n -> TcMonad n (Context (Plus p1 n))
 tcTypeTele Tele ctx = return ctx
 tcTypeTele (TCons (Scoped.Rebind (LocalDef x tm) (tl :: Telescope p2 n))) ctx = do
   ty1 <- inferType (Var x) ctx
@@ -295,7 +304,7 @@ tcTypeTele (TCons (Scoped.Rebind (LocalDecl x ty)
   (tl :: Telescope p2 (S n)))) ctx = do
   tcType ty ctx
   case axiomAssoc @p2 @N1 @n of 
-    Refl -> tcTypeTele tl (Env.extendTy x ty ctx)
+    Refl -> push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
 {-
 
@@ -307,13 +316,13 @@ G |- tm, tms : (x:A, Theta) ==> {tm/x},sigma
 
 -- | type check a list of data constructor arguments against a telescope, returning a substitution
 tcArgTele :: forall p n. SNatI n =>
-  [Term n] -> Telescope p n -> Context n -> TcMonad (Env Term p n)
+  [Term n] -> Telescope p n -> Context n -> TcMonad n (Env Term p n)
 tcArgTele [] Tele ctx = return zeroE
 tcArgTele args (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p2 n))) ctx = 
   case axiomPlusZ @p2 of 
     Refl -> do
        -- ensure that the equality is provable at this point
-       Equal.equate (Var x) ty (Env.toScope ctx)
+       Equal.equate (Var x) ty 
        tcArgTele args tele ctx
 tcArgTele (tm : terms) (TCons (Scoped.Rebind (LocalDecl ln ty) 
           (tele :: Telescope p1 (S n)))) ctx = case axiomAssoc @p1 @N1 @n of 
@@ -326,23 +335,23 @@ tcArgTele (tm : terms) (TCons (Scoped.Rebind (LocalDecl ln ty)
       return $ error "TODO: tcArgTele"
 
 tcArgTele [] _ _ =
-  Env.err [DD "Too few arguments provided."]
+  Env.errScope [WS "Too few arguments provided."]
 tcArgTele _ Tele _ =
-  Env.err [DD "Too many arguments provided."]
+  Env.errScope [WS "Too many arguments provided."]
 
 -- | Make a substitution from a list of arguments. 
 -- Checks that the length is as specified, and fails
 -- otherwise
 mkSubst :: forall p n.  
-  [Term n] -> SNat p -> TcMonad (Env Term p n)
-mkSubst [] SZ = return zeroE
+  [Term n] -> SNat p -> TcMonad n (Env Term (Plus p n) n)
+mkSubst [] SZ = return idE
 mkSubst (tm : tms) (SS m) = do
   ss <- mkSubst tms m
   return $ tm .: ss
 mkSubst [] _ =
-  Env.err [DD "Too few arguments provided."]
+  Env.errScope [WS "Too few arguments provided."]
 mkSubst _ SZ =
-  Env.err [DD "Too many arguments provided."]
+  Env.errScope [WS "Too many arguments provided."]
 
 
 
@@ -357,24 +366,35 @@ shiftNRE m = Env (var . shiftRN m)
 -- p2 : number of variables in thetai
 -- This could fail if any constraints are not satisfiable.
 -- TODO
-substTele :: forall p1 p2 n. SNatI n =>
+substTele :: forall p1 p2 n. (SNatI n, SNatI p1) =>
              Telescope p1 Z    -- delta 
           -> [Term n]          -- params
           -> Telescope p2 p1   -- theta
-          -> TcMonad (Telescope p2 n)
+          -> TcMonad n (Telescope p2 n)
 substTele delta params theta = 
   do let delta' = applyE @Term (weakenE' (snat @n)) delta
-     (ss :: Env Term p1 n) <- mkSubst params (Scoped.size delta')
-     let ss' :: Env Term (Plus p1 n) n
-         ss' = withSNat (Scoped.size delta) $ ss .++ idE
+     (ss :: Env Term (Plus p1 n) n) <- mkSubst (reverse params) (Scoped.size delta')
+     let shift :: Env Term p1 (Plus p1 n)
+         shift = Env (var . shiftRN (snat @n))
      let theta' :: Telescope p2 (Plus p1 n)
-         theta' = applyE @Term (shiftNRE (snat @n)) theta
-     doSubst @p1 ss' theta'
+         theta' = applyE @Term shift theta
+     doSubst @p1 ss theta'
   
+{-
+concatTele :: forall p1 p2 n. SNatI n =>
+  Telescope p1 n -> Telescope p2 p1 -> Telescope (Plus p2 p1) n
+concatTele Tele t2 = 
+   case (axiomPlusZ @p2, axiomPlusZ @n) of 
+      { (Refl, Refl) -> applyE @Term (weakenE' (snat @n)) t2 }
+concatTele (TCons (Scoped.Rebind (l :: Local p n) t1)) t2 = 
+  withSNat (sPlus (Scoped.size l) (snat @n)) $ 
+    let t2' = concatTele t1 t2 in
+    TCons (Scoped.Rebind l t2')
+-}
 -- Propagate the given substitution through a telescope, potentially
 -- reworking the constraints
 
-doSubst :: forall q n p. Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad (Telescope p n)
+doSubst :: forall q n p. Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad n (Telescope p n)
 doSubst r Tele = return Tele
 doSubst r (TCons (Scoped.Rebind e (t :: Telescope p1 m))) = case e of 
     LocalDef x (tm :: Term (Plus q n)) -> do
@@ -389,7 +409,8 @@ doSubst r (TCons (Scoped.Rebind e (t :: Telescope p1 m))) = case e of
       case fact of 
         Refl -> do
           let ty' = applyE r ty
-          (t' :: Telescope p1 (S n)) <- doSubst @q @(S n) (up r) t
+          (t' :: Telescope p1 (S n)) <- 
+              push nm $ doSubst @q @(S n) (up r) t
           return $ TCons (Scoped.Rebind (LocalDecl nm ty') t')
 
 -----------------------------------------------------------
@@ -399,27 +420,28 @@ doSubst r (TCons (Scoped.Rebind e (t :: Telescope p1 m))) = case e of
 -- | Create a binding for each of the variables in the pattern, producing an extended context and 
 -- a term corresponding to the variables
 declarePat :: forall p n. SNatI n =>
-  Pattern p -> Typ n -> Context n -> TcMonad (Context (Plus p n), Term (Plus p n))
-declarePat (PatVar x) ty ctx = 
-  pure (Env.extendTy x ty ctx, var f0)
+  Pattern p -> Typ n -> Context n -> TcMonad n (Context (Plus p n), Term (Plus p n))
+declarePat (PatVar x) ty ctx = do
+  pure (Env.extendTy ty ctx, Var f0)
 declarePat (PatCon dc (pats :: PatList p)) ty ctx = do 
-  (tc,params) <- Equal.ensureTCon ty (Env.toScope ctx)
+  (tc,params) <- Equal.ensureTCon ty 
   ScopedConstructorDef (delta :: Telescope p1 'Z) 
       (ConstructorDef cn (thetai :: Telescope p2 p1)) <- Env.lookupDCon dc tc
   case axiomPlusZ @n of 
     Refl ->
       case testEquality (Pat.size pats) (Scoped.size thetai) of
          Just Refl -> do
-           (tele :: Telescope p2 n) <- substTele delta params thetai
+           (tele :: Telescope p2 n) <- 
+               withSNat (Scoped.size delta) $ substTele delta params thetai
            (ctx', tms') <- declarePats pats tele ctx
            pure (ctx', DataCon dc tms')
-         Nothing -> Env.errCtx ctx [DS "Wrong number of arguments to data constructor", DD cn]
+         Nothing -> Env.errScope [WS "Wrong number of arguments to data constructor", WC cn]
 
 -- | Given a list of pattern arguments and a telescope, create a binding for 
 -- each of the variables in the pattern
 -- pt should be the length of the pattern list, not the number of variables bound in it 
 declarePats :: forall p pt n. SNatI n =>
-  PatList p -> Telescope pt n -> Context n -> TcMonad (Context (Plus p n), [Term (Plus p n)])
+  PatList p -> Telescope pt n -> Context n -> TcMonad n (Context (Plus p n), [Term (Plus p n)])
 declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))) ctx = do
   case axiomPlusZ @p1 of 
     Refl -> do
@@ -433,22 +455,19 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2))
     case fact of
       Refl -> do
         (ctx1 :: Context (Plus p1 n), tm :: Term (Plus p1 n)) <- declarePat @p1 p1 ty1 ctx
-
-            -- simultaneously replace 0 by tm and weaken
         let ss :: Env Term (S n) (Plus p1 n)
             ss = instantiateWeakenEnv (Pat.size p1) (snat @n) tm
-
         let tele' :: Telescope p3 (Plus p1 n)
             tele' = applyE ss tele2
-
         (ctx2  :: Context (Plus p2 (Plus p1 n)), 
            tms  :: [Term (Plus p2 (Plus p1 n))]) <- 
               withSNat (sPlus (Pat.size p1) (snat @n)) $ 
+              push p1 $
                  declarePats @p2 @p3 @(Plus p1 n) p2 tele' ctx1
-        return (ctx2, weaken' (Pat.size p2) tm : tms)
+        return (ctx2, applyE @Term (shiftNE (Pat.size p2)) tm : tms)
 declarePats PNil Tele ctx = return (ctx, [])
-declarePats PNil _ _ = Env.err [DS "Not enough patterns in match for data constructor"]
-declarePats pats Tele ctx = Env.err [DS "Too many patterns in match for data constructor"]
+declarePats PNil _ _ = Env.errScope [WS "Not enough patterns in match for data constructor"]
+declarePats pats Tele ctx = Env.errScope [WS "Too many patterns in match for data constructor"]
 
 -- Add to Scoped
 instantiateWeakenEnv ::
@@ -493,7 +512,7 @@ pat2Term (PatCon dc pats) = DataCon dc (pats2Terms pats)
 -- | Typecheck a collection of modules. Assumes that each module
 -- appears after its dependencies. Returns the same list of modules
 -- with each definition typechecked
-tcModules :: [Module] -> TcMonad [Module]
+tcModules :: [Module] -> TcMonad Z [Module]
 tcModules = foldM tcM []
   where
     -- Check module m against modules in defs, then add m to the list.
@@ -511,7 +530,7 @@ tcModule ::
   -- | Module to check.
   Module ->
   -- | The same module with all entries checked and elaborated.
-  TcMonad Module
+  TcMonad Z Module
 tcModule defs m' = do
   checkedEntries <-
     Env.extendCtxMods importedModules $
@@ -538,15 +557,15 @@ data HintOrCtx
   | AddCtx [ModuleEntry]
 
 -- | Check each sort of declaration in a module
-tcEntry :: ModuleEntry -> TcMonad HintOrCtx
+tcEntry :: ModuleEntry -> TcMonad Z HintOrCtx
 tcEntry (ModuleDef n term) = 
   do term' <- Env.lookupGlobalDef n
-     Env.extendSourceLocation (unPosFlaky term) term emptyScope
-        (Env.err
-          [ DS "Multiple definitions of",
-            DD n,
-            DS "Previous definition was",
-            DD term'
+     Env.extendSourceLocation (unPosFlaky term) term 
+        (Env.errScope
+          [ WS "Multiple definitions of",
+            WC n,
+            WS "Previous definition was",
+            WD term'
           ]) 
   `catchError` \_ -> do
       traceM $ "checking def " ++ n
@@ -591,7 +610,7 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) =
             Refl -> withSNat (Scoped.size delta) $ do
             -- TODO: add source position
             -- Env.extendSourceLocation pos defn $
-              tcTypeTele theta ctx'
+              push delta $ tcTypeTele theta ctx'
               return ()
                 `Env.extendErr` 
                    disp [ DS "when checking the constructor declaration",
@@ -601,8 +620,8 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) =
       -- Implicitly, we expect the constructors to actually be different...
       let cnames = map (\(ConstructorDef c _) -> c) cs
       unless (length cnames == length (nub cnames)) $
-        Env.err [DS "Datatype definition", DD n, 
-                 DS "contains duplicated constructors"]
+        Env.errScope [WS "Datatype definition", WC n, 
+                 WS "contains duplicated constructors"]
       return (AddCtx [decl])
         `Env.extendErr` 
                 disp [ 
@@ -612,7 +631,7 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) =
 
 -- | Make sure that we don't have the same name twice in the
 -- environment. (We don't rename top-level module definitions.)
-duplicateTypeBindingCheck :: ModuleEntry -> TcMonad ()
+duplicateTypeBindingCheck :: ModuleEntry -> TcMonad Z ()
 duplicateTypeBindingCheck decl = do
   -- Look for existing type bindings ...
   let n = declName decl
@@ -630,7 +649,7 @@ duplicateTypeBindingCheck decl = do
               DS "Previous was",
               DD decl'
             ]
-       in Env.extendSourceLocation p decl emptyScope $ Env.err msg
+       in Env.extendSourceLocation p decl $ Env.err msg
 
 -----------------------------------------------------------
 -- Checking that pattern matching is exhaustive

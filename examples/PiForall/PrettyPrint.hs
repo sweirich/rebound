@@ -1,5 +1,5 @@
 -- | A Pretty Printer.
-module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
+module PiForall.PrettyPrint (Display (..), D (..), W(..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
@@ -9,12 +9,15 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, s
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
-
+import AutoEnv.LocalName
+import AutoEnv.Context
+import AutoEnv.Env
+import AutoEnv.Pat.LocalBind as Local
 import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.Lib
 import AutoEnv.Classes
-import AutoEnv.Pat.LocalBind as Local
+
 import PiForall.Syntax
 
 import Data.List as List
@@ -66,6 +69,11 @@ data D
   | -- | Displayable value
     forall a. Display a => DD a
 
+-- | Scoped error message quoting
+data W n = WS String 
+         | forall a. Display a => WC a 
+         | forall a. Display (a n) => WD (a n)
+
 initDI :: DispInfo 
 initDI = DI { showAnnots = False,
               dispAvoid = S.empty,
@@ -87,6 +95,11 @@ namesDI s = initDI { localNames = s }
 instance Display D where
   display (DS s) di = PP.pretty s
   display (DD d) di = PP.nest 2 $ display d di
+
+instance Display (W n) where
+  display (WS s) di = PP.pretty (show s)
+  display (WD a) di = PP.nest 2 $ display a di
+  display (WC c) di = disp c
 
 instance Display [D] where
   display dl di = PP.sep $ map (`display` di) dl
@@ -164,7 +177,24 @@ instance Display (ConstructorDef n) where
 -- TODO
 instance Display (Telescope m n) where
    display Tele = mempty
-   display (TCons rbnd) = undefined
+   display (TCons (Scoped.Rebind (LocalDecl x tm) tele)) = do
+    dtm   <- display tm 
+    dtele <- local (push x) (display tele) 
+    return $ PP.pretty (show x) <+> PP.colon <+> dtm <> PP.comma <+> dtele
+   display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = undefined
+
+instance Display (Refinement Term n) where
+  display (Refinement r) di = 
+    PP.sep (PP.punctuate PP.comma (map d r)) where
+      d (x,tm) = display (Var x) di <+> PP.pretty "=" <+> display tm di 
+
+-- This is Context n
+instance SNatI m => Display (Env Term m n) where
+  display r di = 
+    let t = tabulate r in
+    PP.sep (PP.punctuate PP.comma (map d t)) where
+      d (x,tm) = PP.pretty (show x) <+> PP.pretty "~>" <+> display tm di 
+
 
 -------------------------------------------------------------------------
 
@@ -411,7 +441,7 @@ instance Display (PatList p) where
     return $ da <+> ds
 
 instance Display LocalName where
-  display l = display (Local.name l)
+  display l _ = PP.pretty (show l)
 
 -------------------------------------------------------------------------
 

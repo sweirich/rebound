@@ -11,7 +11,7 @@ import qualified Test.QuickCheck as QC
 
 import Text.Parsec.Error ( ParseError )
 
-import AutoEnv.Pat.LocalBind (LocalName (..))
+import AutoEnv.LocalName
 
 import PiForall.ConcreteSyntax
 import PiForall.Syntax (ConstructorNames(..))
@@ -58,7 +58,7 @@ test_parseExpr = testParser arbConstructorNames expr
 -- | variable names 
 -- drawn from a small list
 genName :: Gen LocalName
-genName = Box <$> elements ["x", "y", "z", "x0" , "y0"]
+genName = LocalName <$> elements ["x", "y", "z", "x0" , "y0"]
 
 instance Arbitrary LocalName where
     arbitrary = genName

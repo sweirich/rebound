@@ -13,6 +13,8 @@ module AutoEnv.Env(Env,
   upN,
   shift1E,
   shiftNE,
+  Refinement(..),
+  singletonRefinement,
   tabulate,
   fromTable,
   weakenE'
@@ -135,9 +137,14 @@ upN (SS n) = \e -> var FZ .: (upN n e .>> shift1E)
 -- 
 ----------------------------------------------------------------
 
-tabulate :: (SNatI n) => Env v n m -> [v m]
-tabulate r = map (applyEnv r) (enumFin snat)
 
+newtype Refinement v n = Refinement [(Fin n, v n)]
+  deriving (Semigroup, Monoid)
+singletonRefinement :: (Fin n,v n) -> Refinement v n
+singletonRefinement p = Refinement [p]
+
+tabulate :: (SNatI n) => Env v n m -> [(Fin n, v m)]
+tabulate r = map (\f -> (f, applyEnv r f)) (enumFin snat)
 
 fromTable :: SubstVar v => [(Fin n, v n)] -> Env v n n
 fromTable rho = Env $ \f -> case lookup f rho of 

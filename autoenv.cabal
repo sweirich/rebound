@@ -54,11 +54,11 @@ library
       , AutoEnv.Context
       , AutoEnv.Lib
       , AutoEnv.Env
+      , AutoEnv.LocalName
+      , AutoEnv.MonadScoped
       , AutoEnv.Bind
-      , AutoEnv.Pat
       , AutoEnv.Pat.LocalBind
       , AutoEnv.Pat.PatN
-      , AutoEnv.Pat.Rebind
       , AutoEnv.Pat.Simple
       , AutoEnv.Pat.Scoped
       , Data.Nat

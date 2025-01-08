@@ -10,7 +10,8 @@ import AutoEnv
 import AutoEnv.Context
 
 import qualified AutoEnv.Bind as B
-import qualified AutoEnv.Pat.Scoped as Pat
+import qualified AutoEnv.Pat.Simple as Pat
+import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
@@ -51,7 +52,7 @@ data Exp (n :: Nat)
 -- | A single branch in a match expression. Binds a pattern
 -- with expression variables, within some expression body
 data Branch (n :: Nat)
-  = forall p. Branch (Pat.Bind Exp Exp (Pat p) n)
+  = forall p. Branch (Scoped.Bind Exp Exp (Pat p) n)
 
 
 -- | Patterns, which may include embedded type annotations
@@ -63,8 +64,8 @@ data Branch (n :: Nat)
 data Pat (p :: Nat) (n :: Nat) where
   PConst :: Const -> Pat N0 n
   PVar :: Pat N1 n
-  PApp :: Pat.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
-  PPair :: Pat.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
+  PApp :: Scoped.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
+  PPair :: Scoped.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
 
@@ -78,22 +79,33 @@ data Pat (p :: Nat) (n :: Nat) where
 -- in the first component are bound in expression parts of the
 -- second component
 pat0 :: Pat N2 N0
-pat0 = PPair (Pat.Rebind PVar (PAnnot PVar (Var f0)))
+pat0 = PPair (Scoped.Rebind PVar (PAnnot PVar (Var f0)))
 
 -------------------------------------------------------
 -- definitions for pattern matching
 -------------------------------------------------------
 
--- For any pattern type, we need to be able to calculate
--- the number of binding variables, both statically and dynamically
-instance Pat.Sized (Pat p) where
-  type Size (Pat p) = p
+instance Pat.Sized (Pat p n) where
+  type Size (Pat p n) = p
   size :: Pat p n -> SNat p
   size (PConst i) = s0
   size PVar = s1
   size (PApp rb) = Pat.size rb
   size (PPair rb) = Pat.size rb
   size (PAnnot p _) = Pat.size p
+
+-- For any pattern type, we need to be able to calculate
+-- the number of binding variables, both statically and dynamically
+instance Scoped.Sized (Pat p) where
+  type Size (Pat p) = p
+  {-
+  size :: Pat p n -> SNat p
+  size (PConst i) = s0
+  size PVar = s1
+  size (PApp rb) = Scoped.size rb
+  size (PPair rb) = Scoped.size rb
+  size (PAnnot p _) = Scoped.size p
+  -}
 
 tm0 :: Exp Z
 tm0 = Pair (Const (TyCon "Bool")) (Const (DataCon "True"))
@@ -106,14 +118,14 @@ tm0 = Pair (Const (TyCon "Bool")) (Const (DataCon "True"))
 -- bound in the pattern
 patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
-patternMatch (PApp rb) (App e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
+patternMatch (PApp rb) (App e1 e2) = Scoped.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
   -- NOTE: substitute in p2 with env1 before pattern matching
   let p2' = applyE (env1 .++ idE) p2
   env2 <- patternMatch p2' e2
   return (env2 .++ env1)
 patternMatch (PConst s1) (Const s2) | s1 == s2 = Just zeroE
-patternMatch (PPair rb) (Pair e1 e2) = Pat.unRebind rb $ \p1 p2 -> do
+patternMatch (PPair rb) (Pair e1 e2) = Scoped.unRebind rb $ \p1 p2 -> do
   env1 <- patternMatch p1 e1
   env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
   return (env2 .++ env1)
@@ -124,9 +136,9 @@ patternMatch _ _ = Nothing
 
 findBranch :: forall n. (SNatI n) => Exp n -> [Branch n] -> Maybe (Exp n)
 findBranch e [] = Nothing
-findBranch e (Branch (bnd :: Pat.Bind Exp Exp (Pat p) n) : brs) =
-  case patternMatch (Pat.getPat bnd) e of
-    Just r -> Just $ Pat.instantiate bnd r
+findBranch e (Branch (bnd :: Scoped.Bind Exp Exp (Pat p) n) : brs) =
+  case patternMatch (Scoped.getPat bnd) e of
+    Just r -> Just $ Scoped.instantiate bnd r
     Nothing -> findBranch e brs
 
 ----------------------------------------------
@@ -254,11 +266,11 @@ star = Const Star
 
 -- No annotation on the binder
 lam :: Exp (S n) -> Exp n
-lam b = Match [Branch (Pat.bind PVar b)]
+lam b = Match [Branch (Scoped.bind PVar b)]
 
 -- Annotation on the binder
 alam :: Exp n -> Exp (S n) -> Exp n
-alam t b = Match [Branch (Pat.bind (PAnnot PVar t) b)]
+alam t b = Match [Branch (Scoped.bind (PAnnot PVar t) b)]
 
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0", though with `Match` it looks a bit different
@@ -361,19 +373,19 @@ instance Show (Exp n) where
 
 instance Show (Branch b) where
   showsPrec d (Branch b) =
-    showsPrec 10 (Pat.getPat b)
+    showsPrec 10 (Scoped.getPat b)
       . showString ". "
-      . showsPrec 11 (Pat.getBody b)
+      . showsPrec 11 (Scoped.getBody b)
 
 instance Show (Pat p n) where
   showsPrec d PVar = showString "_"
   showsPrec d (PConst c) = showsPrec d c
-  showsPrec d (PApp (Pat.Rebind e1 e2)) =
+  showsPrec d (PApp (Scoped.Rebind e1 e2)) =
     showParen (d > 0) $
       showsPrec 10 e1
         . showString " "
         . showsPrec 11 e2
-  showsPrec d (PPair (Pat.Rebind e1 e2)) =
+  showsPrec d (PPair (Scoped.Rebind e1 e2)) =
     showParen (d > 0) $
       showsPrec 10 e1
         . showString ", "
@@ -393,11 +405,11 @@ instance Show (Pat p n) where
 -- NOTE: this is not the same type as patEq
 testEquality2 :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
 testEquality2 PVar PVar = Just Refl
-testEquality2 (PApp (Pat.Rebind p1 p2)) (PApp (Pat.Rebind p1' p2')) = do
+testEquality2 (PApp (Scoped.Rebind p1 p2)) (PApp (Scoped.Rebind p1' p2')) = do
   Refl <- testEquality2 p1 p1'
   Refl <- testEquality2 p2 p2'
   return Refl
-testEquality2 (PPair (Pat.Rebind p1 p2)) (PPair (Pat.Rebind p1' p2')) = do
+testEquality2 (PPair (Scoped.Rebind p1 p2)) (PPair (Scoped.Rebind p1' p2')) = do
   Refl <- testEquality2 p1 p1'
   Refl <- testEquality2 p2 p2'
   return Refl
@@ -410,20 +422,20 @@ testEquality2 _ _ = Nothing
 
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
-  (Branch (p1 :: Pat.Bind Exp Exp (Pat m1) n))
-    == (Branch (p2 :: Pat.Bind Exp Exp (Pat m2) n)) =
+  (Branch (p1 :: Scoped.Bind Exp Exp (Pat m1) n))
+    == (Branch (p2 :: Scoped.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (Pat.size (Pat.getPat p1) :: SNat m1)
-        (Pat.size (Pat.getPat p2) :: SNat m2) of
+        (Scoped.size (Scoped.getPat p1) :: SNat m1)
+        (Scoped.size (Scoped.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
 -- To compare pattern binders, we need to unbind, but also
 -- make sure that the patterns are equal
-instance (Eq (Exp n)) => Eq (Pat.Bind Exp Exp (Pat m) n) where
+instance (Eq (Exp n)) => Eq (Scoped.Bind Exp Exp (Pat m) n) where
   b1 == b2 =
-    Maybe.isJust (testEquality2 (Pat.getPat b1) (Pat.getPat b2))
-      && Pat.getBody b1 == Pat.getBody b2
+    Maybe.isJust (testEquality2 (Scoped.getPat b1) (Scoped.getPat b2))
+      && Scoped.getBody b1 == Scoped.getBody b2
 
 -- To compare binders, we only need to `unbind` them
 instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
@@ -537,13 +549,13 @@ equatePat ::
   m ()
 equatePat PVar PVar = pure ()
 equatePat (PConst c1) (PConst c2) | c1 == c2 = pure ()
-equatePat (PPair (Pat.Rebind p1 p1')) (PPair (Pat.Rebind p2 p2'))
-  | Just Refl <- testEquality (Pat.size p1) (Pat.size p2) =
-      withSNat (sPlus (Pat.size p1) (snat @n)) $
+equatePat (PPair (Scoped.Rebind p1 p1')) (PPair (Scoped.Rebind p2 p2'))
+  | Just Refl <- testEquality (Scoped.size p1) (Scoped.size p2) =
+      withSNat (sPlus (Scoped.size p1) (snat @n)) $
         equatePat p1 p2 >> equatePat p1' p2'
-equatePat (PApp (Pat.Rebind p1 p2)) (PApp (Pat.Rebind p1' p2'))
-  | Just Refl <- testEquality (Pat.size p1) (Pat.size p1') =
-      withSNat (sPlus (Pat.size p1) (snat @n)) $
+equatePat (PApp (Scoped.Rebind p1 p2)) (PApp (Scoped.Rebind p1' p2'))
+  | Just Refl <- testEquality (Scoped.size p1) (Scoped.size p1') =
+      withSNat (sPlus (Scoped.size p1) (snat @n)) $
         equatePat p1 p1' >> equatePat p2 p2'
 equatePat (PAnnot p1 e1) (PAnnot p2 e2) =
   equatePat p1 p2 >> equate e1 e2
@@ -551,13 +563,13 @@ equatePat p1 p2 = throwError (PatternMismatch p1 p2)
 
 equateBranch :: (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
 equateBranch (Branch b1) (Branch b2) =
-  Pat.unbind b1 $ \(p1 :: Pat p1 n) body1 ->
-    Pat.unbind b2 $ \(p2 :: Pat p2 n) body2 ->
-      case testEquality (Pat.size p1) (Pat.size p2) of
+  Scoped.unbind b1 $ \(p1 :: Pat p1 n) body1 ->
+    Scoped.unbind b2 $ \(p2 :: Pat p2 n) body2 ->
+      case testEquality (Scoped.size p1) (Scoped.size p2) of
         Just Refl ->
           equatePat p1 p2 >> equate body1 body2
         Nothing ->
-          throwError (PatternMismatch (Pat.getPat b1) (Pat.getPat b2))
+          throwError (PatternMismatch (Scoped.getPat b1) (Scoped.getPat b2))
 
 equateWHNF :: (SNatI n, MonadError Err m) => Exp n -> Exp n -> m ()
 equateWHNF n1 n2 =
@@ -622,21 +634,21 @@ checkPattern ::
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
 checkPattern g (PPair rb) (Sigma tyA tyB) =
-  Pat.unRebind rb $ \p1 p2 -> do
+  Scoped.unRebind rb $ \p1 p2 -> do
     (g', e1) <- checkPattern g p1 tyA
-    let tyB' = weakenBind' (Pat.size p1) tyB
+    let tyB' = weakenBind' (Scoped.size p1) tyB
     let tyB'' = whnf (B.instantiate tyB' e1)
     (g'', e2) <- checkPattern g' p2 tyB''
-    let e1' = weaken' (Pat.size p2) e1
+    let e1' = weaken' (Scoped.size p2) e1
     return (g'', Pair e1' e2)
 checkPattern g (PApp rb) ty =
-  Pat.unRebind rb $ \p1 p2 -> do
+  Scoped.unRebind rb $ \p1 p2 -> do
     (g', e1, ty) <- inferPattern g p1
-    case weaken' (Pat.size p1) (whnf ty) of
+    case weaken' (Scoped.size p1) (whnf ty) of
       Pi tyA tyB -> do
         (g'', e2) <- checkPattern g' p2 tyA
-        equate (weaken' (Pat.size p1) ty) (B.instantiate tyB e1)
-        let e1' = weaken' (Pat.size p2) e1
+        equate (weaken' (Scoped.size p1) ty) (B.instantiate tyB e1)
+        let e1' = weaken' (Scoped.size p2) e1
         return (g'', App e1' e2)
       _ -> throwError (PiExpectedPat p1)
 checkPattern g p ty = do
@@ -660,8 +672,8 @@ checkBranch ::
   Branch n ->
   m ()
 checkBranch g (Pi tyA tyB) (Branch bnd) =
-  Pat.unbind bnd $ \(pat :: Pat p n) body -> do
-    let p = Pat.size pat
+  Scoped.unbind bnd $ \(pat :: Pat p n) body -> do
+    let p = Scoped.size pat
 
     -- find the extended context and pattern expression
     (g', a) <- checkPattern g pat tyA
@@ -756,7 +768,7 @@ inferType g a =
 data PatAny n = forall p. PatAny (Pat p n)
 
 extractPat :: Branch n -> PatAny n
-extractPat (Branch bnd) = PatAny (Pat.getPat bnd)
+extractPat (Branch bnd) = PatAny (Scoped.getPat bnd)
 
 lookupTyCon :: (MonadError Err m) => TyConName -> m DataDef
 lookupTyCon tname =

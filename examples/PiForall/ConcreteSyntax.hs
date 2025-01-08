@@ -5,7 +5,7 @@ import Data.Maybe qualified as Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
 
-import AutoEnv.Pat.LocalBind (LocalName(..))
+import AutoEnv.LocalName
 import PiForall.Syntax (ConstructorNames, ModuleImport(..))
 
 -- | names of top level declarations/definitions
