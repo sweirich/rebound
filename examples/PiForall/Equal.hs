@@ -65,7 +65,16 @@ equate t1 t2 = do
                 push p1 (equate a1 a2) 
               _ -> Env.err [DS "Cannot match branches in",
                               DD n1, DS "and", DD n2]
-      zipWithM_ (\m1 m2 -> matchBr m1 m2) brs1 brs2       
+      zipWithM_ matchBr brs1 brs2       
+    (TyEq a1 b1, TyEq a2 b2) -> do
+      equate a1 a2
+      equate b1 b2
+    (TmRefl, TmRefl) -> pure ()
+    (Subst a1 b1, Subst a2 b2) -> do
+      equate a1 a2
+      equate b1 b2
+    (Contra a1, Contra a2) -> equate a1 a2
+    (TrustMe, TrustMe) -> pure ()
     (_,_) -> tyErr n1 n2 
  where tyErr n1 n2 = do 
           -- gamma <- Env.getLocalCtx
@@ -102,10 +111,10 @@ ensureTCon aty = do
 -- | Convert a term to its weak-head normal form.             
 -- | TODO: add explicit environment
 whnf :: forall n. SNatI n => Term n -> TcMonad n (Term n)
-whnf (Global y) = do
+whnf (Global y) = (do
   x <- Env.lookupGlobalDef y
   whnf (case axiomPlusZ @n of 
-             Refl -> weaken' (snat @n) x) 
+             Refl -> weaken' (snat @n) x))
      `catchError` \_ -> return (Global y)
   
 whnf (Var x)  = do      
@@ -139,7 +148,13 @@ whnf (Case scrut mtchs) = do
             `catchError` \ _ -> f alts 
       f [] = Env.err $ [DS "Internal error: couldn't find a matching",
                     DS "branch for", DD nf, DS "in"] ++ map DD mtchs
-    _ -> return (Case nf mtchs){- STUBWITH -}            
+    _ -> return (Case nf mtchs)
+whnf (Subst a b) = do
+  nf <- whnf b
+  case nf of 
+    TmRefl -> whnf a
+    _ -> pure (Subst a nf)
+whnf PrintMe = pure (DataCon "()" [])
 -- all other terms are already in WHNF
 -- don't do anything special for them
 whnf tm = do
@@ -158,21 +173,21 @@ unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
   (txnf :: Term (Plus p n)) <- whnf tx 
   (tynf :: Term (Plus p n)) <- whnf ty 
   if txnf == tynf
-    then return mempty
+    then return Env.emptyR
     else case (txnf, tynf) of
-      (Var x, Var y) | x == y -> return mempty
-      (Var y, yty)  |
+      (Var x, Var y) | x == y -> return Env.emptyR
+      (Var y, yty)   |
         Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
         Just yty' <- strengthen' p (snat :: SNat n) yty
         -> if not (y' `appearsFree` yty')
-            then return (Env.singletonRefinement (y', yty'))
-            else return mempty 
+            then return (Env.singletonR (y', yty'))
+            else return Env.emptyR 
       (yty, Var y)  |
         Just (Var y') <- strengthen' p (snat :: SNat n) (Var y),
         Just yty' <- strengthen' p (snat :: SNat n) yty
         -> if not (y' `appearsFree` yty')
-            then return (Env.singletonRefinement (y', yty'))
-            else return mempty 
+            then return (Env.singletonR (y', yty'))
+            else return Env.emptyR 
       (DataCon n1 a1, DataCon n2 a2) 
         | n1 == n2 ->  unifyArgs p a1 a2 
       (TyCon s1 tms1, TyCon s2 tms2)
@@ -185,18 +200,29 @@ unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
         ds2 <- 
           push (L.getLocalName bnd1)
             (unify @n (SS p) (L.getBody bnd1) (L.getBody bnd2)) 
-        return (ds1 <> ds2) 
+        combine ds1 ds2
+      (TyEq a1 b1, TyEq a2 b2) -> do
+        ds1 <- unify p a1 a2
+        ds2 <- unify p b1 b2
+        combine ds1 ds2
       _ ->
         if amb txnf || amb tynf
-          then return mempty
+          then return Env.emptyR
           else Env.err [DS "Cannot equate", DD txnf, DS "and", DD tynf] 
   where
+    combine ds1 ds2 = 
+      case joinR ds1 ds2 of
+        Just r -> return r
+        Nothing -> Env.err [DS "cannot join refinements", DD ds1, DS "and", DD ds2]
     unifyArgs p (t1 : a1s) (t2 : a2s) = do
       ds <- unify p t1 t2 
       ds' <- unifyArgs p a1s a2s 
-      return $ ds <> ds'
-    unifyArgs p [] [] = return mempty
+      combine ds ds'
+      
+    unifyArgs p [] [] = return Env.emptyR
     unifyArgs _ _ _ = Env.err [DS "internal error (unify)"] 
+
+
 
 
 -- | Is a term "ambiguous" when it comes to unification?

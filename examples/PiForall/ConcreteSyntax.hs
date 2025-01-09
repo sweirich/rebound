@@ -33,6 +33,12 @@ data Term
   | Case Term [Match]
   | App Term Term 
   | Ann Term Typ 
+  | TyEq Term Term
+  | Subst Term Term 
+  | TmRefl
+  | Contra Term
+  | TrustMe
+  | PrintMe
      deriving (Eq, Show)
 
 -- | Patterns (without embedded type annotations)

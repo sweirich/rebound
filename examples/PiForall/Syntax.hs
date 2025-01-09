@@ -54,7 +54,16 @@ data Term (n :: Nat)
   | Case (Term n) [Match n]
   | App (Term n) (Term n)
   | Ann (Term n) (Typ n)
-     
+  | -- | Equality type  `a = b`
+    TyEq (Term n) (Term n)
+  | -- | Proof of equality `Refl`
+    TmRefl 
+  | -- | equality type elimination  `subst a by pf`
+    Subst (Term n) (Term n) 
+  | -- | witness to an equality contradiction
+    Contra (Term n)
+  | TrustMe
+  | PrintMe 
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
@@ -271,6 +280,12 @@ instance Subst Term Term where
   applyE r (Ann a t) = Ann (applyE r a) (applyE r t)
   applyE r (Let e1 bnd) = Let (applyE r e1) (applyE r bnd)
   applyE r (Pos sp e) = Pos sp (applyE r e)
+  applyE r (TyEq a b) = TyEq (applyE r a) (applyE r b)
+  applyE r TmRefl = TmRefl
+  applyE r (Subst a b) = Subst (applyE r a) (applyE r b)
+  applyE r (Contra p) = Contra (applyE r p)
+  applyE r TrustMe = TrustMe
+  applyE r PrintMe = PrintMe 
 
 {-
 instance Subst Term (Pattern p) where
@@ -333,6 +348,12 @@ instance FV Term where
   appearsFree n (Ann a t) = appearsFree n a || appearsFree n t
   appearsFree n (Pos _ a) = appearsFree n a
   appearsFree n (Let a b) = appearsFree n a || appearsFree n b
+  appearsFree n (TyEq a b) = appearsFree n a || appearsFree n b
+  appearsFree n TmRefl = False
+  appearsFree n (Subst a b) = appearsFree n a || appearsFree n b
+  appearsFree n (Contra a) = appearsFree n a
+  appearsFree n TrustMe = False
+  appearsFree n PrintMe = False
 
 instance FV Match where
   appearsFree n (Branch bnd) = appearsFree n bnd
@@ -386,16 +407,13 @@ instance Strengthen Term where
   strengthen' m n (Ann a t) = Ann <$> strengthen' m n a <*> strengthen' m n t
   strengthen' m n (Pos p a) = Pos p <$> strengthen' m n a
   strengthen' m n (Let a b) = Let <$> strengthen' m n a <*> strengthen' m n b
-{-
-instance Strengthen (Pattern p) where
-  strengthen' m n (PatVar x) = pure (PatVar x)
-  strengthen' m n (PatCon c args) =
-      PatCon c <$> strengthen' m n args
+  strengthen' m n (TyEq a b) = TyEq <$> strengthen' m n a <*> strengthen' m n b
+  strengthen' m n TmRefl = return TmRefl
+  strengthen' m n (Subst a b) = Subst <$> strengthen' m n a <*> strengthen' m n b
+  strengthen' m n (Contra a) = Contra <$> strengthen' m n a
+  strengthen' m n TrustMe = pure TrustMe
+  strengthen' m n PrintMe = pure PrintMe
 
-instance Strengthen (PatList p) where
-  strengthen' m n PNil = pure PNil
-  strengthen' m n (PCons rb) = PCons <$> strengthen' m n rb 
--}                                         
 
 instance Strengthen Match where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
@@ -418,6 +436,10 @@ instance Eq (Term n) where
   Case a1 b1 == Case a2 b2 = a1 == a2 && b1 == b2
   App a1 b1 == App a2 b2 =  a1 == a2 && b1 == b2
   Ann a1 b1 == Ann a2 b2 =  a1 == a2 && b1 == b2
+  TyEq a1 b1 == TyEq a2 b2 = a1 == a2 && b1 == b2
+  Subst a1 b1 == Subst a2 b2 = a1 == a2 && b1 == b2
+  TmRefl == TmRefl = True
+  Contra a == Contra b = a == b
   _ == _ = False
 
 instance Pat.PatEq (Pattern p1) (Pattern p2) where
@@ -482,24 +504,27 @@ instance (Eq (Term n)) => Eq (Local.Bind Term Term n) where
 -- Prelude datatypes
 -------------------------------------------------------
 
+{-
 eqDef :: DataDef
 eqDef = 
   DataDef 
   { 
     data_delta = 
-        LocalDecl (LocalName "A") TyType <:>  -- "A"
-        LocalDecl (LocalName "B") TyType <:> Tele,  -- "B"
+        LocalDecl (LocalName "A")  TyType <:>  -- "A"
+        LocalDecl (LocalName "a1") (Var f0) <:>
+        LocalDecl (LocalName "a2") (Var f1) <:> Tele,  -- "B"
     data_sort = TyType,
     data_constructors = [reflCon]
   }
 
-reflCon :: ConstructorDef N2
+reflCon :: ConstructorDef N3
 reflCon = 
   ConstructorDef
   { con_name = "Refl",
     con_theta = 
-      LocalDef f0 (Var f1) <:> Tele -- "B = A"
+      LocalDef f0 (Var f1) <:> Tele -- "a1 = a2"
   }
+  -}
 
 sigmaDef :: DataDef
 sigmaDef = 
@@ -585,8 +610,7 @@ prelude :: [ModuleEntry]
 prelude = [ModuleData "Unit" unitDef,
            ModuleData "Bool" boolDef,
            ModuleData "Either" eitherDef,
-           ModuleData "Sigma" sigmaDef,
-           ModuleData "(=)" eqDef]
+           ModuleData "Sigma" sigmaDef]
 
 
 initialConstructorNames :: ConstructorNames
@@ -616,79 +640,3 @@ instance Show (Pat.Bind Term Term (Pattern p) n) where
 
 instance Show (Local.Bind Term Term n) where
   show b = Local.unbind b $ \(x, body) -> show x ++ "." ++ show body
-
-{-
-instance Show (Term n) where
-  showsPrec :: Int -> Term n -> String -> String
-  showsPrec _ TyType = showString "Type"
-  showsPrec d (Pi a b)
-    | appearsFree FZ (Local.getBody b) =
-        Local.unbind b $ \(x,body) ->
-        showParen (d > 10) $
-          showString ("Pi " ++ Local.name x ++ ":")
-            . shows a
-            . showString ". "
-            . shows body
-    | otherwise =
-        showParen (d > 10) $
-          showsPrec 11 a
-            . showString " -> "
-            . showsPrec 10 (Local.getBody b)
-  showsPrec _ (Var x) = shows (toInt x)
-  showsPrec _ (Global x) = showString x
-  showsPrec d (App e1 e2) =
-    showParen (d > 0) $
-      showsPrec 10 e1
-        . showString " "
-        . showsPrec 11 e2
-  showsPrec d (DataCon dc es) =
-    showParen (d > 0) $
-          showString dc
-        . showString " "
-        . showsPrec 11 es
-  showsPrec d (TyCon dc es) =
-    showParen (d > 0) $
-          showString dc
-        . showString " "
-        . showsPrec 11 es
-  showsPrec d (Lam b) =
-    showParen (d > 10) $
-      showString "λ"
-        . showsPrec 10 (Local.getBody b)
-  showsPrec d (Case t b) =
-    showParen (d > 10) $
-      showString "match"
-        . showsPrec 10 b
-  showsPrec d (Ann a t) =
-    showParen (d > 10) $
-      showsPrec 10 a
-        . showString " : "
-        . showsPrec 10 t
-  showsPrec d (Pos p a) =
-    showParen (d > 10) $
-      showsPrec d a
-  showsPrec d (Let a b) =
-    showParen (d > 10) $
-      showString "let _ = " .
-      showsPrec 11 a .
-      showString " in " .
-      showsPrec 10 (Local.getBody b)
-
-instance Show (Match b) where
-  showsPrec d (Branch b) =
-    showsPrec 10 (Pat.getPat b)
-      . showString ". "
-      . showsPrec 11 (Pat.getBody b)
-
-instance Show (Pattern p) where
-  showsPrec d (PatVar x) = showsPrec d x
-  showsPrec d (PatCon c ps) = showsPrec d c . showsPrec d ps
-
-instance Show (PatList p) where
-  showsPrec d PNil = id
-  showsPrec d (PCons p pl) =
-    showsPrec d p .
-    showString " " .
-    showsPrec 11 pl
--}
-

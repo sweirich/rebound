@@ -213,7 +213,7 @@ variable =
 
 wildcard :: LParser LocalName
 wildcard = do
-  reservedOp "_" 
+  reservedOp "_"
   return wildcardName
 
 varOrWildcard :: LParser LocalName
@@ -371,7 +371,7 @@ valDef = do
 ------------------------
 ------------------------
 
-{-
+
 trustme :: LParser Term
 trustme = reserved "TRUSTME" $> TrustMe
 
@@ -380,7 +380,7 @@ printme = do
   pos <- getPosition
   reserved "PRINTME"
   return (Pos pos PrintMe )
--}
+
 
 -- Expressions
 
@@ -391,11 +391,13 @@ expr = do
     p <- getPosition
     Pos p <$> buildExpressionParser table term
   where table = [
+                 [ifix  AssocLeft "="   mkEqType],
                  [ifixM AssocRight "->" mkArrowType],
-                 [ifixM AssocRight "*" mkTupleType]
+                 [ifixM AssocRight "*"  mkTupleType]
                 ]
         ifix  assoc op f = Infix (reservedOp op >> return f) assoc
         ifixM assoc op f = Infix (reservedOp op >> f) assoc
+        mkEqType tyA tyB = TyEq tyA tyB
         mkArrowType  =
           do let n = wildcardName
              return $ \tyA tyB ->
@@ -438,11 +440,11 @@ factor = choice [ varOrCon   <?> "a variable or nullary data constructor"
 
                 , natenc     <?> "a literal"
                 , caseExpr   <?> "a case"
-{-                , substExpr  <?> "a subst"
+                , substExpr  <?> "a subst"
                 , refl       <?> "Refl"
                 , contra     <?> "a contra"
                 , trustme    <?> "TRUSTME"
-                , printme    <?> "PRINTME" -}
+                , printme    <?> "PRINTME" 
 
                 , bconst     <?> "a constant"
                 , ifExpr     <?> "an if expression"
@@ -619,6 +621,22 @@ sigmaTy = do
   reservedOp "}"
   return $ TyCon "Sigma" [a, Lam x b]
 
+refl :: LParser Term
+refl =
+  do reserved "Refl"
+     return TmRefl
+
+substExpr :: LParser Term
+substExpr = do
+  reserved "subst"
+  a <- expr
+  reserved "by"
+  Subst a <$> expr
+
+contra :: LParser Term
+contra = do
+  reserved "contra"
+  Contra <$> expr
 
 --------------------------------------------------------------------------
 

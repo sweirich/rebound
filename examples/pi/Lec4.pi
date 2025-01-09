@@ -63,7 +63,7 @@ next_weekday = \d . case d of
 neg : Type -> Type
 neg = \ x . (x -> Void)
 
-{-
+
 next_is_not_saturday : (d: Day) -> neg (next_weekday d = Saturday) 
 next_is_not_saturday = \ d. 
   \pf. case d of
@@ -74,7 +74,7 @@ next_is_not_saturday = \ d.
      Friday -> contra pf
      Saturday -> contra pf
      Sunday -> contra pf
--}
+
 
 -- parameterized datatypes
 
@@ -82,8 +82,8 @@ data Maybe (A : Type) : Type where
    Nothing 
    Just of (A)
 
-data Sigma (A: Type) (B : A -> Type) : Type where
-    Prod of (x:A) (B x)
+data MySigma (A: Type) (B : A -> Type) : Type where
+    MyProd of (x:A) (B x)
 
 
 -- indexed datatypes

@@ -14,7 +14,12 @@ module AutoEnv.Env(Env,
   shift1E,
   shiftNE,
   Refinement(..),
-  singletonRefinement,
+  emptyR,
+  joinR,
+  singletonR,
+  fromRefinement,
+  toRefinement,
+  refine,
   tabulate,
   fromTable,
   weakenE'
@@ -23,6 +28,8 @@ module AutoEnv.Env(Env,
 import AutoEnv.Lib
 import AutoEnv.Classes
 import Prelude hiding (head,tail)   
+import qualified Data.Map as Map
+import Control.Monad
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -134,14 +141,49 @@ upN SZ = id
 upN (SS n) = \e -> var FZ .: (upN n e .>> shift1E)
 
 ----------------------------------------------------------------
--- 
+-- Refinements
 ----------------------------------------------------------------
 
+-- A refinement is a special kind of substitution that does not 
+-- change the scope, it just replaces all uses of a particular variable
+-- with some other term (which could mention that variable). 
+newtype Refinement v n = Refinement (Map.Map (Fin n) (v n))
 
-newtype Refinement v n = Refinement [(Fin n, v n)]
-  deriving (Semigroup, Monoid)
-singletonRefinement :: (Fin n,v n) -> Refinement v n
-singletonRefinement p = Refinement [p]
+emptyR :: Refinement v n
+emptyR = Refinement Map.empty
+
+-- | Note, this operation fails when xs and ys have overlapping domains
+joinR :: forall v n. (Subst v v, Eq (v n)) => Refinement v n -> Refinement v n -> Maybe (Refinement v n)
+joinR (Refinement xs) (Refinement ys) = 
+  Refinement <$> foldM f ys xs' where
+     xs' = Map.toList xs
+     r = fromTable xs'
+     f :: Map.Map (Fin n) (v n) -> (Fin n, v n) -> Maybe (Map.Map (Fin n) (v n))
+     f m (k,v) | Map.member k ys = Nothing
+               | otherwise = 
+                  let v' = applyE r v in
+                  Just $ if v' == var k then m else Map.insert k (applyE r v) m
+  
+
+singletonR :: (SubstVar v, Eq (v n)) => (Fin n,v n) -> Refinement v n
+singletonR (x, t) = 
+  if t == var x then emptyR else Refinement (Map.singleton x t)
+
+fromRefinement :: SubstVar v => Refinement v n -> Env v n n
+fromRefinement (Refinement x) = fromTable (Map.toList x)
+
+toRefinement :: SNatI n => Env v n n -> Refinement v n
+toRefinement r = Refinement (Map.fromList (tabulate r))
+
+refine :: (Subst v c) => Refinement v n -> c n -> c n
+refine r = applyE (fromRefinement r)
+
+----------------------------------------------------------------
+-- show for environments
+----------------------------------------------------------------
+
+instance (SNatI n, Show (v m)) => Show (Env v n m) where
+  show x = show (tabulate x)
 
 tabulate :: (SNatI n) => Env v n m -> [(Fin n, v m)]
 tabulate r = map (\f -> (f, applyEnv r f)) (enumFin snat)
@@ -150,10 +192,3 @@ fromTable :: SubstVar v => [(Fin n, v n)] -> Env v n n
 fromTable rho = Env $ \f -> case lookup f rho of 
                                     Just t -> t 
                                     Nothing -> var f
-
-----------------------------------------------------------------
--- show for environments
-----------------------------------------------------------------
-
-instance (SNatI n, Show (v m)) => Show (Env v n m) where
-  show x = show (tabulate x)

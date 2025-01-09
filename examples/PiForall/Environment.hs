@@ -94,16 +94,19 @@ lookupGlobalTy v = do
     env <- ask
     case [a | ModuleDecl v' a <- globals env, v == v'] of
       [a] -> return a
-      _  -> err [ DS ("The variable " ++ show v ++ " was not found."),
-            DS "in the global context."
-                      ]
+      _   -> do
+        mty <- lookupHint v
+        case mty of
+          Just ty -> return ty
+          Nothing ->  err [ DS $ "The variable " ++ show v ++ " was not found" ]
+            
 lookupGlobalDef :: GlobalName -> TcMonad n (Term Z)
 lookupGlobalDef v = do
     env <- ask
     case [a | ModuleDef v' a <- globals env, v == v'] of
       [a] -> return a
-      _  -> err [ DS ("The variable " ++ show v ++ " was not found."),
-            DS "in the global context."]
+      _  -> err [ DS ("The variable " ++ show v ++ " was not found"),
+            DS "(out of scope)"]
 
 -- | Find a type constructor in the context
 lookupTCon ::

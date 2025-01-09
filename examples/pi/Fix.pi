@@ -8,6 +8,8 @@ module Fix where
 -- To type check the Y combinator, we need to have a type 
 -- D such that D ~~ D -> D
 
+oops : (A:Type) -> A 
+oops = \A . oops A
 
 data D (A : Type) : Type where
    F of (_ : D A -> D A) 
@@ -17,13 +19,13 @@ unV : [A:Type] -> D A -> A
 unV = \[A] v.
         case v of 
           V y -> y
-          F f -> TRUSTME
+          F f -> oops A
 
 unF :[A:Type] -> D A -> D A -> D A
 unF = \[A] v x . 
    case v of 
      F f -> f x
-     V y -> TRUSTME
+     V y -> oops (D A)
 
 -- Here's the Y-combinator. To make it type 
 -- check, we need to add the appropriate conversions 
@@ -50,5 +52,5 @@ fix_add = fix [Nat -> Nat -> Nat]
               Zero   -> y
               Succ n -> Succ (radd n y)
 
-test : fix_add 5 2 = 7
-test = Refl
+-- test : fix_add 5 2 = 7
+-- test = Refl

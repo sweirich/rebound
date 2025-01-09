@@ -3,6 +3,7 @@ module PiForall.PrettyPrint (Display (..), D (..), W(..), SourcePos, PP.Doc, pp,
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
+import qualified Data.Map as Map
 
 import Text.ParserCombinators.Parsec.Error (ParseError)
 import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, sourceName)
@@ -73,6 +74,7 @@ data D
 data W n = WS String 
          | forall a. Display a => WC a 
          | forall a. Display (a n) => WD (a n)
+         | forall a. Display (a n) => WL [a n]
 
 initDI :: DispInfo 
 initDI = DI { showAnnots = False,
@@ -97,9 +99,11 @@ instance Display D where
   display (DD d) di = PP.nest 2 $ display d di
 
 instance Display (W n) where
-  display (WS s) di = PP.pretty (show s)
+  display (WS s) di = PP.pretty s
   display (WD a) di = PP.nest 2 $ display a di
   display (WC c) di = disp c
+  display (WL a) di =
+    PP.brackets (PP.sep (PP.punctuate PP.comma (map (`display` di) a)))
 
 instance Display [D] where
   display dl di = PP.sep $ map (`display` di) dl
@@ -159,12 +163,12 @@ instance Display DataDef where
         dp <- display params
         ds <- display sort
         dc <- mapM display constructors
-        pure $
+        pure $ PP.nest 2 (PP.vcat
             (  dp
                 <+> PP.colon
                 <+> ds
                 <+> PP.pretty "where"
-            ) <+> PP.nest 2 (PP.vcat dc)
+             : dc ))
 
 instance Display (ConstructorDef n) where
   display (ConstructorDef c Tele) = do
@@ -180,12 +184,15 @@ instance Display (Telescope m n) where
    display (TCons (Scoped.Rebind (LocalDecl x tm) tele)) = do
     dtm   <- display tm 
     dtele <- local (push x) (display tele) 
-    return $ PP.pretty (show x) <+> PP.colon <+> dtm <> PP.comma <+> dtele
+    if x /= internalName then
+      return $ PP.parens (PP.pretty (show x) <+> PP.colon <+> dtm) <+> dtele
+    else
+      return $ PP.parens dtm <+> dtele
    display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = undefined
 
 instance Display (Refinement Term n) where
   display (Refinement r) di = 
-    PP.sep (PP.punctuate PP.comma (map d r)) where
+    PP.sep (PP.punctuate PP.comma (map d (Map.toList r))) where
       d (x,tm) = display (Var x) di <+> PP.pretty "=" <+> display tm di 
 
 -- This is Context n
@@ -326,7 +333,14 @@ instance Display (Term n) where
       db <- withPrec 0 (display b)
       return $ PP.parens (da <+> PP.pretty ":" <+> db)
       else display a
+
   display (Pos _ e) = display e
+
+  display (TyCon "(=)" [a, b]) = do
+    da <- withPrec 0 (display a)
+    db <- withPrec 0 (display b)
+    return $ PP.parens (da <+> PP.pretty "=" <+> db)
+
   display (TyCon "Sigma" [tyA, Lam bnd]) =
     Local.unbind bnd $ \(x, tyB) -> do
       if f0 `appearsFree` tyB then do
@@ -384,8 +398,29 @@ instance Display (Term n) where
     dalts <- withPrec 0 $ mapM display alts
     return $
       parens (levelCase < p) $ prettyCase dscrut dalts
-
-
+  display (Subst a b) = do
+    p <- asks prec
+    da <- withPrec 0 $ display a
+    db <- withPrec 0 $ display b
+    return $
+      parens (levelPi < p) $
+      PP.sep
+        [ PP.pretty "subst" <+> da,
+          PP.pretty "by" <+> db
+        ]
+  display (TyEq a b) = do
+    p <- ask prec
+    da <- withPrec (levelApp+1) $ display a
+    db <- withPrec (levelApp+1) $ display b
+    return $ PP.parens $ (da <+> PP.pretty "=" <+> db)
+  display TmRefl = do
+    return $ PP.pretty "Refl"
+  display (Contra ty) = do
+    p <- ask prec
+    dty <- display ty
+    return $ parens (levelPi < p) $ PP.pretty "contra" <+> dty
+  display TrustMe = return $ PP.pretty "TRUSTME"
+  display PrintMe = return $ PP.pretty "PRINTME"
 open        = PP.flatAlt PP.emptyDoc (PP.pretty "{ ")
 close       = PP.flatAlt PP.emptyDoc (PP.pretty  " }")
 separator   = PP.flatAlt PP.emptyDoc (PP.pretty "; ")

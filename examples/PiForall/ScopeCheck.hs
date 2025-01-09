@@ -154,5 +154,17 @@ to vs (C.Ann a b) = do
   a' <- to vs a
   b' <- to vs b
   return $ S.Ann a' b'
-
-
+to vs (C.TyEq a b) = do
+  a' <- to vs a
+  b' <- to vs b
+  return $ S.TyEq a' b'
+to vs C.TmRefl = return S.TmRefl
+to vs (C.Subst a b) = do
+  a' <- to vs a
+  b' <- to vs b
+  return $ S.Subst a' b'
+to vs (C.Contra a) = do
+  a' <- to vs a
+  return $ S.Contra a'
+to vs C.TrustMe = return S.TrustMe
+to vs C.PrintMe = return S.PrintMe

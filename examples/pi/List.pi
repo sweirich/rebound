@@ -2,14 +2,14 @@ module List where
 
 import Nat
 
-data List (a : Type) : Type where
+data List (a1 : Type) : Type where
   Nil  
-  Cons of (a) (List a)
+  Cons of (a1) (List a1)
 
 map : [a : Type] -> [b: Type] -> (a -> b) -> List a -> List b 
-map = \[a] [b] f xs . case xs of 
+map = \[a2] [b2] f xs . case xs of 
   Nil -> Nil
-  Cons y ys -> Cons (f y) (map [a][b] f ys)
+  Cons y ys -> Cons (f y) (map [a2][b2] f ys)
   
 id : [a:Type] -> a -> a
 id = \[a] x . x  
@@ -44,8 +44,8 @@ length = \[a] xs . case xs of
   Nil -> 0
   Cons y ys -> plus 1 (length [a] ys)
   
-head : [a : Type] -> List a -> a 
-head = \[a] xs . case xs of 
-  Nil -> TRUSTME  -- cannot remove b/c of exhaustivity check
-  Cons y ys -> y
+--head : [a : Type] -> List a -> a 
+--head = \[a] xs . case xs of 
+--  Nil -> TRUSTME  -- cannot remove b/c of exhaustivity check
+--  Cons y ys -> y
   

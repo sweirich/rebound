@@ -37,6 +37,7 @@ inferType a ctx = case a of
     pure $ Env.lookupTy x ctx 
 
   (Global n) -> 
+    -- this weakening should be a no-op
     case axiomPlusZ @n of 
       Refl -> weaken' (snat @n) <$> Env.lookupGlobalTy n 
   -- i-type
@@ -77,9 +78,7 @@ inferType a ctx = case a of
       Env.errScope
         [ WS "Datatype constructor",
           WS c,
-          WS $
-            "should have " ++ show (Scoped.size delta)
-              ++ "parameters, but was given",
+          WS ("should have " ++ show (Scoped.size delta) ++ " parameters, but was given"),
           WC (length params)
         ]
     let delta' = applyE @Term (weakenE' (snat :: SNat n)) delta
@@ -120,6 +119,11 @@ inferType a ctx = case a of
           ]
       _ -> Env.errScope [WS "Ambiguous data constructor", WC c] 
 
+  (TyEq a b) -> do
+    aTy <- inferType a ctx
+    checkType b aTy ctx
+    return TyType 
+
   -- cannot synthesize the type of the term
   _ -> 
     Env.errScope [WS "Must have a type annotation for", WD a] 
@@ -149,47 +153,55 @@ checkType tm ty ctx = do
     -- Practicalities
     (Pos p a) -> 
       Env.extendSourceLocation p a $ checkType a ty' ctx 
-{-
+
     TrustMe -> return ()
 
     PrintMe -> do
-      gamma <- Env.getLocalCtx
-      Env.warn [DS "Unmet obligation.\nContext:", DD gamma,
-            DS "\nGoal:", DD ty']  
--}
-    -- c-let
-    (Let a bnd) ->  Local.unbind bnd $ \ (x, b) -> do
-      tyA <- inferType a ctx
-      -- TODO: add definition x = a to the local context
-      push x (checkType b (weaken' s1 ty') (Env.extendTy tyA ctx))
+      Env.errScope [WS "Unmet obligation.\nContext:", WD ctx,
+            WS "\nGoal:", WD ty']  
 
-{-
-    Refl -> case ty' of 
+    -- c-let -- treat like immediate application
+    (Let a bnd) ->  
+      checkType (Local.instantiate bnd a) ty' ctx
+      -- TODO: delay substitution and introduce new variable
+      -- Local.unbind bnd $ \ (x, b) -> do
+      -- tyA <- inferType a ctx
+      -- push x (checkType (shift b) ty' (Env.extendTy tyA ctx))
+
+    TmRefl -> case ty' of 
             (TyEq a b) -> Equal.equate a b
-            _ -> Env.err [DS "Refl annotated with invalid type", DD ty']
+            _ -> Env.errScope [WS "Refl annotated with invalid type", WD ty']
     -- c-subst
     (Subst a b) -> do
       -- infer the type of the proof 'b'
-      tp <- inferType b
+      tp <- inferType b ctx
       -- make sure that it is an equality between m and n
       nf <- Equal.whnf tp
       (m, n) <- case nf of 
                   TyEq m n -> return (m,n)
                   _ -> Env.err [DS "Subst requires an equality type, not", DD tp]
       -- if either side is a variable, add a definition to the context
-      edecl <- Equal.unify [] m n
+      -- if this fails, then the user should use contra instead
+      edecl <- Equal.unify SZ m n
       -- if proof is a variable, add a definition to the context
-      pdecl <- Equal.unify [] b Refl
-      Env.extendCtxs (edecl ++ pdecl) $ checkType a ty'
-      -}
-{-      
+      pdecl <- Equal.unify SZ b TmRefl
+      -- I don't think this join can fail, but we have to check
+      r' <- case joinR edecl pdecl of 
+               Just r -> pure $ fromRefinement r
+               Nothing -> Env.errScope [WS "incompatible equality in subst"]
+      -- refine the result type
+      let ty'' = applyE r' ty'
+      -- refine the context
+      let ctx' = case ctx of Env f -> Env $ \x -> applyE r' (f x)
+      checkType a ty'' ctx'
+      
     -- c-contra 
     (Contra p) -> do
-      ty' <- inferType p
+      ty' <- inferType p ctx
       nf <- Equal.whnf ty'
       (a, b) <- case nf of 
                   TyEq m n -> return (m,n)
-                  _ -> Env.err [DS "Contra requires an equality type, not", DD ty']
+                  _ -> Env.errScope [WS "Contra requires an equality type, not", WD ty']
       a' <- Equal.whnf a
       b' <- Equal.whnf b
       case (a', b') of
@@ -197,15 +209,14 @@ checkType tm ty ctx = do
           | da /= db ->
             return ()
         (_, _) ->
-          Env.err
-            [ DS "I can't tell that",
-              DD a,
-              DS "and",
-              DD b,
-              DS "are contradictory"
+          Env.errScope
+            [ WS "I can't tell that",
+              WD a',
+              WS "and",
+              WD b',
+              WS "are contradictory"
             ]
-            -}
-
+            
     -- c-data
     -- we know the expected type of the data constructor
     -- so look up its type in the context
@@ -241,30 +252,27 @@ checkType tm ty ctx = do
         checkAlt :: Match n -> TcMonad n ()
         checkAlt (Branch bnd) = Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
             -- add variables from pattern to context
-            -- could fail if branch is in-accessible
-            (ctx', tm' :: Term (Plus p n)) <-
-                declarePat pat (TyCon c args) ctx
-            let 
-              scrut'' :: Term (Plus p n)
-              scrut'' = applyE @Term (shiftNE (snat @p)) scrut'
-            -- could fail if branch is inaccessible
-            (Refinement defs :: Refinement Term (Plus p n))  <- 
-              push pat $ 
-                 Equal.unify @(Plus p n) SZ scrut'' tm' 
-            let 
-              r :: Env Term (Plus p n) (Plus p n)
-              r = fromTable defs
+            (ctx', tm') <- declarePat pat (TyCon c args) ctx
+            -- shift scrutinee and result type into the scope of the branch
+            let scrut'' = applyE @Term (shiftNE (snat @p)) scrut'
             let ty1 = applyE @Term (shiftNE (snat @p)) ty'
+            
+            -- compare scrutinee and pattern: fails if branch is inaccessible
+            defs <- push pat $ Equal.unify SZ scrut'' tm' 
+            let r = fromRefinement defs
+            -- refine body 
+            let body' = applyE r body
+            -- refine result type
             let ty'' = applyE r ty1
-            push pat $ do
-               checkType body ty'' ctx'
+            ty3 <- push pat $ Equal.whnf ty''
+            -- refine context
+            let ctx'' = case ctx' of Env f -> Env $ \x -> applyE r (f x)
+            -- check the branch
+            push pat $ checkType body' ty'' ctx''
       mapM_ checkAlt alts
       -- TODO
       -- exhaustivityCheck scrut' sty alts
-      
     
-
-
     -- c-infer
     _ -> do
       tyA <- inferType tm ctx
@@ -307,7 +315,6 @@ tcTypeTele (TCons (Scoped.Rebind (LocalDecl x ty)
     Refl -> push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
 {-
-
 G |- tm : A 
 G |- tms : Theta {tm/x} ==> sigma
 ----------------------
@@ -331,7 +338,6 @@ tcArgTele (tm : terms) (TCons (Scoped.Rebind (LocalDecl ln ty)
       ss <- tcArgTele terms (applyE (tm .: idE) tele) ctx
       let t :: p :~: Plus p1 N1
           t = Refl
-      -- TODO!!!  (tm .: ss)
       return $ error "TODO: tcArgTele"
 
 tcArgTele [] _ _ =
@@ -376,8 +382,10 @@ substTele delta params theta =
      (ss :: Env Term (Plus p1 n) n) <- mkSubst (reverse params) (Scoped.size delta')
      let shift :: Env Term p1 (Plus p1 n)
          shift = Env (var . shiftRN (snat @n))
+         weaken :: Env Term p1 (Plus p1 n)
+         weaken = Env (var . weakenFinRight (snat @n))
      let theta' :: Telescope p2 (Plus p1 n)
-         theta' = applyE @Term shift theta
+         theta' = applyE @Term weaken theta
      doSubst @p1 ss theta'
   
 {-

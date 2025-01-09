@@ -50,7 +50,7 @@ snd = \A B p. let (x1,y) = p in y
 
 -- examples of propositional equality
 
--- sym : (A:Type) -> (x:A) -> (y:A) -> (x = y) -> y = x
--- sym = \ A x y pf .
---   subst Refl by pf 
+sym : (A:Type) -> (x:A) -> (y:A) -> (x = y) -> y = x
+sym = \ A x y pf .
+   subst Refl by pf 
 
