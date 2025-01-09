@@ -259,7 +259,7 @@ reserved = Token.reserved tokenizer
 reservedOp = Token.reservedOp tokenizer
 
 parens, brackets, braces :: LParser a -> LParser a
-parens = \p -> try (Token.parens tokenizer p) <|> Token.brackets tokenizer p
+parens = Token.parens tokenizer 
 brackets = Token.brackets tokenizer
 braces = Token.braces tokenizer
 
@@ -318,7 +318,7 @@ telebindings = many teleBinding
 
     teleBinding :: LParser ([Entry] -> [Entry])
     teleBinding =
-      (    try (parens annot)
+      (    parens annot
        <|> try (brackets imp)
        <|> brackets equal) <?> "binding"
 
@@ -536,17 +536,20 @@ expProdOrAnnotOrParens =
     afterBinder = do reservedOp "->"
                      expr
 
-    -- before binder parses an expression in parens
-    -- If it doesn't involve a colon, you get (Right tm)
-    -- If it does, you get (Left tm1 tm2).  tm1 might be a variable,
-    --    in which case you might be looking at an explicit pi type.
-    beforeBinder :: LParser InParens
-    beforeBinder = parens $
+    middle :: LParser InParens
+    middle = 
       choice [do e1 <- try (term >>= (\e1 -> colon >> return e1))
                  Colon e1 <$> expr
              , do e1 <- try (term >>= (\e1 -> comma >> return e1))
                   Comma e1 <$> expr
              , Nope <$> expr]
+    -- before binder parses an expression in parens
+    -- If it doesn't involve a colon, you get (Right tm)
+    -- If it does, you get (Left tm1 tm2).  tm1 might be a variable,
+    --    in which case you might be looking at an explicit pi type.
+    beforeBinder :: LParser InParens
+    beforeBinder = parens middle <|> brackets middle
+        
   in
     do bd <- beforeBinder
        case bd of

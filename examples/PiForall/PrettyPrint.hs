@@ -1,5 +1,5 @@
 -- | A Pretty Printer.
-module PiForall.PrettyPrint (Display (..), D (..), W(..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
+module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
@@ -63,18 +63,12 @@ data DispInfo = forall n. DI
     showLongNames :: Bool
   }
 
--- | Error message quoting
-data D
-  = -- | String literal
-    DS String
-  | -- | Displayable value
-    forall a. Display a => DD a
 
 -- | Scoped error message quoting
-data W n = WS String 
-         | forall a. Display a => WC a 
-         | forall a. Display (a n) => WD (a n)
-         | forall a. Display (a n) => WL [a n]
+data D n = DS String 
+         | forall a. Display a => DC a  -- closed constant, not a string
+         | forall a. Display (a n) => DD (a n)  -- single displayable value
+         | forall a. Display (a n) => DL [a n]  -- list of displayable values
 
 initDI :: DispInfo 
 initDI = DI { showAnnots = False,
@@ -94,19 +88,12 @@ namesDI s = initDI { localNames = s }
 
 -------------------------------------------------------------------------
 
-instance Display D where
+instance Display (D n) where
   display (DS s) di = PP.pretty s
-  display (DD d) di = PP.nest 2 $ display d di
-
-instance Display (W n) where
-  display (WS s) di = PP.pretty s
-  display (WD a) di = PP.nest 2 $ display a di
-  display (WC c) di = disp c
-  display (WL a) di =
+  display (DD a) di = PP.nest 2 $ display a di
+  display (DC c) di = disp c
+  display (DL a) di =
     PP.brackets (PP.sep (PP.punctuate PP.comma (map (`display` di) a)))
-
-instance Display [D] where
-  display dl di = PP.sep $ map (`display` di) dl
 
 instance Display ParseError where
   display ps di = PP.pretty (show ps)
@@ -164,7 +151,7 @@ instance Display DataDef where
         ds <- display sort
         dc <- mapM display constructors
         pure $ PP.nest 2 (PP.vcat
-            (  dp
+            (dp
                 <+> PP.colon
                 <+> ds
                 <+> PP.pretty "where"
@@ -178,17 +165,18 @@ instance Display (ConstructorDef n) where
     dt <- display tele
     pure $ dc <+> PP.pretty "of" <+> dt
 
--- TODO
 instance Display (Telescope m n) where
    display Tele = mempty
    display (TCons (Scoped.Rebind (LocalDecl x tm) tele)) = do
     dtm   <- display tm 
     dtele <- local (push x) (display tele) 
-    if x /= internalName then
-      return $ PP.parens (PP.pretty (show x) <+> PP.colon <+> dtm) <+> dtele
-    else
-      return $ PP.parens dtm <+> dtele
-   display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = undefined
+    return $ PP.parens (if x /= internalName then
+                    PP.pretty (show x) <+> PP.colon <+> dtm
+                else dtm) <+> dtele
+   display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = do
+    dtm <- display tm
+    dtele <- display tele
+    return $ PP.brackets (PP.pretty (show x) <+> PP.equals <+> dtm)
 
 instance Display (Refinement Term n) where
   display (Refinement r) di = 

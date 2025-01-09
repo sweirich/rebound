@@ -306,6 +306,7 @@ instance Subst Term (PatList p) where
 -- substitution could fail if the constraints in the 
 -- telescope are not satisifiable. So we define a 
 -- special purpose substitution operation for that 
+-- called doSubst in TypeCheck
 
 instance Subst Term (Telescope p) where
   applyE r Tele = Tele

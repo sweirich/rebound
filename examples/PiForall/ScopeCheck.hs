@@ -21,19 +21,19 @@ import AutoEnv.Lib
 push :: a -> [(a, Fin n)] -> [(a, Fin (S n))]
 push x vs = (x, FZ) : map (fmap FS) vs
 
+{-
 snoc :: forall n a. a -> [(a, Fin n)] -> [(a, Fin (Plus n N1))]
 snoc x [] = case axiom @n @N0 of { Refl -> [(x, FZ)] }
 snoc x ((y, fy) : vs)  = 
   case (axiomPlusZ @n, axiom @n @N0) of 
     (Refl, Refl) -> (y, weaken1Fin fy) : snoc x vs
+-}
 
 data ScopedPattern n = forall p. SNatI p =>
-   ScopedPattern (S.Pattern p) 
-    [(LocalName, Fin (Plus p n))]
+   ScopedPattern (S.Pattern p) [(LocalName, Fin (Plus p n))]
 
 data ScopedPatList n = forall p. SNatI p =>
-   ScopedPatList (S.PatList p) 
-    [(LocalName, Fin (Plus p n))]
+   ScopedPatList (S.PatList p) [(LocalName, Fin (Plus p n))]
 
 scopeCheckModule :: C.Module -> Maybe S.Module
 scopeCheckModule m = do 
@@ -51,23 +51,27 @@ scopeCheckEntry (C.ModuleDef gn tm) = S.ModuleDef gn <$> scopeCheck tm
 scopeCheckEntry (C.ModuleData dn datadef) = S.ModuleData dn <$> scopeCheckData datadef
 
 data ScopedTele n = 
-  forall p. SNatI p => ScopedTele [(LocalName, Fin p)] (S.Telescope p n) 
+  forall p. SNatI p => ScopedTele [(LocalName, Fin (Plus p n))] (S.Telescope p n) 
 
 scopeCheckData :: C.DataDef -> Maybe S.DataDef
 scopeCheckData (C.DataDef delta s cs) = do 
-  ScopedTele scope delta' <- scopeCheckTele [] delta
-  S.DataDef delta' <$> scopeCheck s <*> mapM (scopeCheckConstructor scope) cs
+  ScopedTele scope (delta' :: S.Telescope n Z) <- scopeCheckTele [] delta
+  case axiomPlusZ @n of 
+    Refl -> S.DataDef delta' <$> scopeCheck s <*> mapM (scopeCheckConstructor scope) cs
 
 scopeCheckTele :: forall n. SNatI n => [(LocalName, Fin n)] -> C.Telescope -> Maybe (ScopedTele n)
-scopeCheckTele scope [] = Just $ ScopedTele [] S.Tele
+scopeCheckTele scope [] = Just $ ScopedTele scope S.Tele
 scopeCheckTele scope (C.EntryDecl n ty : entries) = do 
   ty' <- to scope ty 
-  -- error "TODO: scopeCheckTele"
-  ScopedTele ss (tele' :: S.Telescope p (S n)) <- scopeCheckTele (push n scope) entries
-  let ret = S.TCons (Scoped.Rebind (S.LocalDecl n ty') tele')
-  case (axiom @p @N0, axiomPlusZ @p) of 
-    (Refl, Refl) -> return $ ScopedTele (push n ss) ret
-  
+  let scope' :: [(LocalName, Fin (S n))]
+      scope' = push n scope
+  ScopedTele (ss    :: [(LocalName, Fin (Plus p ('S n)))]) 
+             (tele' :: S.Telescope p (S n)) <- scopeCheckTele scope' entries
+  let fact :: Plus p (S n) :~: Plus (Plus p N1) n
+      fact = axiomAssoc @p @N1 @n
+  withSNat (sPlus (snat @p) (SS SZ)) $ case fact of { Refl -> do
+    let ret = S.TCons (Scoped.Rebind (S.LocalDecl n ty') tele')
+    return $ ScopedTele ss ret }
 scopeCheckTele scope (C.EntryDef n tm : entries) = do
   tm' <- to scope tm
   ScopedTele ss (tele' :: S.Telescope p n) <- scopeCheckTele scope entries
@@ -76,7 +80,6 @@ scopeCheckTele scope (C.EntryDef n tm : entries) = do
       ln <- lookup n scope
       let ret = S.TCons (Scoped.Rebind (S.LocalDef ln tm') tele') 
       return $ ScopedTele ss ret
-
 
 scopeCheckConstructor :: SNatI n => [(LocalName, Fin n)] -> C.ConstructorDef 
   -> Maybe (S.ConstructorDef n)

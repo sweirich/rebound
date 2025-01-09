@@ -119,10 +119,10 @@ lookupTCon v = do
       currentEnv <- asks globals
       err
         [ DS "The type constructor",
-          DD v,
+          DC v,
           DS "was not found.",
           DS "The current environment is",
-          DD currentEnv
+          DC currentEnv
         ]
     scanGamma ((ModuleData n d) : g) =
       if n == v
@@ -165,10 +165,10 @@ lookupDCon c tname = do
         ( [ DS "Cannot find data constructor",
             DS c,
             DS "for type",
-            DD tname,
+            DC tname,
             DS "Potential matches were:"
           ]
-            ++ map (DD . fst) matches
+            ++ map (DC . fst) matches
         )
 
 
@@ -292,30 +292,34 @@ displayErr (Err ((SourceLocation p term s) : ss) msg) di =
                  <+> nest 2 (scopedDisplay term s))
 
 -- | Throw an error
+{-
 err :: (Display a) => [a] -> TcMonad n b
 err d = do
   loc <- getSourceLocation
   s <- scope
   throwError $ Err loc (sep $ map (`scopedDisplay` s) d)
+-}
 
 -- | Print a warning
-warn :: [W n] -> TcMonad n ()
+warn :: [D n] -> TcMonad n ()
 warn d = do
   loc <- getSourceLocation
   s <- scope
   liftIO $ putStrLn $ "warning: " ++ show (sep $ map (`scopedDisplay` s) d)
 
 -- | Print an error, making sure that the scope lines up 
-errScope :: [W n] -> TcMonad n b
-errScope d = do
+err :: [D n] -> TcMonad n b
+err d = do
   loc <- getSourceLocation
   s <- scope
   throwError $ Err loc (sep $ map (`scopedDisplay` s) d)
 
 -- | Augment an error message with addition information (if thrown)
-extendErr :: MonadError Err m => m a -> Doc () -> m a
-extendErr ma msg' =
-  ma `catchError` \(Err ps msg) ->
+extendErr :: TcMonad n a -> [D n] -> TcMonad n a
+extendErr ma d =
+  ma `catchError` \(Err ps msg) -> do
+    s <- scope
+    let msg' = sep $ map (`scopedDisplay` s) d 
     throwError $ Err ps (vcat [msg, msg'])
 
 --------------------------------------------------------------
