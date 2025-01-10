@@ -275,14 +275,15 @@ checkType tm ty ctx = do
             -- check the branch
             push pat $ checkType body' ty'' ctx''
       mapM_ checkAlt alts
-      -- TODO
-      -- exhaustivityCheck scrut' sty alts
+      exhaustivityCheck scrut' sty (map getSomePat alts) ctx
     
     -- c-infer
     _ -> do
       tyA <- inferType tm ctx
       Equal.equate tyA ty' 
     
+getSomePat :: Match n -> Some Pattern
+getSomePat (Branch bnd) = Some (Pat.getPat bnd)
 ---------------------------------------------------------------------
 -- type checking datatype definitions, type constructor applications and 
 -- data constructor applications
@@ -682,6 +683,7 @@ duplicateTypeBindingCheck decl = do
 -----------------------------------------------------------
 -- Checking that pattern matching is exhaustive
 -----------------------------------------------------------
+data Some (p :: Nat -> Type) where Some :: forall x p. SNatI x => (p x) -> Some p 
 
 -- | Given a particular type and a list of patterns, make
 -- sure that the patterns cover all potential cases for that
@@ -692,56 +694,57 @@ duplicateTypeBindingCheck decl = do
 -- Otherwise, the scrutinee type must be a type constructor, so the
 -- code looks up the data constructors for that type and makes sure that
 -- there are patterns for each one.
-{-
-exhaustivityCheck :: Term n -> Typ n -> [Match n] -> TcMonad ()
-exhaustivityCheck _scrut ty (PatVar x : _) = return ()
-exhaustivityCheck _scrut ty pats = do
+
+exhaustivityCheck :: forall n. (SNatI n) => Term n -> Typ n -> [Some Pattern] -> Context n -> TcMonad n ()
+exhaustivityCheck _scrut ty (Some (PatVar x) : _) ctx = return ()
+exhaustivityCheck _scrut ty pats ctx = do
   (tcon, tys) <- Equal.ensureTCon ty
-  ScopedConstructorDef delta mdefs <- Env.lookupTCon tcon
-  case mdefs of
-    Just datacons -> do
-      loop pats datacons
-      where
-        loop [] [] = return ()
-        loop [] dcons = do
+  DataDef (delta :: Telescope p1 Z) sort datacons <- Env.lookupTCon tcon
+  let   loop :: [Some Pattern] -> [ConstructorDef p1] -> TcMonad n ()
+        loop  [] [] = return ()
+        loop  [] dcons = do
           l <- checkImpossible dcons
           if null l
             then return ()
-            else Env.err $ DS "Missing case for" : map DD l
-        loop (PatVar x : _) dcons = return ()
-        loop (PatCon dc args : pats') dcons = do
-          (ConstructorDef _ tele, dcons') <- removeDCon dc dcons
-          tele' <- substTele delta tys tele
-          let (aargs, pats'') = relatedPats dc pats'
-          -- check the arguments of the data constructor
-          checkSubPats dc tele' (args : aargs)
-          loop pats'' dcons'
+            else Env.err $ DS "Missing case for" : map DC l
+        loop  (Some (PatVar x) : _) dcons = return ()
+        loop  (Some (PatCon dc (args :: PatList p)) : pats') dcons = do
+          (ConstructorDef _ (tele :: Telescope p2 p1), dcons') <- removeDCon dc dcons
+          case testEquality (snat @p) (Scoped.size tele) of 
+            Just Refl -> do
+                tele' <- 
+                  withSNat (Scoped.size delta) $ substTele delta tys tele
+                let (aargs, pats'') = relatedPats dc pats'
+                -- check the arguments of the data constructor together with 
+                -- all other related argument lists
+                checkSubPats dc tele' (Some args : aargs)
+                loop pats'' dcons'
+            Nothing -> error "BUG: removeDCon returned invalid constructor"
 
         -- make sure that the given list of constructors is impossible
         -- in the current environment
-        checkImpossible :: [ConstructorDef n] -> TcMonad [DataConName]
+        checkImpossible :: [ConstructorDef p1] -> TcMonad n [DataConName]
         checkImpossible [] = return []
         checkImpossible (ConstructorDef dc tele : rest) = do
           this <-
             ( do
-                tele' <- substTele delta tys tele
-                tcTypeTele tele'
+                tele' <- withSNat (Scoped.size delta) $ 
+                   substTele delta tys tele
+                tcTypeTele tele' ctx
                 return [dc]
               )
               `catchError` (\_ -> return [])
           others <- checkImpossible rest
           return (this ++ others)
-    Nothing ->
-      Env.err [DS "Cannot determine constructors of", DD ty]
+  loop pats datacons
+    
 
 
 -- | Given a particular data constructor name and a list of data
 -- constructor definitions, pull the definition out of the list and
 -- return it paired with the remainder of the list.
-removeDCon ::
-  DataConName ->
-  [ConstructorDef n] ->
-  TcMonad (ConstructorDef n, [ConstructorDef n])
+removeDCon :: DataConName -> [ConstructorDef p1] ->
+  TcMonad n (ConstructorDef p1, [ConstructorDef p1])
 removeDCon dc (cd@(ConstructorDef dc' _) : rest)
   | dc == dc' =
     return (cd, rest)
@@ -750,41 +753,48 @@ removeDCon dc (cd1 : rest) = do
   return (cd2, cd1 : rr)
 removeDCon dc [] = Env.err [DS $ "Internal error: Can't find " ++ show dc]
 
-data Some p where Some :: p x -> Some p 
+
 
 -- | Given a particular data constructor name and a list of patterns,
 -- pull out the subpatterns that occur as arguments to that data
 -- constructor and return them paired with the remaining patterns.
-relatedPats :: DataConName -> PatList p -> ([Some PatList], [Some PatList])
-relatedPats dc PNil = ([], [])
-relatedPats dc pc@(PCons (PatVar _) pats) = ([], Some pc : pats)
-relatedPats dc (PCons (PatCon dc' args) pats)
+relatedPats :: DataConName -> [Some Pattern] -> ([Some PatList], [Some Pattern])
+relatedPats dc [] = ([], [])
+relatedPats dc (pc@(Some (PatVar _)) : pats) = ([], pc : pats)
+relatedPats dc (pc@(Some (PatCon dc' args)) : pats)
   | dc == dc' =
     let (aargs, rest) = relatedPats dc pats
      in (Some args : aargs, rest)
-relatedPats dc (PCons pc pats) =
+relatedPats dc (pc : pats) =
   let (aargs, rest) = relatedPats dc pats
-   in (aargs, Some pc : rest)
+   in (aargs, pc : rest)
 
 
 -- | Occurs check for the subpatterns of a data constructor. Given
 -- the telescope specifying the types of the arguments, plus the
 -- subpatterns identified by relatedPats, check that they are each
--- exhaustive.
+-- exhaustive. (This is the PatList version of `exhaustivityCheck`)
 
 -- for simplicity, this function requires that all subpatterns
 -- are pattern variables.
-checkSubPats :: DataConName -> [ModuleEntry] -> [PatList p] -> TcMonad ()
-checkSubPats dc [] _ = return ()
-checkSubPats dc (ModuleDef _ _ : tele) patss = checkSubPats dc tele patss
-checkSubPats dc (ModuleDecl _ _ : tele) patss
-  | (not . null) patss && not (any null patss) = do
-    let hds = map (fst . Prelude.head) patss
-    let tls = map Prelude.tail patss
-    case hds of
-      [PatVar _ ] -> checkSubPats dc tele tls
-      _ -> Env.err [DS "All subpatterns must be variables in this version."]
-checkSubPats dc t ps =
-  Env.err [DS "Internal error in checkSubPats", DD dc, DS (show ps)]
+checkSubPats :: forall p n. DataConName -> Telescope p n -> [Some PatList] -> TcMonad n ()
+checkSubPats dc Tele _ = return ()
+checkSubPats dc (TCons (Scoped.Rebind (LocalDef _ _) (tele :: Telescope p2 n))) (patss :: [Some PatList]) = 
+  checkSubPats dc tele patss
+checkSubPats dc (TCons (Scoped.Rebind (LocalDecl x _) (tele :: Telescope p2 (S n)))) 
+                (patss :: [Some PatList]) = do
+      case allHeadVars patss of 
+        Just tls -> push x $ checkSubPats @_ @(S n) dc tele tls
+        Nothing -> Env.err [DS "All subpatterns must be variables in this version."]
 
--}
+
+nullPatList :: PatList p -> Bool
+nullPatList PNil = True
+nullPatList _ = False
+
+allHeadVars :: [Some PatList] -> Maybe [Some PatList]
+allHeadVars [] = Just []
+allHeadVars (Some (PCons (PatVar x) (pats :: PatList p2)) : patss) = do
+  withSNat (Pat.size pats) $
+    (Some pats :) <$> allHeadVars patss
+allHeadVars _ = Nothing

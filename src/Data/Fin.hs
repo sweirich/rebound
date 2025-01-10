@@ -35,6 +35,10 @@ axiomM = unsafeCoerce Refl
 axiomAssoc :: forall p m n. Plus p (Plus m n) :~: Plus (Plus p m) n
 axiomAssoc = unsafeCoerce Refl
 
+axiomIncrInj :: forall p1 p2. (Plus p1 N1 ~ Plus p2 N1) => p1 :~: p2
+axiomIncrInj = case (axiomM @p1 @N1 @N0, axiomPlusZ @p1, axiomM @p2 @N1 @N0, axiomPlusZ @p2) of 
+  (Refl,Refl,Refl,Refl) -> Refl
+
 -----------------------------------------------------
 -- Type
 -----------------------------------------------------
