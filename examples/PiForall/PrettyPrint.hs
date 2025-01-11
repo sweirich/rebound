@@ -174,9 +174,10 @@ instance Display (Telescope m n) where
                     PP.pretty (show x) <+> PP.colon <+> dtm
                 else dtm) <+> dtele
    display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = do
+    dx <- display (Var x)
     dtm <- display tm
     dtele <- display tele
-    return $ PP.brackets (PP.pretty (show x) <+> PP.equals <+> dtm)
+    return $ PP.brackets (dx <+> PP.equals <+> dtm)
 
 instance Display (Refinement Term n) where
   display (Refinement r) di = 

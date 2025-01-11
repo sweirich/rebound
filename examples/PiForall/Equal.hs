@@ -240,6 +240,7 @@ unify p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
 amb :: Term n -> Bool
 amb (App t1 t2) = True
 amb (Case _ _) = True
+amb (Subst _ _) = True
 amb _ = False
 
 
