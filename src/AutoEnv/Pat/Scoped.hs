@@ -143,6 +143,23 @@ applyUnder f r2 (Bind p r1 t) =
     p' = applyE r2 p
 
 
+instantiateWeakenEnv ::
+  forall p n v c.
+  (SubstVar v, Subst v v) =>
+  SNat p ->
+  SNat n ->
+  v (Plus p n) ->
+  Env v (S n) (Plus p n)
+instantiateWeakenEnv p n a = 
+  shiftNE @v p
+    .>> Env
+      ( \(x :: Fin (Plus p (S n))) ->
+          case checkBound @p @(S n) p x of
+            Left pf -> var (weakenFinRight n pf)
+            Right pf -> case pf of
+              FZ -> a
+              FS (f :: Fin n) -> var (shiftN p f)
+      )
 
 -----------------------------------------------------------------
 -- instances for Bind

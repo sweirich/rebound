@@ -14,6 +14,7 @@ import Prettyprinter ( Doc, vcat, sep, (<+>), nest, pretty )
 import AutoEnv.Context
 
 import AutoEnv
+import AutoEnv.Env
 import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.MonadScoped
 import AutoEnv.LocalName
@@ -53,7 +54,9 @@ data TcEnv n = TcEnv
     -- | what part of the file we are in (for errors/warnings)
     sourceLocation :: [SourceLocation],
     -- | the current scope of local variables
-    env_scope :: Scope n
+    env_scope :: Scope n,
+    -- | current refinement for variables in scope
+    env_refinement :: Refinement Term n
   }
 
 instance MonadScoped TcMonad where
@@ -66,9 +69,9 @@ instance MonadScoped TcMonad where
         TcEnv { globals = globals env,
                 hints = hints env,
                 sourceLocation = sourceLocation env,
-                env_scope = extendScope pat (env_scope env)
+                env_scope = extendScope pat (env_scope env), 
+                env_refinement = shiftRefinement (Pat.size pat) (env_refinement env)
               })
-
 
 -- | Initial environment
 emptyEnv :: TcEnv Z
@@ -76,7 +79,8 @@ emptyEnv = TcEnv {
   globals = prelude,
   hints = [],
   sourceLocation = [], 
-  env_scope = emptyScope
+  env_scope = emptyScope, 
+  env_refinement = emptyR
 }
 
 
@@ -88,8 +92,7 @@ lookupHint v = do
   hints <- asks hints
   return $ listToMaybe [ ty | (x,ty) <- hints, v == x]
 
-lookupGlobalTy ::
-  GlobalName -> TcMonad n (Typ Z)
+lookupGlobalTy :: GlobalName -> TcMonad n (Typ Z)
 lookupGlobalTy v = do
     env <- ask
     case [a | ModuleDecl v' a <- globals env, v == v'] of
@@ -98,7 +101,7 @@ lookupGlobalTy v = do
         mty <- lookupHint v
         case mty of
           Just ty -> return ty
-          Nothing ->  err [ DS $ "The variable " ++ show v ++ " was not found" ]
+          Nothing -> err [ DS $ "The variable " ++ show v ++ " was not found" ]
             
 lookupGlobalDef :: GlobalName -> TcMonad n (Term Z)
 lookupGlobalDef v = do
@@ -178,18 +181,11 @@ lookupDCon c tname = do
 -- include local definitions). 
 type Context a = Ctx Term a
 
-{-
-toScope :: Context n -> Scope n
-toScope c = Scope { scope_size = local_size c,
-                    scope_locals = local_names c
-                  }
--}
-
 weakenDef :: SNat n -> (Fin p, Term p) -> (Fin (Plus n p), Term (Plus n p))
 weakenDef m (x,y) = (weakenFin m x, applyE @Term (weakenE' m) y)
 
 emptyContext :: Context N0
-emptyContext = emptyC -- emptyE
+emptyContext = emptyC 
 
 -- instance Display (Context n) where
 --   display (Context { local_decls = decls}) di = pretty "TODO <display context>"
@@ -290,15 +286,6 @@ displayErr (Err ((SourceLocation p term s) : ss) msg) di =
       <+> nest 2 msg
       <+> nest 2 (pretty "in the expression"
                  <+> nest 2 (scopedDisplay term s))
-
--- | Throw an error
-{-
-err :: (Display a) => [a] -> TcMonad n b
-err d = do
-  loc <- getSourceLocation
-  s <- scope
-  throwError $ Err loc (sep $ map (`scopedDisplay` s) d)
--}
 
 -- | Print a warning
 warn :: [D n] -> TcMonad n ()

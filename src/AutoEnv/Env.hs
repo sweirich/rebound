@@ -19,6 +19,7 @@ module AutoEnv.Env(Env,
   singletonR,
   fromRefinement,
   toRefinement,
+  shiftRefinement,
   refine,
   tabulate,
   fromTable,
@@ -168,6 +169,14 @@ joinR (Refinement xs) (Refinement ys) =
 singletonR :: (SubstVar v, Eq (v n)) => (Fin n,v n) -> Refinement v n
 singletonR (x, t) = 
   if t == var x then emptyR else Refinement (Map.singleton x t)
+
+
+-- Move a refinement to a new scope
+shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (Plus p n)
+shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g' where
+  f' = Map.mapKeysMonotonic (shiftN @p @n p) r
+  g' = Map.map (applyE @v (shiftNE p)) f'
+
 
 fromRefinement :: SubstVar v => Refinement v n -> Env v n n
 fromRefinement (Refinement x) = fromTable (Map.toList x)

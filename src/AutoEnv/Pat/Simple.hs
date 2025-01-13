@@ -19,10 +19,10 @@ import AutoEnv.Env
 
 -- | Calculate the number of binding variables in the pattern
 -- This number does not need to be an explicit parameter of the type
--- so that we have more flexibility about what types we can use as 
+-- so that we have flexibility about what types we can use as 
 -- patterns. 
 class Sized (t :: Type) where
-  -- Retrieve size from the pattern type
+  -- Retrieve size from the type
   type Size t :: Nat
   -- Access size as a term
   size :: t -> SNat (Size t)

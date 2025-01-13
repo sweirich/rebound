@@ -476,13 +476,6 @@ declarePat (PatCon dc (pats :: PatList p)) ty ctx = do
            pure (ctx', DataCon dc tms', r)
          Nothing -> Env.err [DS "Wrong number of arguments to data constructor", DC cn]
 
--- Move a refinement to a new scope
-shiftRefinement :: forall p n. SNat p -> Refinement Term n -> Refinement Term (Plus p n)
-shiftRefinement p (Refinement (r :: Map.Map (Fin n) (Term n))) = Refinement g' where
-  f' = Map.mapKeysMonotonic (shiftN @p @n p) r
-  g' = Map.map (applyE @Term (shiftNE p)) f'
-  
-
 -- | Given a list of pattern arguments and a telescope, create a binding for 
 -- each of the variables in the pattern, the term form of the pattern, and a refinement
 -- from the constraints
@@ -511,7 +504,7 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2))
            tm :: Term (Plus p1 n), 
           rf1 :: Refinement Term (Plus p1 n)) <- declarePat @p1 p1 ty1 ctx
         let ss :: Env Term (S n) (Plus p1 n)
-            ss = instantiateWeakenEnv (Pat.size p1) (snat @n) tm
+            ss = Scoped.instantiateWeakenEnv (Pat.size p1) (snat @n) tm
         let tele' :: Telescope p3 (Plus p1 n)
             tele' = applyE ss tele2
         (ctx2  :: Context (Plus p2 (Plus p1 n)), 
@@ -526,41 +519,6 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2))
 declarePats PNil Tele ctx = return (ctx, [], emptyR)
 declarePats PNil _ _ = Env.err [DS "Not enough patterns in match for data constructor"]
 declarePats pats Tele ctx = Env.err [DS "Too many patterns in match for data constructor"]
-
--- Add to Scoped
-instantiateWeakenEnv ::
-  forall p n v c.
-  (SubstVar v, Subst v v) =>
-  SNat p ->
-  SNat n ->
-  v (Plus p n) ->
-  Env v (S n) (Plus p n)
-instantiateWeakenEnv p n a = 
-  shiftNE @v p
-    .>> Env
-      ( \(x :: Fin (Plus p (S n))) ->
-          case checkBound @p @(S n) p x of
-            Left pf -> var (weakenFinRight n pf)
-            Right pf -> case pf of
-              FZ -> a
-              FS (f :: Fin n) -> var (shiftN p f)
-      )
-
--- | Convert a pattern to a term 
-{-
-pat2Term :: Pattern ->  Term
-pat2Term (PatVar x) = Var x
-pat2Term (PatCon dc pats) = DataCon dc (pats2Terms pats) 
-  where
-    pats2Terms :: [(Pattern, Epsilon)] -> [Arg]
-    pats2Terms [] = []
-    pats2Terms ((p, ep) : ps) = Arg ep t : ts where
-      t = pat2Term p 
-      ts = pats2Terms ps
--}       
-
-
-
 
 
 --------------------------------------------------------
