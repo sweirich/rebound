@@ -201,7 +201,14 @@ instance
 ---------------------------------------------------------------
 
 data Rebind p1 p2 n where
-  Rebind :: p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+  Rebind :: 
+    Plus (Size p2) (Plus (Size p1) n) ~ Plus (Plus (Size p2) (Size p1)) n =>
+    p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+
+rebind :: forall p1 p2 n. p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+rebind p1 p2 = 
+  case axiomAssoc @(Size p2) @(Size p1) @n of
+    Refl -> Rebind p1 p2
 
 instance ((forall n. PatSize p1 n), (forall m. PatSize p2 m)) => 
   Pat.Sized (Rebind p1 p2 n) where
@@ -221,7 +228,8 @@ instance
     Env v n m ->
     Rebind p1 p2 n ->
     Rebind p1 p2 m
-  applyE r (Rebind p1 p2) = Rebind (applyE r p1) (applyE (upN (size p1) r) p2)
+  applyE r (Rebind p1 p2) = 
+    rebind (applyE r p1) (applyE (upN (size p1) r) p2)
 
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
@@ -239,7 +247,7 @@ instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) w
   strengthen' m n (Rebind p1 p2) =
     case axiomM @m @(Size p1) @n of
       Refl ->
-        Rebind <$> strengthen' m n p1
+        rebind <$> strengthen' m n p1
           <*> strengthen' m (sPlus (size p1) n) p2
 
   

@@ -104,7 +104,7 @@ data Telescope p n where
 
 (<:>) :: forall p p1 n. Local p n -> Telescope p1 (Plus p n) 
   -> Telescope (Plus p1 p) n
-e <:> t = TCons (Scoped.Rebind e t)
+e <:> t = TCons (Scoped.rebind e t)
 infixr <:>
 
 

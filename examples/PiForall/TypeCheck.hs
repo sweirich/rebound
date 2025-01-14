@@ -174,9 +174,8 @@ checkType tm ty ctx = do
       -- if proof is a variable, add a definition to the context
       pdecl <- Equal.unify b TmRefl
       -- I don't think this join can fail, but we have to check
-      r' <- case joinR edecl pdecl of 
-               Just r -> pure $ fromRefinement r
-               Nothing -> Env.err [DS "incompatible equality in subst"]
+      r' <- fromRefinement <$> joinR edecl pdecl 
+              `Env.whenNothing` [DS "incompatible equality in subst"]
 
       -- TODO: defer all of these substitutions
       -- refine the scutrutinee
@@ -245,10 +244,8 @@ checkType tm ty ctx = do
             -- compare scrutinee and pattern: fails if branch is inaccessible
             defs <- push pat $ Equal.unify scrut'' tm' 
             
-            rf <- case joinR r1 defs of 
-                      Just r -> pure r 
-                      Nothing -> Env.err [DS "cannot join refinements"]
-            let r = fromRefinement rf
+            r <- fromRefinement <$> joinR r1 defs 
+                     `Env.whenNothing` [DS "cannot join refinements"]
             -- refine body 
             let body' = applyE r body
             -- refine result type
@@ -298,15 +295,16 @@ tcTypeTele (TCons (Scoped.Rebind (LocalDef x tm) (tele :: Telescope p2 n))) ctx 
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
   -- TODO: substitute in telescope as well as context??!!! 
-  case axiomPlusZ @p2 of
-    Refl -> do
-      let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
-      tcTypeTele tele ctx'
+  -- case axiomPlusZ @p2 of
+  --  Refl -> do
+  let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
+  tcTypeTele tele ctx'
 tcTypeTele (TCons (Scoped.Rebind (LocalDecl x ty) 
   (tl :: Telescope p2 (S n)))) ctx = do
   tcType ty ctx
-  case axiomAssoc @p2 @N1 @n of 
-    Refl -> push x $ tcTypeTele tl (Env.extendTy ty ctx)
+  --case axiomAssoc @p2 @N1 @n of 
+  --  Refl -> 
+  push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
 {-
 G |- tm : A 
@@ -321,23 +319,23 @@ G |- tm, tms : (x:A, Theta) ==> {tm/x},sigma
 tcArgTele :: forall p n. 
   [Term n] -> Telescope p n -> Context n -> TcMonad n (Env Term (Plus p n) n, Refinement Term n)
 tcArgTele [] TNil ctx = return (idE, emptyR)
-tcArgTele args (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p2 n))) ctx = 
-  case axiomPlusZ @p2 of 
-    Refl -> do
+tcArgTele args (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p2 n))) ctx = do
+  --case axiomPlusZ @p2 of 
+  --  Refl -> do
        -- ensure that the equality is provable at this point
        Equal.equate (Var x) ty 
        (rho, ref) <- tcArgTele args tele ctx
-       case singletonR (x, ty) `joinR` ref of
-          Just r1 -> return (rho, r1)
-          Nothing -> error "BUG: cannot join refinements"
+       r1 <- (singletonR (x, ty) `joinR` ref) `Env.whenNothing` [DS "BUG: cannot join refinements"]
+       return (rho, r1)
+          
 tcArgTele (tm : terms) (TCons (Scoped.Rebind (LocalDecl ln ty) 
-          (tele :: Telescope p1 (S n)))) ctx = case (axiomAssoc @p1 @N1 @n, axiom @p1 @n) of 
-    (Refl, Refl) -> do
+          (tele :: Telescope p1 (S n)))) ctx = case (--axiomAssoc @p1 @N1 @n, 
+          axiom @p1 @n) of 
+    ({-Refl,-} Refl) -> do
       checkType tm ty ctx
       tele' <- doSubst @N1 (tm .: idE) tele
       (ss,r) <- tcArgTele terms tele' ctx
       return ((tm .: ss, r) :: (Env Term (Plus p n) n, Refinement Term n))
-
 tcArgTele [] _ _ =
   Env.err [DS "Too few arguments provided."]
 tcArgTele _ TNil _ =
@@ -369,7 +367,6 @@ shiftNRE m = Env (var . shiftRN m)
 -- p1 : number of variables in delta
 -- p2 : number of variables in thetai
 -- This could fail if any constraints are not satisfiable.
--- TODO
 substTele :: forall p1 p2 n. 
              Telescope p1 Z    -- delta 
           -> [Term n]          -- params
@@ -387,17 +384,6 @@ substTele delta params theta =
          theta' = applyE @Term weaken theta
      doSubst @p1 ss theta'
   
-{-
-concatTele :: forall p1 p2 n. SNatI n =>
-  Telescope p1 n -> Telescope p2 p1 -> Telescope (Plus p2 p1) n
-concatTele TNil t2 = 
-   case (axiomPlusZ @p2, axiomPlusZ @n) of 
-      { (Refl, Refl) -> applyE @Term (weakenE' (snat @n)) t2 }
-concatTele (TCons (Scoped.Rebind (l :: Local p n) t1)) t2 = 
-  withSNat (sPlus (Scoped.size l) (snat @n)) $ 
-    let t2' = concatTele t1 t2 in
-    TCons (Scoped.Rebind l t2')
--}
 -- Propagate the given substitution through a telescope, potentially
 -- reworking the constraints
 
@@ -419,7 +405,7 @@ doSubst r (TCons (Scoped.Rebind e (t :: Telescope p2 m))) = case e of
         Refl -> do
           let ty' = applyE r ty
           (t' :: Telescope p2 (S n)) <- push nm $ doSubst @q @(S n) (up r) t
-          return $ TCons (Scoped.Rebind (LocalDecl nm ty') t')
+          return $ TCons (Scoped.rebind (LocalDecl nm ty') t')
 
 appendDefs :: Refinement Term n -> Telescope p n -> Telescope p n
 appendDefs (Refinement m) = go (Map.toList m) where
@@ -466,9 +452,8 @@ declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))
     Refl -> do
       (ctx', tms', rf)  <- declarePats pats tele ctx
       let r1 = shiftRefinement (Pat.size pats) (singletonR (x,ty))
-      case joinR r1 rf of 
-        Just r' -> pure (ctx', tms', r')
-        Nothing -> Env.err [DS "Cannot create refinement"]
+      r' <- joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
+      pure (ctx', tms', r')
       -- TODO: substitute for x in tele'
       -- pure (ctx', tms')
 declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2)) 
