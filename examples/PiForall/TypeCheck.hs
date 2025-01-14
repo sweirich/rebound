@@ -31,7 +31,7 @@ import Prettyprinter (pretty)
 ---------------------------------------------------------------------
 
 -- | Infer/synthesize the type of a term
-inferType :: forall n. SNatI n => Term n -> Context n -> TcMonad n (Typ n)
+inferType :: forall n. Term n -> Context n -> TcMonad n (Typ n)
 inferType a ctx = case a of
   -- i-var
   (Var x) -> pure $ Env.lookupTy x ctx 
@@ -119,12 +119,12 @@ inferType a ctx = case a of
 -------------------------------------------------------------------------
 
 -- | Make sure that the term is a "type" (i.e. that it has type 'Type')
-tcType :: SNatI n => Term n -> Context n -> TcMonad n ()
+tcType :: Term n -> Context n -> TcMonad n ()
 tcType tm = checkType tm TyType
 
 -------------------------------------------------------------------------
 -- | Check that the given term has the expected type
-checkType :: forall n. SNatI n => Term n -> Typ n -> Context n -> TcMonad n ()
+checkType :: forall n. Term n -> Typ n -> Context n -> TcMonad n ()
 checkType tm ty ctx = do
   ty' <- Equal.whnf ty
   case tm of 
@@ -144,7 +144,9 @@ checkType tm ty ctx = do
     TrustMe -> return ()
 
     PrintMe -> do
-      Env.err [DS "Unmet obligation.\nContext:", DD ctx,
+      s <- scope
+      withSNat (scope_size s) $
+        Env.err [DS "Unmet obligation.\nContext:", DD ctx,
             DS "\nGoal:", DD ty']  
 
     -- c-let -- treat like immediate application
@@ -229,7 +231,9 @@ checkType tm ty ctx = do
       scrut' <- Equal.whnf scrut 
       let 
         checkAlt :: Match n -> TcMonad n ()
-        checkAlt (Branch bnd) = Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
+        checkAlt (Branch bnd) = do
+          s <- scope
+          withSNat (scope_size s) $ Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
 
             -- add variables from pattern to context
             (ctx', tm', r1) <- declarePat pat (TyCon c args) ctx
@@ -286,7 +290,7 @@ getSomePat (Branch bnd) = Some (Pat.getPat bnd)
 
 
 -- | Check all of the types contained within a telescope
-tcTypeTele :: forall p1 n. SNatI n =>
+tcTypeTele :: forall p1 n. 
    Telescope p1 n -> Context n -> TcMonad n (Context (Plus p1 n))
 tcTypeTele TNil ctx = return ctx
 tcTypeTele (TCons (Scoped.Rebind (LocalDef x tm) (tele :: Telescope p2 n))) ctx = do
@@ -314,7 +318,7 @@ G |- tm, tms : (x:A, Theta) ==> {tm/x},sigma
 -- | type check a list of data constructor arguments against a telescope, 
 -- returning a substitution for each of the variables bound in the 
 -- telescope, plus a refinement for variables currently in scope
-tcArgTele :: forall p n. SNatI n =>
+tcArgTele :: forall p n. 
   [Term n] -> Telescope p n -> Context n -> TcMonad n (Env Term (Plus p n) n, Refinement Term n)
 tcArgTele [] TNil ctx = return (idE, emptyR)
 tcArgTele args (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p2 n))) ctx = 
@@ -366,18 +370,19 @@ shiftNRE m = Env (var . shiftRN m)
 -- p2 : number of variables in thetai
 -- This could fail if any constraints are not satisfiable.
 -- TODO
-substTele :: forall p1 p2 n. (SNatI n, SNatI p1) =>
+substTele :: forall p1 p2 n. 
              Telescope p1 Z    -- delta 
           -> [Term n]          -- params
           -> Telescope p2 p1   -- theta
           -> TcMonad n (Telescope p2 n)
 substTele delta params theta = 
-  do let delta' = applyE @Term (weakenE' (snat @n)) delta
+  do let delta' = weakenTeleClosed delta -- applyE @Term (weakenE' (snat @n)) delta
      (ss :: Env Term (Plus p1 n) n) <- mkSubst (reverse params) (Scoped.size delta')
-     let shift :: Env Term p1 (Plus p1 n)
-         shift = Env (var . shiftRN (snat @n))
+     s <- scope
+     let --shift :: Env Term p1 (Plus p1 n)
+         --shift = Env (var . shiftRN (snat @n))
          weaken :: Env Term p1 (Plus p1 n)
-         weaken = Env (var . weakenFinRight (snat @n))
+         weaken = Env (var . weakenFinRight (scope_size s))
      let theta' :: Telescope p2 (Plus p1 n)
          theta' = applyE @Term weaken theta
      doSubst @p1 ss theta'
@@ -396,7 +401,7 @@ concatTele (TCons (Scoped.Rebind (l :: Local p n) t1)) t2 =
 -- Propagate the given substitution through a telescope, potentially
 -- reworking the constraints
 
-doSubst :: forall q n p. SNatI n => Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad n (Telescope p n)
+doSubst :: forall q n p. Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad n (Telescope p n)
 doSubst r TNil = return TNil
 doSubst r (TCons (Scoped.Rebind e (t :: Telescope p2 m))) = case e of 
     LocalDef x (tm :: Term (Plus q n)) -> case (axiomPlusZ @q, axiomPlusZ @p2) of 
@@ -656,7 +661,7 @@ data Some (p :: Nat -> Type) where Some :: forall x p. SNatI x => (p x) -> Some 
 -- code looks up the data constructors for that type and makes sure that
 -- there are patterns for each one.
 
-exhaustivityCheck :: forall n. (SNatI n) => Term n -> Typ n -> [Some Pattern] -> Context n -> TcMonad n ()
+exhaustivityCheck :: forall n. Term n -> Typ n -> [Some Pattern] -> Context n -> TcMonad n ()
 exhaustivityCheck _scrut ty (Some (PatVar x) : _) ctx = return ()
 exhaustivityCheck _scrut ty pats ctx = do
   (tcon, tys) <- Equal.ensureTCon ty
