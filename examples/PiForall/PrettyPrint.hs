@@ -436,7 +436,7 @@ binders :: Pattern p1 -> [LocalName]
 binders (PatVar x) = [x]
 binders (PatCon c args) = bindersList args
 
-bindersList :: PatList p1 -> [LocalName]
+bindersList :: PatList Pattern p1 -> [LocalName]
 bindersList PNil = []
 bindersList (PCons p ps) = binders p ++ bindersList ps
 
@@ -450,14 +450,14 @@ instance Display (Pattern p) where
        parens (levelApp < p && nonnil args)
          (PP.hsep [dc,dargs])
       where
-        nonnil :: PatList p -> Bool
+        nonnil :: PatList Pattern p -> Bool
         nonnil PNil = False
         nonnil (PCons _ _) = True
 
 
   display (PatVar x) = display x
 
-instance Display (PatList p) where
+instance Display (PatList Pattern p) where
   display PNil = mempty
   display (PCons p ps) = do
     da <- display p

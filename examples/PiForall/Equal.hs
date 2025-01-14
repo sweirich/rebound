@@ -34,14 +34,13 @@ equate t1 t2 = do
     (Var x,  Var y) | x == y -> return ()
     (Lam bnd1, Lam bnd2) -> do
       push (Pat.getPat bnd1)
-         (equate @(S n) (L.getBody bnd1) (L.getBody bnd2))
+         (equate (L.getBody bnd1) (L.getBody bnd2))
     (App a1 a2, App b1 b2) ->
       equate a1 b1 >> equate a2 b2
     (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
       equate tyA1 tyA2
       push (L.getLocalName bnd1)
         (equate (L.getBody bnd1) (L.getBody bnd2))
-
     (Let rhs1 bnd1, Let rhs2 bnd2) -> do
       equate rhs1 rhs2
       push (L.getLocalName bnd1)
@@ -61,12 +60,10 @@ equate t1 t2 = do
           matchBr :: Match n -> Match n -> TcMonad n ()
           matchBr (Branch bnd1) (Branch bnd2) =
               Pat.unbind bnd1 $ \p1 a1 ->
-              Pat.unbind bnd2 $ \p2 a2 ->
-              case Pat.patEq p1 p2 of
-                Just Refl ->
-                  push p1 (equate a1 a2)
-                _ -> Env.err [DS "Cannot match branches in",
-                                DD n1, DS "and", DD n2]
+              Pat.unbind bnd2 $ \p2 a2 -> do
+                Refl <- Pat.patEq p1 p2 `Env.whenNothing` 
+                        [DS "Cannot match branches in", DD n1, DS "and", DD n2]
+                push p1 (equate a1 a2)
         zipWithM_ matchBr brs1 brs2
     (TyEq a1 b1, TyEq a2 b2) -> do
       equate a1 a2
@@ -267,7 +264,7 @@ patternMatches (DataCon n args) (PatCon l ps)
 patternMatches nf pat = 
   Env.err [DS "arg", DD nf, DS "doesn't match pattern", DC pat]
 
-patternMatchList :: forall p n. [Term n] -> PatList p -> TcMonad n (Env Term p n)
+patternMatchList :: forall p n. [Term n] -> PatList Pattern p -> TcMonad n (Env Term p n)
 patternMatchList [] PNil = return zeroE
 patternMatchList (e1 : es) (PCons p1 ps) = do
     env1 <- patternMatches e1 p1

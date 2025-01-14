@@ -253,8 +253,7 @@ checkType tm ty ctx = do
             -- refine context
             let ctx'' = case ctx' of Env f -> Env $ \x -> applyE r (f x)
             -- check the branch
-            push pat $ do
-              checkType body' ty3 ctx''
+            push pat $ checkType body' ty3 ctx''
       mapM_ checkAlt alts
       exhaustivityCheck scrut' sty (map getSomePat alts) ctx
     
@@ -294,15 +293,11 @@ tcTypeTele (TCons (Scoped.Rebind (LocalDef x tm) (tele :: Telescope p2 n))) ctx 
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
   -- TODO: substitute in telescope as well as context??!!! 
-  -- case axiomPlusZ @p2 of
-  --  Refl -> do
   let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
   tcTypeTele tele ctx'
 tcTypeTele (TCons (Scoped.Rebind (LocalDecl x ty) 
   (tl :: Telescope p2 (S n)))) ctx = do
   tcType ty ctx
-  --case axiomAssoc @p2 @N1 @n of 
-  --  Refl -> 
   push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
 {-
@@ -424,7 +419,7 @@ declarePat :: forall p n.
   Pattern p -> Typ n -> Context n -> TcMonad n (Context (Plus p n), Term (Plus p n), Refinement Term (Plus p n))
 declarePat (PatVar x) ty ctx = do
   pure (Env.extendTy ty ctx, Var f0, emptyR)
-declarePat (PatCon dc (pats :: PatList p)) ty ctx = do 
+declarePat (PatCon dc (pats :: PatList Pattern p)) ty ctx = do 
   (tc,params) <- Equal.ensureTCon ty 
   ScopedConstructorDef (delta :: Telescope p1 'Z) 
       (ConstructorDef cn (thetai :: Telescope p2 p1)) <- Env.lookupDCon dc tc
@@ -444,7 +439,7 @@ declarePat (PatCon dc (pats :: PatList p)) ty ctx = do
 -- pt is the length of the pattern list
 -- n is the current scope
 declarePats :: forall p pt n. 
-  PatList p -> Telescope pt n -> Context n -> TcMonad n (Context (Plus p n), [Term (Plus p n)], Refinement Term (Plus p n))
+  PatList Pattern p -> Telescope pt n -> Context n -> TcMonad n (Context (Plus p n), [Term (Plus p n)], Refinement Term (Plus p n))
 declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))) ctx = do
   case axiomPlusZ @p1 of 
     Refl -> do
@@ -454,7 +449,7 @@ declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))
       pure (ctx', tms', r')
       -- TODO: substitute for x in tele'
       -- pure (ctx', tms')
-declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2)) 
+declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2)) 
   (TCons (Scoped.Rebind (LocalDecl x ty1) (tele2 :: Telescope p3 (S n)))) ctx = do
     let fact :: Plus p2 (Plus p1 n) :~: Plus p n
         fact = axiomAssoc @p2 @p1 @n
@@ -653,7 +648,7 @@ exhaustivityCheck _scrut ty pats ctx = do
             then return ()
             else Env.err $ DS "Missing case for" : map DC l
         loop  (Some (PatVar x) : _) dcons = return ()
-        loop  (Some (PatCon dc (args :: PatList p)) : pats') dcons = do
+        loop  (Some (PatCon dc (args :: PatList Pattern p)) : pats') dcons = do
           (ConstructorDef _ (tele :: Telescope p2 p1), dcons') <- removeDCon dc dcons
           case testEquality (snat @p) (Scoped.size tele) of 
             Just Refl -> do
@@ -701,7 +696,7 @@ removeDCon dc [] = Env.err [DS $ "Internal error: Can't find " ++ show dc]
 -- | Given a particular data constructor name and a list of patterns,
 -- pull out the subpatterns that occur as arguments to that data
 -- constructor and return them paired with the remaining patterns.
-relatedPats :: DataConName -> [Some Pattern] -> ([Some PatList], [Some Pattern])
+relatedPats :: DataConName -> [Some Pattern] -> ([Some (PatList Pattern)], [Some Pattern])
 relatedPats dc [] = ([], [])
 relatedPats dc (pc@(Some (PatVar _)) : pats) = ([], pc : pats)
 relatedPats dc (pc@(Some (PatCon dc' args)) : pats)
@@ -720,21 +715,21 @@ relatedPats dc (pc : pats) =
 
 -- for simplicity, this function requires that all subpatterns
 -- are pattern variables.
-checkSubPats :: forall p n. DataConName -> Telescope p n -> [Some PatList] -> TcMonad n ()
+checkSubPats :: forall p n. DataConName -> Telescope p n -> [Some (PatList Pattern)] -> TcMonad n ()
 checkSubPats dc TNil _ = return ()
-checkSubPats dc (TCons (Scoped.Rebind (LocalDef _ _) (tele :: Telescope p2 n))) (patss :: [Some PatList]) = 
+checkSubPats dc (TCons (Scoped.Rebind (LocalDef _ _) (tele :: Telescope p2 n))) (patss :: [Some (PatList Pattern)]) = 
   checkSubPats dc tele patss
 checkSubPats dc (TCons (Scoped.Rebind (LocalDecl x _) (tele :: Telescope p2 (S n)))) 
-                (patss :: [Some PatList]) = do
+                (patss :: [Some (PatList Pattern)]) = do
       case allHeadVars patss of 
         Just tls -> push x $ checkSubPats @_ @(S n) dc tele tls
         Nothing -> Env.err [DS "All subpatterns must be variables in this version."]
 
 -- check that the head of each list is a single pattern variable and return all of the 
 -- tails
-allHeadVars :: [Some PatList] -> Maybe [Some PatList]
+allHeadVars :: [Some (PatList Pattern)] -> Maybe [Some (PatList Pattern)]
 allHeadVars [] = Just []
-allHeadVars (Some (PCons (PatVar x) (pats :: PatList p2)) : patss) = do
+allHeadVars (Some (PCons (PatVar x) (pats :: PatList Pattern p2)) : patss) = do
   withSNat (Pat.size pats) $
     (Some pats :) <$> allHeadVars patss
 allHeadVars _ = Nothing

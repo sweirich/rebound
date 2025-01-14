@@ -67,18 +67,11 @@ data Term (n :: Nat)
 
 -- | Patterns (without embedded type annotations)
 -- `p` is the number of variables bound by the pattern
--- `n` is the number of free variables in type annotations in the pattern
--- There are none, so this variable is always unconstrained.
 -- LocalName is used for printing only, irrelevant for alpha-equivalence
 data Pattern (p :: Nat)  where
-  PatCon :: DataConName -> PatList p -> Pattern p
+  PatCon :: DataConName -> PatList Pattern p -> Pattern p
   PatVar :: LocalName -> Pattern N1
 
--- | lists of patterns where variables at each position bind 
--- later in the pattern
-data PatList p where
-  PNil :: PatList N0
-  PCons :: Pattern p1 -> PatList p2 -> PatList (Plus p2 p1)
 
 
 -- A single branch in a match expression. Binds a pattern
@@ -191,6 +184,43 @@ unPosFlaky :: Term n -> SourcePos
 unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
 ----------------------------------------------
+-- TODO: move to Pat.Simple
+-- TODO: generalize to telescopes
+class (Pat.Sized (pat p), Pat.Size (pat p) ~ p) => PatSize pat p
+instance (Pat.Sized (pat p), Pat.Size (pat p) ~ p) => PatSize pat p
+
+-- | lists of patterns where variables at each position bind 
+-- later in the pattern
+data PatList pat p where
+  PNil :: PatList pat N0
+  PCons :: Size (pat p1) ~ p1 =>
+    pat p1 -> PatList pat p2 -> PatList pat (Plus p2 p1)
+
+instance (forall n. Pat.Sized (pat n)) => Pat.Sized (PatList pat p) where
+    type Size (PatList pat p) = p
+    size PNil = s0
+    size (PCons (p1 :: pat p1) (p2 :: PatList pat p2)) = 
+        sPlus @p2 @(Pat.Size (pat p1)) (Pat.size p2) (Pat.size p1)
+
+instance (forall p. Named (pat p)) => Named (PatList pat p) where
+  patLocals :: PatList pat p -> Vec p LocalName
+  patLocals PNil = VNil
+  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
+    let test :: Size (pat p1) :~: p1
+        test = Refl
+    in
+      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)
+
+instance (forall p1 p2. Pat.PatEq (pat p1) (pat p2)) => 
+      Pat.PatEq (PatList pat p1) (PatList pat p2) where
+  patEq :: PatList pat p1 -> PatList pat p2 -> Maybe (p1 :~: p2)
+  patEq PNil PNil = Just Refl
+  patEq (PCons p1 ps1) (PCons p2 ps2) = do
+    Refl <- Pat.patEq p1 p2
+    Refl <- Pat.patEq ps1 ps2
+    return Refl
+  patEq _ _ = Nothing
+
 ----------------------------------------------
 --  Size instances
 ----------------------------------------------
@@ -202,21 +232,10 @@ instance Pat.Sized (Pattern p) where
     size (PatCon _ p) = Pat.size p
     size (PatVar _) = s1
 
-instance Pat.Sized (PatList p) where
-    type Size (PatList p) = p
-    size PNil = s0
-    size (PCons p1 p2) = sPlus (Pat.size p2) (Pat.size p1)
-
 instance Named (Pattern p) where
   patLocals :: Pattern p -> Vec p LocalName
   patLocals (PatVar x) = x ::: VNil
   patLocals (PatCon _ p) = patLocals p
-
-instance Named (PatList p) where
-  patLocals :: PatList p -> Vec p LocalName
-  patLocals PNil = VNil
-  patLocals (PCons (p1 :: Pattern p1) (ps :: PatList ps)) = 
-    Vec.append @ps @p1 (patLocals ps) (patLocals p1)
 
 -- scoped patterns
 
@@ -242,8 +261,9 @@ instance Scoped.Sized (Telescope p) where
 
 instance Named (Telescope p n) where
   patLocals TNil = VNil
-  patLocals (TCons (Scoped.Rebind (p :: Local p1 n) (ps :: Telescope ps (Plus p1 n)))) = 
-    Vec.append @ps @p1 (patLocals ps) (patLocals p)
+  patLocals (TCons (Scoped.Rebind (p :: Local p1 n) 
+    (ps :: Telescope ps (Plus p1 n)))) = 
+       Vec.append @ps @p1 (patLocals ps) (patLocals p)
 
 ----------------------------------------------
 --  Subst instances
@@ -272,21 +292,9 @@ instance Subst Term Term where
   applyE r TrustMe = TrustMe
   applyE r PrintMe = PrintMe 
 
-{-
-instance Subst Term (Pattern p) where
-  applyE r (PatCon s ps) = PatCon s (applyE r ps)
-  applyE r (PatVar x) = PatVar x
--}
 instance Subst Term Match where
   applyE r (Branch (b :: Pat.Bind Term Term (Pattern p) n)) =
     Branch (applyE r b)
-
-{-
-instance Subst Term (PatList p) where
-  applyE r PNil = PNil
-  applyE r (PCons rb) = PCons (applyE r rb) 
--}
-
 
 -- substitution could fail if the constraints in the 
 -- telescope are not satisifiable. So we define a 
@@ -441,14 +449,6 @@ instance Pat.PatEq (Pattern p1) (Pattern p2) where
   patEq _ _ = Nothing
 
 
-instance Pat.PatEq (PatList p1) (PatList p2) where
-  patEq :: PatList p1 -> PatList p2 -> Maybe (p1 :~: p2)
-  patEq PNil PNil = Just Refl
-  patEq (PCons p1 ps1) (PCons p2 ps2) = do
-    Refl <- Pat.patEq p1 p2
-    Refl <- Pat.patEq ps1 ps2
-    return Refl
-  patEq _ _ = Nothing
 
 {-
 testEquality2 :: Pattern p1 n1 -> Pattern p2 n2 -> Maybe (p1 :~: p2)
@@ -622,7 +622,7 @@ initialConstructorNames =
 deriving instance (Show (Term n))
 deriving instance (Show (Match n))
 deriving instance (Show (Pattern p))
-deriving instance (Show (PatList p))
+deriving instance (Show (PatList Pattern p))
 
 instance Show (Pat.Bind Term Term (Pattern p) n) where
   show b = show (Pat.getPat b) ++ "=>" ++ show (Pat.getBody b)

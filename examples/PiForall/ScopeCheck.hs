@@ -33,7 +33,7 @@ data ScopedPattern n = forall p. SNatI p =>
    ScopedPattern (S.Pattern p) [(LocalName, Fin (Plus p n))]
 
 data ScopedPatList n = forall p. SNatI p =>
-   ScopedPatList (S.PatList p) [(LocalName, Fin (Plus p n))]
+   ScopedPatList (S.PatList S.Pattern p) [(LocalName, Fin (Plus p n))]
 
 scopeCheckModule :: C.Module -> Maybe S.Module
 scopeCheckModule m = do 
@@ -113,7 +113,7 @@ toPL vs [] = return $ ScopedPatList S.PNil vs
 toPL vs (p :ps) = do
   ScopedPattern (p'  :: S.Pattern p) vs' <- toP vs p
   withSNat (sPlus (snat :: SNat p) (snat :: SNat n)) $ do
-      ScopedPatList (ps' :: S.PatList p1) vs'' <- 
+      ScopedPatList (ps' :: S.PatList S.Pattern p1) vs'' <- 
     
           toPL vs' ps
       Refl <- Just (axiomAssoc @p1 @p @n)
