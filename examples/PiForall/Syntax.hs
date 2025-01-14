@@ -99,28 +99,14 @@ data Local p n where
 -- 'p' is the number of variables introduced by the telescope
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 data Telescope p n where
-  Tele :: Telescope N0 n
+  TNil :: Telescope N0 n
   TCons :: Scoped.Rebind (Local p) (Telescope p1) n -> Telescope (Plus p1 p) n
 
 (<:>) :: forall p p1 n. Local p n -> Telescope p1 (Plus p n) 
   -> Telescope (Plus p1 p) n
 e <:> t = TCons (Scoped.Rebind e t)
-
 infixr <:>
 
-{-
--- | TODO snoc a new local entry to a telescope
-(<:>) :: forall p1 p n. Telescope p n -> Local p1 (Plus p n) -> Telescope (Plus p1 p) n
-Tele <:> e = 
-  case axiomPlusZ @p1 of
-    Refl -> TCons (Scoped.Rebind e Tele)
-TCons (Scoped.Rebind (x :: Local p2 n) (t :: Telescope p3 (Plus p2 n))) <:> e = 
-  case axiomAssoc @p1 @p3 @p2 of 
-    Refl -> undefined
-      -- let e' :: Local p1 (Plus (Plus p3 p2) n)
-      --     e' = _  in
-      -- TCons (Scoped.Rebind x (t <:> e'))
--}
 
 -- | 
 -- | Datatype definitions
@@ -249,14 +235,14 @@ instance Named (Local p n) where
 
 instance Pat.Sized (Telescope p n) where
     type Size (Telescope p n) = p
-    size Tele = s0
+    size TNil = s0
     size (TCons rb) = Pat.size rb
 
 instance Scoped.Sized (Telescope p) where
     type Size (Telescope p) = p
 
 instance Named (Telescope p n) where
-  patLocals Tele = VNil
+  patLocals TNil = VNil
   patLocals (TCons (Scoped.Rebind (p :: Local p1 n) (ps :: Telescope ps (Plus p1 n)))) = 
     Vec.append @ps @p1 (patLocals ps) (patLocals p)
 
@@ -309,7 +295,7 @@ instance Subst Term (PatList p) where
 -- called doSubst in TypeCheck
 
 instance Subst Term (Telescope p) where
-  applyE r Tele = Tele
+  applyE r TNil = TNil
   applyE r (TCons rb) = TCons (applyE r rb)
 
 instance Subst Term (Local p) where
@@ -363,11 +349,6 @@ instance FV (Local p) where
   appearsFree n (LocalDecl x y) = appearsFree n y
   appearsFree n (LocalDef x y) = n == x || appearsFree n y
 
-{-
-instance FV (Pattern p) where
-  appearsFree n (PatVar _) = False
-  appearsFree n (PatCon _ ps) = False
--}
 ----------------------------------------------
 -- weakening (convenience functions)
 ----------------------------------------------
@@ -383,6 +364,14 @@ weaken' m = applyE @Term (weakenE' m)
 
 weakenBind' :: SNat m -> B.Bind Term Term n -> B.Bind Term Term (Plus m n)
 weakenBind' m = applyE @Term (weakenE' m)
+
+-- AXIOM: no need to do anything with terms that are already closed
+weakenClosed :: Term Z -> Term m 
+weakenClosed = unsafeCoerce
+
+-- AXIOM:
+weakenTeleClosed :: forall m p. Telescope p Z -> Telescope p m
+weakenTeleClosed = unsafeCoerce
 
 ----------------------------------------------
 -- strengthening
@@ -513,7 +502,7 @@ eqDef =
     data_delta = 
         LocalDecl (LocalName "A")  TyType <:>  -- "A"
         LocalDecl (LocalName "a1") (Var f0) <:>
-        LocalDecl (LocalName "a2") (Var f1) <:> Tele,  -- "B"
+        LocalDecl (LocalName "a2") (Var f1) <:> TNil,  -- "B"
     data_sort = TyType,
     data_constructors = [reflCon]
   }
@@ -523,7 +512,7 @@ reflCon =
   ConstructorDef
   { con_name = "Refl",
     con_theta = 
-      LocalDef f0 (Var f1) <:> Tele -- "a1 = a2"
+      LocalDef f0 (Var f1) <:> TNil -- "a1 = a2"
   }
   -}
 
@@ -533,7 +522,7 @@ sigmaDef =
   { 
     data_delta = 
       LocalDecl @N0 (LocalName "A") TyType <:>
-      LocalDecl @N1 (LocalName "B") (Pi (Var f0) (Local.bind (LocalName "x") TyType)) <:> Tele,
+      LocalDecl @N1 (LocalName "B") (Pi (Var f0) (Local.bind (LocalName "x") TyType)) <:> TNil,
     data_sort = TyType,
     data_constructors = [prodCon]
   }
@@ -546,7 +535,7 @@ prodCon =
     LocalDecl (LocalName "a") (Var f1) 
     <:> LocalDecl (LocalName "b")
          (App (Var f1) (Var f0))
-    <:> Tele
+    <:> TNil
   }
 
 
@@ -554,7 +543,7 @@ unitDef :: DataDef
 unitDef =
   DataDef
     { 
-      data_delta = Tele,
+      data_delta = TNil,
       data_sort = TyType,
       data_constructors = [unitCon]
     }
@@ -563,20 +552,20 @@ unitCon :: ConstructorDef N0
 unitCon =
   ConstructorDef
     { con_name = "()",
-      con_theta = Tele
+      con_theta = TNil
     }
 
 boolDef :: DataDef
 boolDef =
   DataDef
     { 
-      data_delta = Tele,
+      data_delta = TNil,
       data_sort = TyType,
       data_constructors = [boolCon False, boolCon True]
     }
 
 boolCon :: Bool -> ConstructorDef N0
-boolCon b = ConstructorDef {con_name = show b, con_theta = Tele}
+boolCon b = ConstructorDef {con_name = show b, con_theta = TNil}
 
 eitherDef :: DataDef
 eitherDef =
@@ -585,7 +574,7 @@ eitherDef =
       data_delta = 
           LocalDecl (LocalName "A") TyType 
           <:> LocalDecl (LocalName "B") TyType
-          <:> Tele,
+          <:> TNil,
       data_sort = TyType,
       data_constructors = [eitherLeft, eitherRight]
     }
@@ -595,7 +584,7 @@ eitherLeft =
   ConstructorDef
     { 
       con_name = "Left",
-      con_theta = LocalDecl (LocalName "a") (Var f0) <:> Tele
+      con_theta = LocalDecl (LocalName "a") (Var f0) <:> TNil
     }
 
 eitherRight :: ConstructorDef N2
@@ -604,7 +593,7 @@ eitherRight =
     { 
       con_name = "Right",
       con_theta = 
-        LocalDecl (LocalName "b") (Var f1) <:> Tele
+        LocalDecl (LocalName "b") (Var f1) <:> TNil
     }
 
 prelude :: [ModuleEntry]

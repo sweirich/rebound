@@ -83,37 +83,35 @@ emptyEnv = TcEnv {
   env_refinement = emptyR
 }
 
-
 --------------------------------------------------------------------
 -- Globals
 -- | Find a name's user supplied type signature
-lookupHint :: (MonadReader (TcEnv n) m) => GlobalName -> m (Maybe (Typ Z))
+lookupHint :: (MonadReader (TcEnv n) m) => GlobalName -> m (Maybe (Typ n))
 lookupHint v = do
   hints <- asks hints
-  return $ listToMaybe [ ty | (x,ty) <- hints, v == x]
+  return $ listToMaybe [ weakenClosed ty | (x,ty) <- hints, v == x]
 
-lookupGlobalTy :: GlobalName -> TcMonad n (Typ Z)
+lookupGlobalTy :: GlobalName -> TcMonad n (Typ n)
 lookupGlobalTy v = do
     env <- ask
     case [a | ModuleDecl v' a <- globals env, v == v'] of
-      [a] -> return a
+      [a] -> return (weakenClosed a)
       _   -> do
         mty <- lookupHint v
         case mty of
           Just ty -> return ty
           Nothing -> err [ DS $ "The variable " ++ show v ++ " was not found" ]
             
-lookupGlobalDef :: GlobalName -> TcMonad n (Term Z)
+lookupGlobalDef :: GlobalName -> TcMonad n (Term n)
 lookupGlobalDef v = do
     env <- ask
     case [a | ModuleDef v' a <- globals env, v == v'] of
-      [a] -> return a
+      [a] -> return (weakenClosed a)
       _  -> err [ DS ("The variable " ++ show v ++ " was not found"),
             DS "(out of scope)"]
 
--- | Find a type constructor in the context
-lookupTCon ::
-  TyConName -> TcMonad n DataDef
+-- | Find the datatype declaration of a type constructor in the context
+lookupTCon :: TyConName -> TcMonad n DataDef
 lookupTCon v = do
   g <- asks globals
   scanGamma g
@@ -144,7 +142,7 @@ lookupDConAll v = do
   where
     scanGamma [] = return []
     scanGamma ((ModuleData tn (DataDef delta _ cs)) : g) =
-      case find (\(ConstructorDef v'' tele) -> v'' == v) cs of
+      case find (\(ConstructorDef v'' TNil) -> v'' == v) cs of
         Nothing -> scanGamma g
         Just c -> do
           more <- scanGamma g
@@ -173,6 +171,9 @@ lookupDCon c tname = do
           ]
             ++ map (DC . fst) matches
         )
+
+
+-- Join two refinements together, producing an error if 
 
 
 --------------------------------------------------------------------
@@ -308,6 +309,12 @@ extendErr ma d =
     s <- scope
     let msg' = sep $ map (`scopedDisplay` s) d 
     throwError $ Err ps (vcat [msg, msg'])
+
+whenNothing :: Maybe a -> [D n] -> TcMonad n a
+whenNothing x msg =
+  case x of
+     Just r -> return r
+     Nothing -> err msg
 
 --------------------------------------------------------------
 -- Modules

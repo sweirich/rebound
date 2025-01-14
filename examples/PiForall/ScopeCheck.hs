@@ -60,7 +60,7 @@ scopeCheckData (C.DataDef delta s cs) = do
     Refl -> S.DataDef delta' <$> scopeCheck s <*> mapM (scopeCheckConstructor scope) cs
 
 scopeCheckTele :: forall n. SNatI n => [(LocalName, Fin n)] -> C.Telescope -> Maybe (ScopedTele n)
-scopeCheckTele scope [] = Just $ ScopedTele scope S.Tele
+scopeCheckTele scope [] = Just $ ScopedTele scope S.TNil
 scopeCheckTele scope (C.EntryDecl n ty : entries) = do 
   ty' <- to scope ty 
   let scope' :: [(LocalName, Fin (S n))]

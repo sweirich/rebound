@@ -158,7 +158,7 @@ instance Display DataDef where
              : dc ))
 
 instance Display (ConstructorDef n) where
-  display (ConstructorDef c Tele) = do
+  display (ConstructorDef c TNil) = do
     pure $ PP.pretty c
   display (ConstructorDef c tele) = do
     dc <- display c
@@ -166,7 +166,7 @@ instance Display (ConstructorDef n) where
     pure $ dc <+> PP.pretty "of" <+> dt
 
 instance Display (Telescope m n) where
-   display Tele = mempty
+   display TNil = mempty
    display (TCons (Scoped.Rebind (LocalDecl x tm) tele)) = do
     dtm   <- display tm 
     dtele <- local (push x) (display tele) 
