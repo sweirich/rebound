@@ -217,8 +217,7 @@ checkType tm ty ctx = do
                 DS "data arguments, but was given", DC (length args),
                 DS "arguments."
               ]
-          newTele <- 
-                 withSNat (Scoped.size delta) $ substTele delta params theta
+          newTele <- substTele delta params theta
           (r', ref) <- tcArgTele args newTele ctx
           return ()
         _ ->
@@ -421,7 +420,7 @@ appendDefs (Refinement m) = go (Map.toList m) where
 
 -- | Create a binding for each of the variables in the pattern, producing an extended context and 
 -- a term corresponding to the variables
-declarePat :: forall p n. SNatI n =>
+declarePat :: forall p n. 
   Pattern p -> Typ n -> Context n -> TcMonad n (Context (Plus p n), Term (Plus p n), Refinement Term (Plus p n))
 declarePat (PatVar x) ty ctx = do
   pure (Env.extendTy ty ctx, Var f0, emptyR)
@@ -433,8 +432,7 @@ declarePat (PatCon dc (pats :: PatList p)) ty ctx = do
     Refl ->
       case testEquality (Pat.size pats) (Scoped.size thetai) of
          Just Refl -> do
-           (tele :: Telescope p2 n) <- 
-               withSNat (Scoped.size delta) $ substTele delta params thetai
+           (tele :: Telescope p2 n) <- substTele delta params thetai
            (ctx', tms', r) <- declarePats pats tele ctx
            pure (ctx', DataCon dc tms', r)
          Nothing -> Env.err [DS "Wrong number of arguments to data constructor", DC cn]
@@ -445,7 +443,7 @@ declarePat (PatCon dc (pats :: PatList p)) ty ctx = do
 -- p is the number of variables bound in the pattern list
 -- pt is the length of the pattern list
 -- n is the current scope
-declarePats :: forall p pt n. SNatI n =>
+declarePats :: forall p pt n. 
   PatList p -> Telescope pt n -> Context n -> TcMonad n (Context (Plus p n), [Term (Plus p n)], Refinement Term (Plus p n))
 declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))) ctx = do
   case axiomPlusZ @p1 of 
@@ -465,16 +463,15 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList p2))
         (ctx1 :: Context (Plus p1 n), 
            tm :: Term (Plus p1 n), 
           rf1 :: Refinement Term (Plus p1 n)) <- declarePat @p1 p1 ty1 ctx
+        s <- scope
         let ss :: Env Term (S n) (Plus p1 n)
-            ss = Scoped.instantiateWeakenEnv (Pat.size p1) (snat @n) tm
+            ss = Scoped.instantiateWeakenEnv (Pat.size p1) (scope_size s) tm
         let tele' :: Telescope p3 (Plus p1 n)
             tele' = applyE ss tele2
         (ctx2  :: Context (Plus p2 (Plus p1 n)), 
            tms :: [Term (Plus p2 (Plus p1 n))], 
            rf2 :: Refinement Term (Plus p2 (Plus p1 n))) <- 
-              withSNat (sPlus (Pat.size p1) (snat @n)) $ 
-                 push p1 $
-                    declarePats @p2 @p3 @(Plus p1 n) p2 tele' ctx1
+              push p1 $ declarePats @p2 @p3 @(Plus p1 n) p2 tele' ctx1
         case joinR (shiftRefinement (Pat.size p2) rf1) rf2 of 
           Just rf -> return (ctx2, applyE @Term (shiftNE (Pat.size p2)) tm : tms, rf)
           Nothing -> Env.err [DS "cannot create refinement"]
@@ -582,17 +579,14 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) = do
   traceM $ pp decl
   case axiomPlusZ @n of 
     Refl -> do
-        -- Check that the telescope for the datatype definition is well-formed
+      -- Check that the telescope for the datatype definition is well-formed
       ctx' <- tcTypeTele delta Env.emptyContext
       ---- check that the telescope provided
       ---  for each data constructor is wellfomed, and elaborate them
-      let checkConstructorDef defn@(ConstructorDef d theta) = case axiomPlusZ @n of 
-            Refl -> withSNat (Scoped.size delta) $ do
+      let checkConstructorDef defn@(ConstructorDef d theta) = do 
             -- TODO: add source position
             -- Env.extendSourceLocation pos defn $
-              push delta $ do
-                s <- scope
-                tcTypeTele theta ctx'
+              push delta $ tcTypeTele theta ctx'
               return ()
                 `Env.extendErr`[ DS "when checking the constructor declaration",
                                  DC defn ]
@@ -663,8 +657,7 @@ exhaustivityCheck _scrut ty pats ctx = do
           (ConstructorDef _ (tele :: Telescope p2 p1), dcons') <- removeDCon dc dcons
           case testEquality (snat @p) (Scoped.size tele) of 
             Just Refl -> do
-                tele' <- 
-                  withSNat (Scoped.size delta) $ substTele delta tys tele
+                tele' <- substTele delta tys tele
                 let (aargs, pats'') = relatedPats dc pats'
                 -- check the arguments of the data constructor together with 
                 -- all other related argument lists
@@ -679,8 +672,7 @@ exhaustivityCheck _scrut ty pats ctx = do
         checkImpossible (ConstructorDef dc tele : rest) = do
           this <-
             ( do
-                tele' <- withSNat (Scoped.size delta) $ 
-                   substTele delta tys tele
+                tele' <- substTele delta tys tele
                 tcTypeTele tele' ctx
                 return [dc]
               )

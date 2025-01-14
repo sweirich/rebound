@@ -76,7 +76,6 @@ data Pattern (p :: Nat)  where
 
 -- | lists of patterns where variables at each position bind 
 -- later in the pattern
-
 data PatList p where
   PNil :: PatList N0
   PCons :: Pattern p1 -> PatList p2 -> PatList (Plus p2 p1)
