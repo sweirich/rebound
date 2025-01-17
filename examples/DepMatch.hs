@@ -366,17 +366,18 @@ instance Show (Pat p n) where
 --------------------------------------------------------
 
 -- NOTE: this is not the same type as patEq
-testEquality2 :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
-testEquality2 PVar PVar = Just Refl
-testEquality2 (PPair p1 p2) (PPair p1' p2') = do
-  Refl <- testEquality2 p1 p1'
-  Refl <- testEquality2 p2 p2'
-  return Refl
-testEquality2 (PAnnot p1 p2) (PAnnot p1' p2') = do
-  Refl <- testEquality2 p1 p1'
-  guard (p2 == p2')
-  return Refl
-testEquality2 _ _ = Nothing
+instance PatEq (Pat p1 n) (Pat p2 n) where
+  patEq :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
+  patEq PVar PVar = Just Refl
+  patEq (PPair p1 p2) (PPair p1' p2') = do
+    Refl <- patEq p1 p1'
+    Refl <- patEq p2 p2'
+    return Refl
+  patEq (PAnnot p1 p2) (PAnnot p1' p2') = do
+    Refl <- patEq p1 p1'
+    guard (p2 == p2')
+    return Refl
+  patEq _ _ = Nothing
 
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
@@ -392,7 +393,7 @@ instance Eq (Branch n) where
 -- make sure that the patterns are equal
 instance (Eq (Exp n)) => Eq (Scoped.Bind Exp Exp (Pat m) n) where
   b1 == b2 =
-    Maybe.isJust (testEquality2 (Scoped.getPat b1) (Scoped.getPat b2))
+    Maybe.isJust (patEq (Scoped.getPat b1) (Scoped.getPat b2))
       && Scoped.getBody b1 == Scoped.getBody b2
 
 -- To compare binders, we only need to `unbind` them
