@@ -1,5 +1,5 @@
--- A dependent type system, with nested dependent pattern matching
--- This is an advanced usage of the binding library 
+-- | A dependent type system, with nested dependent pattern matching for Sigma types.
+-- This is an advanced usage of the binding library, demonstrating the use of Scoped patterns.
 -- It doesn't correspond to any current system, but has its own elegance
 -- (Maybe deserves to be written up on its own?)
 -- However, this implementation does not attempt to use explicit environments
@@ -23,24 +23,17 @@ import Data.Vec qualified
 import Debug.Trace
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 
--- | constants: universes, data constructors and type constructors
-data Const = Star | DataCon DataConName | TyCon TyConName
-  deriving (Eq)
-
--- | names of type constructors, like 'list'
-type TyConName = String
-
--- | names of data constructors, like 'cons'
-type DataConName = String
-
 -- In this system, `Match` introduces a Pi type and generalizes 
 -- dependent functions
 -- If the pattern is a single variable, or an annotated variable,
--- then the Match term is just a normal lambda expression. 
+-- then the `Match` term is just a normal lambda expression. 
 -- But the pattern could be more structured than that, supporting 
--- a general form of pattern matching
+-- a general form of pattern matching. In this simple language, 
+-- only type that supports pattern matching is a Sigma type. So 
+-- every match expression should have a single branch. But, for 
+-- generality, we pretend that more are possible.
 data Exp (n :: Nat)
-  = Const Const
+  = Star
   | Pi (Exp n) (B.Bind Exp Exp n)
   | Var (Fin n)
   | Match [Branch n]  -- n-way abstractions
@@ -58,14 +51,13 @@ data Branch (n :: Nat)
 -- | Patterns, which may include embedded type annotations
 -- `p` is the number of variables bound by the pattern
 -- `n` is the number of free variables in type annotations in the pattern
--- Patterns are "telescopic"
--- In App/Pair pattern, we increase the scope so that variables
--- bound in the left subterm can be referred to in the right subterm.
 data Pat (p :: Nat) (n :: Nat) where
-  PConst :: Const -> Pat N0 n
   PVar :: Pat N1 n
-  PApp :: Scoped.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
-  PPair :: Scoped.Rebind (Pat p1) (Pat p2) n -> Pat (Plus p2 p1) n
+  -- Patterns are "telescopic"
+  -- In Pair pattern, we increase the scope so that variables
+  -- bound in the left subterm can be referred to in the right subterm
+  PPair :: Pat p1 n -> Pat p2 (Plus p1 n) -> Pat (Plus p2 p1) n
+  -- Patterns can also include type annotations. 
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
 
@@ -73,62 +65,50 @@ data Pat (p :: Nat) (n :: Nat) where
 -- can appear later.  For example, the pattern for a type paired with 
 -- a term of that type can look like this 
 --     (x, (y :: x)) 
+
+pat0 :: Pat N2 N0
+pat0 = PPair PVar (PAnnot PVar (Var f0))
+
 -- The type of this pattern is
 --     Sigma x:Star.x
--- "Rebind" creates a pair where the pattern variables
--- in the first component are bound in expression parts of the
--- second component
-pat0 :: Pat N2 N0
-pat0 = PPair (Scoped.Rebind PVar (PAnnot PVar (Var f0)))
+ty0 :: Exp Z
+ty0 = Sigma Star (B.bind (Var f0))
 
 -------------------------------------------------------
 -- definitions for pattern matching
 -------------------------------------------------------
 
-instance Pat.Sized (Pat p n) where
-  type Size (Pat p n) = p
-  size :: Pat p n -> SNat p
-  size (PConst i) = s0
-  size PVar = s1
-  size (PApp rb) = Pat.size rb
-  size (PPair rb) = Pat.size rb
-  size (PAnnot p _) = Pat.size p
-
 -- For any pattern type, we need to be able to calculate
 -- the number of binding variables, both statically and dynamically
-instance Scoped.Sized (Pat p) where
-  type Size (Pat p) = p
-  {-
+instance Sized (Pat p n) where
+  type Size (Pat p n) = p
   size :: Pat p n -> SNat p
-  size (PConst i) = s0
   size PVar = s1
-  size (PApp rb) = Scoped.size rb
-  size (PPair rb) = Scoped.size rb
-  size (PAnnot p _) = Scoped.size p
-  -}
+  size (PPair p1 p2) = sPlus (size p2) (size p1)
+  size (PAnnot p _) = size p
 
+instance Scoped.ScopedSized (Pat p) where
+  type ScopedSize (Pat p) = p
+
+-- A term that matches the "(x,(y:x))" and has type exists x:*. x
 tm0 :: Exp Z
-tm0 = Pair (Const (TyCon "Bool")) (Const (DataCon "True"))
+tm0 = Pair Star ty0
 
 -- >>> patternMatch pat0 tm0
--- Just [True,Bool]
+-- Just [(0,Sigma *. 0),(1,*)]
 
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for all of the variables
 -- bound in the pattern
 patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
-patternMatch (PApp rb) (App e1 e2) = Scoped.unRebind rb $ \p1 p2 -> do
-  env1 <- patternMatch p1 e1
-  -- NOTE: substitute in p2 with env1 before pattern matching
-  let p2' = applyE (env1 .++ idE) p2
-  env2 <- patternMatch p2' e2
-  return (env2 .++ env1)
-patternMatch (PConst s1) (Const s2) | s1 == s2 = Just zeroE
-patternMatch (PPair rb) (Pair e1 e2) = Scoped.unRebind rb $ \p1 p2 -> do
-  env1 <- patternMatch p1 e1
-  env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
-  return (env2 .++ env1)
+patternMatch (PPair p1 p2) (Pair e1 e2) = 
+  -- two append operations require implicit sizes in the context
+  withSNat (Scoped.scopedSize p1) $ withSNat (Scoped.scopedSize p2) $ do
+    env1 <- patternMatch p1 e1
+    -- NOTE: substitute in p2 with env1 before pattern matching
+    env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
+    return (env2 .++ env1)
 -- ignore type annotates when pattern matching
 patternMatch (PAnnot p _) e = patternMatch p e
 patternMatch p (Annot e _) = patternMatch p e
@@ -149,7 +129,7 @@ instance SubstVar Exp where
   var = Var
 
 instance Subst Exp Exp where
-  applyE r (Const c) = Const c
+  applyE r Star = Star
   applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
   applyE r (Var x) = applyEnv r x
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
@@ -160,10 +140,9 @@ instance Subst Exp Exp where
 
 instance Subst Exp (Pat p) where
   applyE :: Env Exp n m -> Pat p n -> Pat p m
-  applyE r (PConst c) = PConst c
   applyE r PVar = PVar
-  applyE r (PApp rb) = PApp (applyE r rb)
-  applyE r (PPair rb) = PPair (applyE r rb)
+  -- need to account for new pattern variables from p1 bound in p2
+  applyE r (PPair p1 p2) = PPair (applyE r p1) (applyE (upN (size p1) r) p2)
   applyE r (PAnnot p t) = PAnnot (applyE r p) (applyE r t)
 
 instance Subst Exp Branch where
@@ -188,7 +167,7 @@ t01 = App (Var f0) (Var f1)
 
 instance FV Exp where
   appearsFree n (Var x) = n == x
-  appearsFree n (Const c) = False
+  appearsFree n Star = False
   appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
   appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
@@ -201,9 +180,7 @@ instance FV Branch where
 
 instance FV (Pat p) where
   appearsFree n PVar = False
-  appearsFree n (PConst _) = False
-  appearsFree n (PApp rb) = appearsFree n rb
-  appearsFree n (PPair rb) = appearsFree n rb
+  appearsFree n (PPair p1 p2) = appearsFree n p1 || appearsFree (shiftN (size p1) n) p2
   appearsFree n (PAnnot p t) = appearsFree n p || appearsFree n t
 
 ----------------------------------------------
@@ -235,7 +212,7 @@ weakenBind' m = applyE @Exp (weakenE' m)
 instance Strengthen Exp where
   -- strengthen' :: SNat m -> SNat n -> Exp (Plus m n) -> Maybe (Exp n)
   strengthen' m n (Var x) = Var <$> strengthen' m n x
-  strengthen' m n (Const c) = pure (Const c)
+  strengthen' m n Star = pure Star
   strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
   strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
   strengthen' m n (Pair a b) = Pair <$> strengthen' m n a <*> strengthen' m n b
@@ -246,13 +223,9 @@ instance Strengthen Exp where
 instance Strengthen (Pat p) where
   strengthen' :: forall m n p. SNat m -> SNat n -> Pat p (Plus m n) -> Maybe (Pat p n)
   strengthen' m n PVar = pure PVar
-  strengthen' m n (PConst c) = pure (PConst c)
-  strengthen' m n (PApp rb) = PApp <$> strengthen' m n rb
-  strengthen' m n (PPair rb) = PPair <$> strengthen' m n rb
-  strengthen' m n (PAnnot p1 e2) =
-    PAnnot
-      <$> strengthen' m n p1
-      <*> strengthen' m n e2
+  strengthen' m n (PPair (p1 :: Pat p1 (Plus m n)) (p2 :: Pat p2 (Plus p1 (Plus m n)))) = 
+      case axiomM @p1 @m @n of Refl -> PPair <$> strengthen' m n p1 <*> strengthen' m (sPlus (size p1) n) p2
+  strengthen' m n (PAnnot p1 e2) = PAnnot <$> strengthen' m n p1 <*> strengthen' m n e2
 
 instance Strengthen Branch where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
@@ -262,7 +235,7 @@ instance Strengthen Branch where
 ----------------------------------------------
 
 star :: Exp n
-star = Const Star
+star = Star
 
 -- No annotation on the binder
 lam :: Exp (S n) -> Exp n
@@ -314,14 +287,10 @@ tmid = lam (lam (Var f0))
 
 --------------------------------------------------------
 
-instance Show Const where
-  show Star = "*"
-  show (DataCon s) = s
-  show (TyCon s) = s
 
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
-  showsPrec _ (Const c) = showString (show c)
+  showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
     | appearsFree FZ (B.unbind b) =
         showParen (d > 10) $
@@ -379,13 +348,7 @@ instance Show (Branch b) where
 
 instance Show (Pat p n) where
   showsPrec d PVar = showString "_"
-  showsPrec d (PConst c) = showsPrec d c
-  showsPrec d (PApp (Scoped.Rebind e1 e2)) =
-    showParen (d > 0) $
-      showsPrec 10 e1
-        . showString " "
-        . showsPrec 11 e2
-  showsPrec d (PPair (Scoped.Rebind e1 e2)) =
+  showsPrec d (PPair e1 e2) =
     showParen (d > 0) $
       showsPrec 10 e1
         . showString ", "
@@ -405,11 +368,7 @@ instance Show (Pat p n) where
 -- NOTE: this is not the same type as patEq
 testEquality2 :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
 testEquality2 PVar PVar = Just Refl
-testEquality2 (PApp (Scoped.Rebind p1 p2)) (PApp (Scoped.Rebind p1' p2')) = do
-  Refl <- testEquality2 p1 p1'
-  Refl <- testEquality2 p2 p2'
-  return Refl
-testEquality2 (PPair (Scoped.Rebind p1 p2)) (PPair (Scoped.Rebind p1' p2')) = do
+testEquality2 (PPair p1 p2) (PPair p1' p2') = do
   Refl <- testEquality2 p1 p1'
   Refl <- testEquality2 p2 p2'
   return Refl
@@ -417,7 +376,6 @@ testEquality2 (PAnnot p1 p2) (PAnnot p1' p2') = do
   Refl <- testEquality2 p1 p1'
   guard (p2 == p2')
   return Refl
-testEquality2 (PConst s1) (PConst s2) | s1 == s2 = Just Refl
 testEquality2 _ _ = Nothing
 
 instance Eq (Branch n) where
@@ -425,8 +383,8 @@ instance Eq (Branch n) where
   (Branch (p1 :: Scoped.Bind Exp Exp (Pat m1) n))
     == (Branch (p2 :: Scoped.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (Scoped.size (Scoped.getPat p1) :: SNat m1)
-        (Scoped.size (Scoped.getPat p2) :: SNat m2) of
+        (Scoped.scopedSize (Scoped.getPat p1) :: SNat m1)
+        (Scoped.scopedSize (Scoped.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
@@ -476,7 +434,7 @@ eval (App e1 e2) =
           Just e -> eval e
           Nothing -> error "pattern match failure"
         t -> App t v
-eval (Const c) = Const c
+eval Star = Star
 eval (Pi a b) = Pi a b
 eval (Sigma a b) = Sigma a b
 eval (Annot a t) = eval a
@@ -497,7 +455,7 @@ step (App e1 e2)
   | Just e1' <- step e1 = Just (App e1' e2)
   | Just e2' <- step e2 = Just (App e1 e2')
   | otherwise = Nothing
-step (Const _) = Nothing
+step Star = Nothing
 step (Pi a b) = Nothing
 step (Sigma a b) = Nothing
 step (Pair a b) = Nothing
@@ -521,7 +479,6 @@ data Err where
   PatternTypeMismatch :: Pat p1 n1 -> Exp n1 -> Err
   AnnotationNeeded :: Exp n -> Err
   AnnotationNeededPat :: Pat p1 n1 -> Err
-  UnknownConst :: Const -> Err
 
 deriving instance (Show Err)
 
@@ -548,15 +505,10 @@ equatePat ::
   Pat p2 n ->
   m ()
 equatePat PVar PVar = pure ()
-equatePat (PConst c1) (PConst c2) | c1 == c2 = pure ()
-equatePat (PPair (Scoped.Rebind p1 p1')) (PPair (Scoped.Rebind p2 p2'))
-  | Just Refl <- testEquality (Scoped.size p1) (Scoped.size p2) =
-      withSNat (sPlus (Scoped.size p1) (snat @n)) $
+equatePat (PPair p1 p1') (PPair p2 p2')
+  | Just Refl <- testEquality (Scoped.scopedSize p1) (Scoped.scopedSize p2) =
+      withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $
         equatePat p1 p2 >> equatePat p1' p2'
-equatePat (PApp (Scoped.Rebind p1 p2)) (PApp (Scoped.Rebind p1' p2'))
-  | Just Refl <- testEquality (Scoped.size p1) (Scoped.size p1') =
-      withSNat (sPlus (Scoped.size p1) (snat @n)) $
-        equatePat p1 p1' >> equatePat p2 p2'
 equatePat (PAnnot p1 e1) (PAnnot p2 e2) =
   equatePat p1 p2 >> equate e1 e2
 equatePat p1 p2 = throwError (PatternMismatch p1 p2)
@@ -565,7 +517,7 @@ equateBranch :: (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
 equateBranch (Branch b1) (Branch b2) =
   Scoped.unbind b1 $ \(p1 :: Pat p1 n) body1 ->
     Scoped.unbind b2 $ \(p2 :: Pat p2 n) body2 ->
-      case testEquality (Scoped.size p1) (Scoped.size p2) of
+      case testEquality (Scoped.scopedSize p1) (Scoped.scopedSize p2) of
         Just Refl ->
           equatePat p1 p2 >> equate body1 body2
         Nothing ->
@@ -574,7 +526,7 @@ equateBranch (Branch b1) (Branch b2) =
 equateWHNF :: (SNatI n, MonadError Err m) => Exp n -> Exp n -> m ()
 equateWHNF n1 n2 =
   case (n1, n2) of
-    (Const c1, Const c2) | c1 == c2 -> pure ()
+    (Star, Star) -> pure ()
     (Var x, Var y) | x == y -> pure ()
     (Match b1, Match b2) ->
       zipWithM_ equateBranch b1 b2
@@ -595,25 +547,12 @@ equateWHNF n1 n2 =
 
 ----------------------------------------------------------------
 
--- | infer the type of a constant term
--- TODO: use prelude, and allow datatypes to have parameters/telescopes
-inferConst :: (MonadError Err m) => Const -> m (Exp n)
-inferConst Star = pure $ Const Star
-inferConst (DataCon "True") = pure $ Const (TyCon "Bool")
-inferConst (DataCon "False") = pure $ Const (TyCon "Bool")
-inferConst (DataCon "()") = pure $ Const (TyCon "Unit")
-inferConst (TyCon "Bool") = pure $ Const Star
-inferConst (TyCon "Unit") = pure $ Const Star
-inferConst c = throwError (UnknownConst c)
 
 inferPattern ::
   (MonadError Err m, SNatI n) =>
   Ctx Exp n -> -- input context
   Pat p n -> -- pattern to check
   m (Ctx Exp (Plus p n), Exp (Plus p n), Exp n)
-inferPattern g (PConst c) = do
-  ty <- inferConst c
-  pure (g, Const c, ty)
 inferPattern g (PAnnot p ty) = do
   (g', e) <- checkPattern g p ty
   pure (g', e, ty)
@@ -633,24 +572,19 @@ checkPattern ::
   m (Ctx Exp (Plus p n), Exp (Plus p n))
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
-checkPattern g (PPair rb) (Sigma tyA tyB) =
-  Scoped.unRebind rb $ \p1 p2 -> do
+checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) (Sigma tyA tyB) = 
+  -- The context for the recursive call on p2 needs a little preparation
+  -- need to have implicit version of p1 + n
+  withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $ 
+  -- need to know that Plus is associative 
+  case axiomAssoc @p2 @p1 @n of 
+  Refl -> do
     (g', e1) <- checkPattern g p1 tyA
-    let tyB' = weakenBind' (Scoped.size p1) tyB
+    let tyB' = weakenBind' (Scoped.scopedSize p1) tyB
     let tyB'' = whnf (B.instantiate tyB' e1)
     (g'', e2) <- checkPattern g' p2 tyB''
-    let e1' = weaken' (Scoped.size p2) e1
+    let e1' = weaken' (Scoped.scopedSize p2) e1
     return (g'', Pair e1' e2)
-checkPattern g (PApp rb) ty =
-  Scoped.unRebind rb $ \p1 p2 -> do
-    (g', e1, ty) <- inferPattern g p1
-    case weaken' (Scoped.size p1) (whnf ty) of
-      Pi tyA tyB -> do
-        (g'', e2) <- checkPattern g' p2 tyA
-        equate (weaken' (Scoped.size p1) ty) (B.instantiate tyB e1)
-        let e1' = weaken' (Scoped.size p2) e1
-        return (g'', App e1' e2)
-      _ -> throwError (PiExpectedPat p1)
 checkPattern g p ty = do
   (g', e, ty') <- inferPattern g p
   equate ty ty'
@@ -673,7 +607,7 @@ checkBranch ::
   m ()
 checkBranch g (Pi tyA tyB) (Branch bnd) =
   Scoped.unbind bnd $ \(pat :: Pat p n) body -> do
-    let p = Scoped.size pat
+    let p = Scoped.scopedSize pat
 
     -- find the extended context and pattern expression
     (g', a) <- checkPattern g pat tyA
@@ -717,11 +651,11 @@ inferType ::
   Exp n ->
   m (Exp n)
 inferType g (Var x) = pure (applyEnv g x)
-inferType g (Const c) = inferConst c
+inferType g Star = pure star
 inferType g (Pi a b) = do
-  checkType g a (Const Star)
-  checkType (g +++ a) (B.unbind b) (Const Star)
-  pure (Const Star)
+  checkType g a star
+  checkType (g +++ a) (B.unbind b) star
+  pure star
 inferType g (App a b) = do
   tyA <- inferType g a
   case whnf tyA of
@@ -730,9 +664,9 @@ inferType g (App a b) = do
       pure $ B.instantiate tyB1 b
     t -> throwError (PiExpected t)
 inferType g (Sigma a b) = do
-  checkType g a (Const Star)
-  checkType (g +++ a) (B.unbind b) (Const Star)
-  pure (Const Star)
+  checkType g a star
+  checkType (g +++ a) (B.unbind b) star
+  pure star
 inferType g a =
   throwError (AnnotationNeeded a)
 
@@ -750,127 +684,3 @@ inferType g a =
 
 -- >>> (inferType zeroE (App tmid tyid) :: Either Err (Exp N0))
 -- Left (AnnotationNeeded (λ_. (λ_. 0)))
-
------------------------------------------------------------
--- Checking that pattern matching is exhaustive
------------------------------------------------------------
--- (Work in progress)
-
--- | Given a particular type and a list of patterns, make
--- sure that the patterns cover all potential cases for that
--- type.
--- If the list of patterns starts with a variable, then it doesn't
--- matter what the type is, the variable is exhaustive. (This code
--- does not report unreachable patterns.)
--- Otherwise, the scrutinee type must be a type constructor, so the
--- code looks up the data constructors for that type and makes sure that
--- there are patterns for each one.
-data PatAny n = forall p. PatAny (Pat p n)
-
-extractPat :: Branch n -> PatAny n
-extractPat (Branch bnd) = PatAny (Scoped.getPat bnd)
-
-lookupTyCon :: (MonadError Err m) => TyConName -> m DataDef
-lookupTyCon tname =
-  case List.find (\d -> data_name d == tname) prelude of
-    Just dcon -> pure dcon
-    Nothing -> throwError (UnknownConst (TyCon tname))
-
-ensureTyCon :: (MonadError Err m) => Exp n -> m (TyConName, [Exp n])
-ensureTyCon (Const (TyCon c)) = return (c, [])
-ensureTyCon (App a1 a2) = do
-  (c, args) <- ensureTyCon a1
-  return (c, args ++ [a2])
-ensureTyCon _ = error "not a tycon"
-
-{-
-exhaustivityCheck :: (MonadError Err m) => Exp n -> [PatAny n] -> m ()
-exhaustivityCheck ty (PatAny PVar : _) = return ()
-exhaustivityCheck (Sigma tyA tyB) [ PatAny (PPair rb) ] = do
-    unRebind rb $ \p1 p2 -> do
-       exhaustivityCheck tyA p1
-exhaustivityCheck ty pats = do
-    (tycon, tys) <- ensureTyCon ty
-    datadef <- lookupTyCon tycon
-    loop pats (data_constructors datadef) where
-        loop :: [ PatAny n ] -> [ ConstructorDef n ] -> m ()
-        loop = undefined
--}
-
--------------------------------------------------------
--- Data types
--------------------------------------------------------
-
--- a telescope defined in scope n that
--- itself introduces m arguments
-data Telescope m n where
-  None :: Telescope Z n
-  (:<>) :: Telescope m n -> Exp (Plus m n) -> Telescope (S m) n
-
-data DataDef = forall n.
-  Data
-  { data_name :: TyConName,
-    data_params :: Telescope n Z,
-    data_sort :: Const,
-    data_constructors :: [ConstructorDef n]
-  }
-
-data ConstructorDef n = forall m.
-  ConstructorDef
-  { con_name :: DataConName,
-    con_arguments :: Telescope m n
-  }
-
-unitDef :: DataDef
-unitDef =
-  Data
-    { data_name = "Unit",
-      data_params = None,
-      data_sort = Star,
-      data_constructors = [unitCon]
-    }
-
-unitCon :: ConstructorDef N0
-unitCon =
-  ConstructorDef
-    { con_name = "()",
-      con_arguments = None
-    }
-
-boolDef :: DataDef
-boolDef =
-  Data
-    { data_name = "Bool",
-      data_params = None,
-      data_sort = Star,
-      data_constructors = [boolCon False, boolCon True]
-    }
-
-boolCon :: Bool -> ConstructorDef N0
-boolCon b = ConstructorDef {con_name = show b, con_arguments = None}
-
-eitherDef :: DataDef
-eitherDef =
-  Data
-    { data_name = "Either",
-      data_params = None :<> Const Star :<> Const Star,
-      data_sort = Star,
-      data_constructors = [eitherLeft, eitherRight]
-    }
-
-eitherLeft :: ConstructorDef N2
-eitherLeft =
-  ConstructorDef
-    { con_name = "Left",
-      con_arguments = None :<> Var f0
-    }
-
-eitherRight :: ConstructorDef N2
-eitherRight =
-  ConstructorDef
-    { con_name = "Right",
-      con_arguments = None :<> Var f1
-    }
-
-prelude :: [DataDef]
-prelude = [unitDef, boolDef, eitherDef]

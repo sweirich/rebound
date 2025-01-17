@@ -17,7 +17,6 @@ import AutoEnv
 import AutoEnv.Env
 import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.MonadScoped
-import AutoEnv.LocalName
 import qualified AutoEnv.Pat.LocalBind as Local
 import PiForall.Syntax
 import PiForall.PrettyPrint
@@ -62,7 +61,7 @@ data TcEnv n = TcEnv
 instance MonadScoped TcMonad where
   scope = asks env_scope
 
-  push :: Named pat => pat -> TcMonad (Plus (Pat.Size pat) n) a -> TcMonad n a
+  push :: Named pat => pat -> TcMonad (Plus (Size pat) n) a -> TcMonad n a
   push pat (TcMonad m) =
     TcMonad (ReaderT $ \env ->
       runReaderT m
@@ -70,7 +69,7 @@ instance MonadScoped TcMonad where
                 hints = hints env,
                 sourceLocation = sourceLocation env,
                 env_scope = extendScope pat (env_scope env), 
-                env_refinement = shiftRefinement (Pat.size pat) (env_refinement env)
+                env_refinement = shiftRefinement (size pat) (env_refinement env)
               })
 
 -- | Initial environment
@@ -142,7 +141,7 @@ lookupDConAll v = do
   where
     scanGamma [] = return []
     scanGamma ((ModuleData tn (DataDef delta _ cs)) : g) =
-      case find (\(ConstructorDef v'' TNil) -> v'' == v) cs of
+      case find (\(ConstructorDef v'' _) -> v'' == v) cs of
         Nothing -> scanGamma g
         Just c -> do
           more <- scanGamma g

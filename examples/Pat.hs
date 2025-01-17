@@ -88,18 +88,18 @@ data ConApp (m :: Nat) where
 -- that number from the pattern itself by counting the number
 -- of occurrences of `PVar`.
 
-instance Pat.Sized (Pat m) where
+instance Sized (Pat m) where
   type Size (Pat m) = m
 
-  size :: Pat m -> SNat (Pat.Size (Pat m))
+  size :: Pat m -> SNat (Size (Pat m))
   size PVar = s1
-  size (PHead p) = Pat.size p 
+  size (PHead p) = size p 
 
 
-instance Pat.Sized (ConApp m) where
+instance Sized (ConApp m) where
   type Size (ConApp m) = m
 
-  size (PApp p1 p2) = sPlus (Pat.size p1) (Pat.size p2)
+  size (PApp p1 p2) = sPlus (size p1) (size p2)
   size (PCon s) = s0
 
 -- NOTE: we could drop `size` from the type class 
@@ -275,17 +275,17 @@ instance Show (Branch n) where
 -- equal. Pattern matching on this GADT brings an equality
 -- between a and b into the context of the term.)
 
-instance Pat.PatEq (Pat m1) (Pat m2) where
+instance PatEq (Pat m1) (Pat m2) where
   patEq PVar PVar = Just Refl
   patEq (PHead p1) (PHead p2) = do
-    Refl <- Pat.patEq p1 p2
+    Refl <- patEq p1 p2
     return Refl
   patEq _ _ = Nothing
 
-instance Pat.PatEq (ConApp m1) (ConApp m2) where
+instance PatEq (ConApp m1) (ConApp m2) where
   patEq (PApp p1 p2) (PApp p1' p2') = do
-    Refl <- Pat.patEq p1 p1'
-    Refl <- Pat.patEq p2 p2'
+    Refl <- patEq p1 p1'
+    Refl <- patEq p2 p2'
     return Refl
   patEq (PCon s1) (PCon s2) | s1 == s2 = Just Refl
   patEq _ _ = Nothing
@@ -293,15 +293,15 @@ instance Pat.PatEq (ConApp m1) (ConApp m2) where
 
 -- the generalized equality can be used for the usual equality
 instance Eq (Pat m) where
-  p1 == p2 = Maybe.isJust (Pat.patEq p1 p2)
+  p1 == p2 = Maybe.isJust (patEq p1 p2)
 
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
   (Branch (p1 :: Pat.Bind Exp Exp (Pat m1) n))
     == (Branch (p2 :: Pat.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (Pat.size (Pat.getPat p1) :: SNat m1)
-        (Pat.size (Pat.getPat p2) :: SNat m2) of
+        (size (Pat.getPat p1) :: SNat m1)
+        (size (Pat.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
@@ -313,7 +313,7 @@ instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
 -- first make sure that the patterns are equal
 instance (Eq (Exp n)) => Eq (Pat.Bind Exp Exp (Pat m) n) where
   b1 == b2 =
-    Maybe.isJust (Pat.patEq (Pat.getPat b1) (Pat.getPat b2))
+    Maybe.isJust (patEq (Pat.getPat b1) (Pat.getPat b2))
       && Pat.getBody b1 == Pat.getBody b2
 
 -- With the instance above the derivable equality instance
@@ -361,7 +361,7 @@ patternMatchApp :: ConApp p -> Exp m -> Maybe (Env Exp p m)
 patternMatchApp (PApp p1 p2) (App e1 e2) = do
   env1 <- patternMatchApp p1 e1
   env2 <- patternMatch p2 e2
-  withSNat (Pat.size p1) $ return (env1 .++ env2)
+  withSNat (size p1) $ return (env1 .++ env2)
 patternMatchApp (PCon s1) (Con s2) =
   if s1 == s2 then Just zeroE else Nothing
 patternMatchApp _ _ = Nothing

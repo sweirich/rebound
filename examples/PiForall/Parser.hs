@@ -10,7 +10,7 @@ module PiForall.Parser
   )
   where
 
-import AutoEnv.LocalName
+import Data.LocalName
 
 import PiForall.ConcreteSyntax hiding (moduleImports,ModuleImport)
 import PiForall.Syntax (ConstructorNames(..), initialConstructorNames, ModuleImport(..))

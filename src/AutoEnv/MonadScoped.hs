@@ -1,7 +1,7 @@
 -- Monads supporting named scopes
 -- TODO: generalize this library to remember arbitrary data?
 module AutoEnv.MonadScoped(
-  Pat.Sized(..),
+  Sized(..),
   Named(..),LocalName(..),
   MonadScoped(..),
   Scope(..),emptyScope,extendScope,
@@ -9,19 +9,23 @@ module AutoEnv.MonadScoped(
  ) where
 
 import AutoEnv.Lib
+import AutoEnv.Classes
 import Data.Vec as Vec
 import AutoEnv.Pat.Simple as Pat
-import AutoEnv.LocalName
+
 
 import Control.Monad.Reader
 import Control.Monad.Identity
 
 
-class Pat.Sized pat => Named pat where
+class Sized pat => Named pat where
     patLocals :: pat -> Vec (Size pat) LocalName
 
 instance Named LocalName where
     patLocals ln = ln ::: VNil
+
+instance Named (Vec n a) where
+  patLocals v = undefined
 
 -- Scoped monads provide implicit access to the current scope 
 -- and a way to extend that scope with an arbitrary pattern
@@ -44,7 +48,7 @@ emptyScope = Scope {
 
 extendScope :: Named pat => pat -> Scope n -> Scope (Plus (Size pat) n)
 extendScope pat s = 
-   Scope { scope_size = sPlus (Pat.size pat) (scope_size s),
+   Scope { scope_size = sPlus (size pat) (scope_size s),
            scope_locals = Vec.append (patLocals pat) (scope_locals s) 
          }
 
@@ -71,3 +75,12 @@ instance Monad m =>
         scope = ScopedReaderT $ \s -> return s
         push n m = ScopedReaderT $ \env -> runScopedReaderT m (extendScope n env)
      
+
+instance (forall p. Named (pat p)) => Named (PatList pat p) where
+  patLocals :: PatList pat p -> Vec p LocalName
+  patLocals PNil = VNil
+  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
+    let test :: Size (pat p1) :~: p1
+        test = Refl
+    in
+      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)

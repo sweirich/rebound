@@ -7,9 +7,11 @@
 
 module PiForall.ScopeCheck where
 
-import AutoEnv.LocalName
+
 import qualified AutoEnv.Bind as B
+import AutoEnv.Pat.Simple (PatList(..))
 import qualified AutoEnv.Pat.Simple as Pat
+import AutoEnv.Pat.Scoped ((<:>))
 import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.LocalBind as L
 import Data.Maybe (fromJust)
@@ -33,7 +35,7 @@ data ScopedPattern n = forall p. SNatI p =>
    ScopedPattern (S.Pattern p) [(LocalName, Fin (Plus p n))]
 
 data ScopedPatList n = forall p. SNatI p =>
-   ScopedPatList (S.PatList S.Pattern p) [(LocalName, Fin (Plus p n))]
+   ScopedPatList (Pat.PatList S.Pattern p) [(LocalName, Fin (Plus p n))]
 
 scopeCheckModule :: C.Module -> Maybe S.Module
 scopeCheckModule m = do 
@@ -60,7 +62,7 @@ scopeCheckData (C.DataDef delta s cs) = do
     Refl -> S.DataDef delta' <$> scopeCheck s <*> mapM (scopeCheckConstructor scope) cs
 
 scopeCheckTele :: forall n. SNatI n => [(LocalName, Fin n)] -> C.Telescope -> Maybe (ScopedTele n)
-scopeCheckTele scope [] = Just $ ScopedTele scope S.TNil
+scopeCheckTele scope [] = Just $ ScopedTele scope Scoped.TNil
 scopeCheckTele scope (C.EntryDecl n ty : entries) = do 
   ty' <- to scope ty 
   let scope' :: [(LocalName, Fin (S n))]
@@ -70,7 +72,7 @@ scopeCheckTele scope (C.EntryDecl n ty : entries) = do
   let fact :: Plus p (S n) :~: Plus (Plus p N1) n
       fact = axiomAssoc @p @N1 @n
   withSNat (sPlus (snat @p) (SS SZ)) $ case fact of { Refl -> do
-    let ret = S.TCons (Scoped.Rebind (S.LocalDecl n ty') tele')
+    let ret = S.LocalDecl n ty' <:> tele'
     return $ ScopedTele ss ret }
 scopeCheckTele scope (C.EntryDef n tm : entries) = do
   tm' <- to scope tm
@@ -78,7 +80,7 @@ scopeCheckTele scope (C.EntryDef n tm : entries) = do
   case axiomPlusZ @p of 
     Refl -> do
       ln <- lookup n scope
-      let ret = S.TCons (Scoped.Rebind (S.LocalDef ln tm') tele') 
+      let ret = S.LocalDef ln tm' <:> tele'
       return $ ScopedTele ss ret
 
 scopeCheckConstructor :: SNatI n => [(LocalName, Fin n)] -> C.ConstructorDef 
@@ -109,15 +111,15 @@ toP vs (C.PatCon n pats) = do
 
 toPL :: forall n. SNatI n => [(LocalName, Fin n)] -> 
   [C.Pattern] -> Maybe (ScopedPatList n)
-toPL vs [] = return $ ScopedPatList S.PNil vs
+toPL vs [] = return $ ScopedPatList Pat.PNil vs
 toPL vs (p :ps) = do
   ScopedPattern (p'  :: S.Pattern p) vs' <- toP vs p
   withSNat (sPlus (snat :: SNat p) (snat :: SNat n)) $ do
-      ScopedPatList (ps' :: S.PatList S.Pattern p1) vs'' <- 
+      ScopedPatList (ps' :: Pat.PatList S.Pattern p1) vs'' <- 
     
           toPL vs' ps
       Refl <- Just (axiomAssoc @p1 @p @n)
-      withSNat (sPlus (snat :: SNat p1) (snat :: SNat p)) (return $ ScopedPatList (S.PCons p' ps') vs'')
+      withSNat (sPlus (snat :: SNat p1) (snat :: SNat p)) (return $ ScopedPatList (Pat.PCons p' ps') vs'')
 
 to :: SNatI n => [(LocalName, Fin n)] -> C.Term -> Maybe (S.Term n)
 to vs C.TyType = return S.TyType

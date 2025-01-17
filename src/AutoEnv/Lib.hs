@@ -5,6 +5,7 @@ module AutoEnv.Lib
     type Type,
     module Data.Type.Equality,
     Vec (..),
+    module Data.LocalName
   )
 where
 
@@ -13,3 +14,5 @@ import Data.Type.Equality
 import Data.Fin
 import Data.Nat
 import Data.Vec ( Vec(..) )
+
+import Data.LocalName

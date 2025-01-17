@@ -13,7 +13,7 @@ import AutoEnv.Env
 data PatN (p :: Nat) where
   PatN :: SNat p -> PatN p
 
-instance (SNatI p) => Pat.Sized (PatN p) where
+instance (SNatI p) => Sized (PatN p) where
   type Size (PatN p) = p
   size (PatN sn) = sn
 

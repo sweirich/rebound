@@ -7,7 +7,6 @@ import PiForall.PrettyPrint
 
 import AutoEnv.Env as Env
 import AutoEnv
-import AutoEnv.LocalName
 import AutoEnv.MonadScoped
 import AutoEnv.Pat.Simple as Pat
 import AutoEnv.Pat.LocalBind as L
@@ -61,7 +60,7 @@ equate t1 t2 = do
           matchBr (Branch bnd1) (Branch bnd2) =
               Pat.unbind bnd1 $ \p1 a1 ->
               Pat.unbind bnd2 $ \p2 a2 -> do
-                Refl <- Pat.patEq p1 p2 `Env.whenNothing` 
+                Refl <- patEq p1 p2 `Env.whenNothing` 
                         [DS "Cannot match branches in", DD n1, DS "and", DD n2]
                 push p1 (equate a1 a2)
         zipWithM_ matchBr brs1 brs2
@@ -170,9 +169,6 @@ whnf PrintMe = pure (DataCon "()" [])
 whnf tm = do
   return tm
 
-instance Pat.Sized (SNat n) where
-  type Size (SNat n) = n
-  size x = x
 
 instance Named (SNat p) where
   patLocals = go where
@@ -269,6 +265,6 @@ patternMatchList [] PNil = return zeroE
 patternMatchList (e1 : es) (PCons p1 ps) = do
     env1 <- patternMatches e1 p1
     env2 <- patternMatchList es ps
-    withSNat (Pat.size ps) $
+    withSNat (size ps) $
       return (env2 .++ env1)
 patternMatchList _ _ = Env.err [DS "pattern match failure"]

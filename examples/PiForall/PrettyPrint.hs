@@ -10,14 +10,16 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, s
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
-import AutoEnv.LocalName
+import AutoEnv.Lib
+import AutoEnv.Classes
 import AutoEnv.Context
 import AutoEnv.Env
 import AutoEnv.Pat.LocalBind as Local
+import AutoEnv.Pat.Scoped (TeleList(..))
 import qualified AutoEnv.Pat.Scoped as Scoped
+import AutoEnv.Pat.Simple (PatList(..))
 import qualified AutoEnv.Pat.Simple as Pat
-import AutoEnv.Lib
-import AutoEnv.Classes
+
 
 import PiForall.Syntax
 
@@ -167,13 +169,13 @@ instance Display (ConstructorDef n) where
 
 instance Display (Telescope m n) where
    display TNil = mempty
-   display (TCons (Scoped.Rebind (LocalDecl x tm) tele)) = do
+   display (TCons (LocalDecl x tm) tele) = do
     dtm   <- display tm 
     dtele <- local (push x) (display tele) 
     return $ PP.parens (if x /= internalName then
                     PP.pretty (show x) <+> PP.colon <+> dtm
                 else dtm) <+> dtele
-   display (TCons (Scoped.Rebind (LocalDef x tm) tele)) = do
+   display (TCons (LocalDef x tm) tele) = do
     dx <- display (Var x)
     dtm <- display tm
     dtele <- display tele

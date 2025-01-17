@@ -11,7 +11,7 @@ import qualified Test.QuickCheck as QC
 
 import Text.Parsec.Error ( ParseError )
 
-import AutoEnv.LocalName
+import Data.LocalName
 
 import PiForall.ConcreteSyntax
 import PiForall.Syntax (ConstructorNames(..))

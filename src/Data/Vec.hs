@@ -53,3 +53,7 @@ zipWith f (x ::: xs) (y ::: ys) = f x y ::: zipWith f xs ys
 append :: forall n m a. Vec n a -> Vec m a -> Vec (Plus n m) a
 append VNil v = v
 append (x ::: v) w = x ::: append v w
+
+vlength :: Vec n a -> SNat n
+vlength VNil = SZ
+vlength (_ ::: v) = SS (vlength v)

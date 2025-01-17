@@ -10,27 +10,10 @@ import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Env
 
+
 -- A pattern is any type that can be made an instance of the
 -- `Sized` type class below
 
-----------------------------------------------------------
--- Sized type class for patterns
-----------------------------------------------------------
-
--- | Calculate the number of binding variables in the pattern
--- This number does not need to be an explicit parameter of the type
--- so that we have flexibility about what types we can use as 
--- patterns. 
-class Sized (t :: Type) where
-  -- Retrieve size from the type
-  type Size t :: Nat
-  -- Access size as a term
-  size :: t -> SNat (Size t)
-  -- size _ = snat
-
--- | Pairs of types that can be compared with each other as patterns
-class PatEq (t1 :: Type) (t2 :: Type) where
-    patEq :: t1 -> t2 -> Maybe (Size t1 :~: Size t2)
 
 ----------------------------------------------------------
 -- Pattern binding (N-ary binding)
@@ -198,4 +181,33 @@ instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
         Rebind p1
           <$> strengthen' m (sPlus (size p1) n) p2
 
+--------------------------------------------------------------
+-- Lists of patterns
+--------------------------------------------------------------
+
+class (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
+instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
+
+-- | lists of patterns where variables at each position bind 
+-- later in the pattern
+data PatList (pat :: Nat -> Type) p where
+  PNil :: PatList pat N0
+  PCons :: Size (pat p1) ~ p1 =>
+    pat p1 -> PatList pat p2 -> PatList pat (Plus p2 p1)
+
+instance (forall n. Sized (pat n)) => Sized (PatList pat p) where
+    type Size (PatList pat p) = p
+    size PNil = s0
+    size (PCons (p1 :: pat p1) (p2 :: PatList pat p2)) = 
+        sPlus @p2 @(Size (pat p1)) (size p2) (size p1)
+
+instance (forall p1 p2. PatEq (pat p1) (pat p2)) => 
+      PatEq (PatList pat p1) (PatList pat p2) where
+  patEq :: PatList pat p1 -> PatList pat p2 -> Maybe (p1 :~: p2)
+  patEq PNil PNil = Just Refl
+  patEq (PCons p1 ps1) (PCons p2 ps2) = do
+    Refl <- patEq p1 p2
+    Refl <- patEq ps1 ps2
+    return Refl
+  patEq _ _ = Nothing
   

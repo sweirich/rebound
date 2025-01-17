@@ -6,50 +6,60 @@
 -- The pattern type must have kind `Nat -> Type`
 
 module AutoEnv.Pat.Scoped where
+
+import Data.Vec as Vec
+import Data.Fin
+
 import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Env
+import AutoEnv.MonadScoped
 
 import AutoEnv.Pat.Simple qualified as Pat
 
--- A scoped pattern is any type that can be made an instance of the
--- `Sized` type class below
+congPlusL :: forall m1 m2 n. m1 :~: m2 -> Plus m1 n :~: Plus m2 n
+congPlusL Refl = Refl
 
 ----------------------------------------------------------
 -- Sized type class for patterns
 ----------------------------------------------------------
 
--- A quantified constraint that the Scoped size is equal
--- to the nonscoped size
--- https://blog.poisson.chat/posts/2022-09-21-quantified-constraint-trick.html
-class (Pat.Sized (t n), Pat.Size (t n) ~ Size t) => PatSize t n
-instance (Pat.Sized (t n), Pat.Size (t n) ~ Size t) => PatSize t n
+-- Scoped patterns have kinds :: Nat -> Nat -> Type where 
+-- the first parameter is the number of variables that pattern
+-- binds, and the second parameter is the scope of for any 
+-- terms that appear inside the pattern. 
 
--- | Calculate the number of binding variables in the pattern
--- This number does not need to be an explicit parameter of the type
--- so that we have more flexibility about what types we can use as 
--- patterns. However, the scope of the pattern needs to be the last 
--- parameter.
-class (forall n. PatSize t n) => Sized (t :: Nat -> Type) where
-  type Size t :: Nat
-  -- recover the size of the pattern as a dynamic term
-  -- it is usually not a good idea to use this function, if it 
-  -- can be avoided 
-  size :: t n -> SNat (Size t)
-  size = Pat.size
+-- Crucially, the number of variables bound by the pattern
+-- shouldn't depend on the scope. We manifest that with the 
+-- associated type `ScopedSize :: Nat -> Type` and the constraint
+-- that it must be the same as Size for any p.
 
+class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
+instance (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
--- | Pairs of types that can be compared with each other as patterns
-class PatEq (t1 :: Nat -> Type) (t2 :: Nat -> Type) where
-    patEq :: t1 n1 -> t2 n2 -> Maybe (Size t1 :~: Size t2)
+class (forall n. EqSized pat n) => ScopedSized pat where
+  type ScopedSize (pat :: Nat -> Type) :: Nat
 
--- instance Sized t => Pat.Sized (t n) where
---  type Size t n = Size t
---  size x = size x
+-- For convenience, we give the `size` function a type that mentions
+-- `ScopedSize` instead of `Size`. 
+scopedSize :: forall p n. ScopedSized p => p n -> SNat (ScopedSize p)
+scopedSize = size
+
+-- And we give the `patLocals` function a similar type
+scopedLocals :: (ScopedSized pat, Named (pat n)) => 
+                pat n -> Vec (ScopedSize pat) LocalName
+scopedLocals = patLocals
+
+scopedPatEq :: (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 n1) (pat2 n2)) =>
+    pat1 n1 -> pat2 n2 -> Maybe (ScopedSize pat1 :~: ScopedSize pat2)
+scopedPatEq = patEq
+
+-- This file uses `ScopedSize` and `scopedSize` instead of `Size` and `size`
+-- throughout.
 
 
 ----------------------------------------------------------
--- Pattern binding (N-ary binding)
+-- Scoped Pattern binding
 ----------------------------------------------------------
 
 -- The `Bind` type generalizes the definitions above
@@ -62,15 +72,15 @@ data Bind v c (pat :: Nat -> Type) (n :: Nat) where
   Bind ::
     pat n ->
     Env v m n ->
-    c (Plus (Size pat) m) ->
+    c (Plus (ScopedSize pat) m) ->
     Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
 bind ::
   forall v c pat n.
-  (Sized pat, Subst v c) =>
+  (ScopedSized pat, Subst v c) =>
   pat n ->
-  c (Plus (Size pat) n) ->
+  c (Plus (ScopedSize pat) n) ->
   Bind v c pat n
 bind pat = Bind pat idE
 
@@ -83,63 +93,64 @@ getPat (Bind pat env t) = pat
 -- bound in the pattern
 getBody ::
   forall v c pat n.
-  (Sized pat, Subst v v, Subst v c) =>
+  (ScopedSized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  c (Plus (Size pat) n)
+  c (Plus (ScopedSize pat) n)
 getBody (Bind (pat :: pat n) (env :: Env v m n) t) =
-  applyE @v @c @(Plus (Size pat) m) (upN (size pat) env) t
+  applyE @v @c @(Plus (ScopedSize pat) m) (upN (scopedSize pat) env) t
 
 instantiate ::
   forall v c pat n.
-  (Sized pat, Subst v c) =>
+  (forall n. ScopedSized pat, Subst v c) =>
   Bind v c pat n ->
-  Env v (Size pat) n ->
+  Env v (ScopedSize pat) n ->
   c n
 instantiate b e = 
     unBindWith
     b
-    (\p r t -> withSNat (size p) $ applyE (e .++ r) t)
+    (\p r t -> withSNat (scopedSize p) $ applyE (e .++ r) t)
 
 instantiateWith ::
-  (Sized pat, SubstVar v) =>
+  (ScopedSized pat, SubstVar v) =>
   Bind v c pat n ->
-  Env v (Size pat) n ->
+  Env v (ScopedSize pat) n ->
   (forall m n. Env v m n -> c m -> c n) ->
   c n
 instantiateWith b v f =
-  unBindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
+  unBindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
 
 unbind ::
   forall v c pat n d.
-  (SNatI n, Sized pat, Subst v v, Subst v c) =>
+  (SNatI n, forall n. ScopedSized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (forall m. (SNatI m, m ~ Plus (Size pat) n) => pat n -> c m -> d) ->
+  (forall m. (SNatI m, m ~ Plus (ScopedSize pat) n) => pat n -> c m -> d) ->
   d
 unbind bnd f =
-  withSNat (sPlus (size (getPat bnd)) (snat @n)) $
+  withSNat (sPlus (scopedSize (getPat bnd)) (snat @n)) $
     f (getPat bnd) (getBody bnd)
 
 -- | Apply a function to the pattern, suspended environment and body
 -- in a pattern binding
 unBindWith ::
-  (Sized pat, SubstVar v) =>
+  (forall n. Sized (pat n), SubstVar v) =>
   Bind v c pat n ->
-  (forall m. pat n -> Env v m n -> c (Plus (Size pat) m) -> d) ->
+  (forall m. pat n -> Env v m n -> c (Plus (ScopedSize pat) m) -> d) ->
   d
 unBindWith (Bind pat r t) f = f pat r t
 
-
-
-applyUnder ::
-  (forall n. Sized pat, Subst v v, Subst v c, Subst v pat) =>
+applyUnder :: forall pat v c n1 n2.
+  (ScopedSized pat, Subst v v, Subst v c, Subst v pat) =>
   (forall m n. Env v m n -> c m -> c n) ->
   Env v n1 n2 ->
   Bind v c pat n1 ->
   Bind v c pat n2
 applyUnder f r2 (Bind p r1 t) =
-  Bind p' idE (f r' t)
+     Bind p' idE (f r' t)
   where
-    r' = upN (size p') (r1 .>> r2)
+    r' = upN sp' (r1 .>> r2)
+    sp' :: SNat (ScopedSize pat)
+    sp' = size p'
+    p' :: pat n2
     p' = applyE r2 p
 
 
@@ -165,15 +176,18 @@ instantiateWeakenEnv p n a =
 -- instances for Bind
 -----------------------------------------------------------------
 
-instance (Subst v p, Subst v v) => Subst v (Bind v c p) where
-  applyE env1 (Bind p env2 m) =
-    Bind (applyE env1 p) (env2 .>> env1) m
-
-
+instance (ScopedSized pat, 
+          Subst v pat, 
+          Subst v v) => Subst v (Bind v c pat) where
+  applyE (env1 :: Env v n m) 
+         (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
+       Bind (applyE env1 pat) (env2 .>> env1) m 
+    
+      
 instance
   ( Subst v v,
     Subst v c,
-    Sized p,
+    ScopedSized p,
     FV p,
     FV c
   ) =>
@@ -182,49 +196,149 @@ instance
   appearsFree n b =
     let pat = getPat b
      in appearsFree n pat
-          || appearsFree (shiftN (size pat) n) (getBody b)
+          || appearsFree (shiftN (scopedSize pat) n) (getBody b)
 
-instance
-  (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
+
+instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
   Strengthen (Bind v c p)
   where
-  strengthen' (m :: SNat m) (n :: SNat n) b =
-    case axiomM @m @(Size p) @n of
+  strengthen' (m :: SNat m) (n :: SNat n) (b :: Bind v c p (Plus m n)) =
+    case axiomM @m @(ScopedSize p) @n of
       Refl ->
+        let sp :: SNat (ScopedSize p)
+            sp = size (getPat b)
+            body :: c (Plus (ScopedSize p) (Plus m n))
+            body = getBody b
+        in
         withSNat n $
         case strengthen' m n (getPat b) of
-          Just p' -> bind p' <$> strengthen' m (sPlus (size (getPat b)) n) (getBody b)
+          Just p' -> bind p' <$> strengthen' m (sPlus sp n) (getBody b)
           Nothing -> Nothing
+
+-----------------------------------------------------------------
+-- Telescopes
+---------------------------------------------------------------
+
+-- Telescopes are parameterized by scoped patterns, with kinds 
+-- `pat :: Nat -> Nat -> Type`. For these types, we need to know 
+-- that the first argument is the number of binding variables, 
+-- (i.e. Size or ScopedSize) so we need yet *another* type class 
+-- to make this constraint.
+
+class (ScopedSize (t p) ~ p) => EqScopedSized t p
+instance (ScopedSize (t p) ~ p) => EqScopedSized t p
+class (forall p. ScopedSized (pat p),
+       forall p. EqScopedSized pat p) => IScopedSized pat where
+  
+-- with this type class, we wrap the size function yet again 
+-- to give it an easier to use type
+iscopedSize :: IScopedSized pat => pat p n -> SNat p
+iscopedSize = scopedSize
+
+iscopedLocals :: (IScopedSized pat, Named (pat p n)) => pat p n -> Vec p LocalName
+iscopedLocals = scopedLocals
+
+iscopedPatEq :: (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
+    pat1 p1 n1 -> pat2 p2 n2 -> Maybe (p1 :~: p2)
+iscopedPatEq = scopedPatEq
+
+-- | Telescopes: lists of local assumptions 
+-- These are scoped patterns because they include terms 
+-- that can mention variables that are already in scope
+-- or that have been bound earlier in the pattern.
+-- 'p' is the number of variables introduced by the telescope
+-- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
+-- We include the appropriate associativity property with ICons so 
+-- that it is always available for pattern matching
+data TeleList (pat :: Nat -> Nat -> Type) p n where
+  TNil :: TeleList pat N0 n
+  TCons :: 
+    ( IScopedSized pat, 
+      Plus p2 (Plus p1 n) ~ Plus (Plus p2 p1) n) =>
+    pat p1 n -> TeleList pat p2 (Plus p1 n) -> TeleList pat (Plus p2 p1) n
+
+-- Smart constructor
+(<:>) :: forall p1 p2 pat n. 
+         (IScopedSized pat) =>
+         pat p1 n -> TeleList pat p2 (Plus p1 n) -> TeleList pat (Plus p2 p1) n
+e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
+infixr <:>
+
+instance IScopedSized (TeleList pat) where
+
+instance ScopedSized (TeleList pat p) where
+  type ScopedSize (TeleList pat p) = p
+
+instance Sized (TeleList pat p n) where
+  type Size (TeleList pat p n) = p
+  size TNil = s0
+  size (TCons p1 p2) = sPlus (size p2) (iscopedSize p1)
+
+instance (forall p1 n. Named (pat p1 n), 
+          IScopedSized pat) => Named (TeleList pat p n) where
+  patLocals TNil = VNil
+  patLocals (TCons p ps) = 
+        Vec.append (patLocals ps) (iscopedLocals p)
+
+instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => 
+  Subst v (TeleList pat p) where
+    applyE r TNil = TNil
+    applyE r (TCons p1 p2) = 
+      applyE r p1 <:> applyE (upN (iscopedSize p1) r) p2
+    
+instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
+  appearsFree :: forall n. (IScopedSized pat, forall p1. FV (pat p1)) => 
+      Fin n -> TeleList pat p n -> Bool
+  appearsFree n TNil = False
+  appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (shiftN (iscopedSize p1) n) p2
+
+instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
+  strengthen' :: forall m n p pat . (forall (p1 :: Nat). Strengthen (pat p1)) => 
+              SNat m -> SNat n -> TeleList pat p (Plus m n) -> Maybe (TeleList pat p n)
+  strengthen' m n TNil = Just TNil
+  strengthen' m n (TCons (p1 :: pat p1 (Plus m n)) p2) =
+    case axiomM @m @p1 @n of
+       Refl ->
+        (<:>) <$> strengthen' m n p1
+              <*> strengthen' m (sPlus (iscopedSize p1) n) p2
+instance 
+  (forall p1 p2 n1 n2. PatEq (pat p1 n1) (pat p2 n2), IScopedSized pat) =>
+  PatEq (TeleList pat p1 n1) (TeleList pat p2 n2) where
+  patEq TNil TNil = Just Refl
+  patEq (TCons p1 p2) (TCons p1' p2') 
+    | Just Refl <- iscopedPatEq p1 p1'
+    , Just Refl <- iscopedPatEq p2 p2'
+    = Just Refl
+  patEq _ _ = Nothing
 
 -----------------------------------------------------------------
 -- Rebind 
 ---------------------------------------------------------------
-
+{- 
 data Rebind p1 p2 n where
   Rebind :: 
-    Plus (Size p2) (Plus (Size p1) n) ~ Plus (Plus (Size p2) (Size p1)) n =>
-    p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+    Plus (Size (p2 n)) (Plus (Size (p1 n)) n) ~ Plus (Plus (Size (p2 n)) (Size (p1 n))) n =>
+    p1 n -> p2 (Plus (Size (p1 n)) n) -> Rebind p1 p2 n
 
-rebind :: forall p1 p2 n. p1 n -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+rebind :: forall p1 p2 n. p1 n -> p2 (Plus (Size (p1 n)) n) -> Rebind p1 p2 n
 rebind p1 p2 = 
-  case axiomAssoc @(Size p2) @(Size p1) @n of
+  case axiomAssoc @(Size (p2 n)) @(Size (p1 n)) @n of
     Refl -> Rebind p1 p2
 
-instance ((forall n. PatSize p1 n), (forall m. PatSize p2 m)) => 
-  Pat.Sized (Rebind p1 p2 n) where
-    type Size (Rebind p1 p2 n) = Plus (Size p2) (Size p1)
-    size (Rebind p1 p2) = sPlus @(Size p2) @(Size p1) (Pat.size p2) (Pat.size p1)
+instance (ScopedSized p1, ScopedSized p2) => Sized (Rebind p1 p2 n) where
+    type Size (Rebind p1 p2 n) = Plus (Size (p2 n)) (Size (p1 n))
+    size (Rebind p1 p2) = sPlus @(Size (p2 n)) @(Size (p1 n)) (size p2) (size p1)
 
-instance (Sized p1, Sized p2) => Sized (Rebind p1 p2) where
-  type Size (Rebind p1 p2) = Plus (Size p2) (Size p1)
-  size (Rebind p1 p2) = sPlus (size p2) (size p1)
+-- instance (Sized p1, Sized p2) => Sized (Rebind p1 p2) where
+--  type Size (Rebind p1 p2) = Plus (Size p2) (Size p1)
+--  size (Rebind p1 p2) = sPlus (size p2) (size p1)
 
 instance
-  (Subst v v, Sized p1, Subst v p1, Subst v p2) =>
+  (Subst v v, forall n. ScopedSized p1, Subst v p1, Subst v p2) =>
   Subst v (Rebind p1 p2)
   where
   applyE ::
-    (Subst v v, Sized p1, Subst v p2) =>
+    (Subst v v, ScopedSized p1, Subst v p2) =>
     Env v n m ->
     Rebind p1 p2 n ->
     Rebind p1 p2 m
@@ -232,12 +346,12 @@ instance
     rebind (applyE r p1) (applyE (upN (size p1) r) p2)
 
 
-instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
-  appearsFree :: (Sized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
+instance (forall n. ScopedSized p1, FV p2) => FV (Rebind p1 p2) where
+  appearsFree :: (ScopedSized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = appearsFree (shiftN (size p1) n) p2
 
 
-instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
+instance (forall n. ScopedSized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthen' ::
     forall m n p.
     SNat m ->
@@ -245,7 +359,7 @@ instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) w
     Rebind p1 p2 (Plus m n) ->
     Maybe (Rebind p1 p2 n)
   strengthen' m n (Rebind p1 p2) =
-    case axiomM @m @(Size p1) @n of
+    case axiomM @m @(Size (p1 n)) @n of
       Refl ->
         rebind <$> strengthen' m n p1
           <*> strengthen' m (sPlus (size p1) n) p2
@@ -254,22 +368,23 @@ instance (Sized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) w
 
 unRebind ::
   forall p1 p2 n c.
-  (Sized p1, Sized p2, SNatI n) =>
+  (ScopedSized p1, ScopedSized p2, SNatI n) =>
   Rebind p1 p2 n ->
-  ( ( SNatI (Size p1),
-      SNatI (Size p2),
-      SNatI (Plus (Size p1) n),
-      Plus (Size p2) (Plus (Size p1) n) ~ Plus (Plus (Size p2) (Size p1)) n
+  ( ( SNatI (Size (p1 n)),
+      SNatI (Size (p2 n)),
+      SNatI (Plus (Size (p1 n)) n),
+      Plus (Size (p2 n)) (Plus (Size (p1 n)) n) ~ Plus (Plus (Size (p2 n)) (Size (p1 n))) n
     ) =>
     p1 n ->
-    p2 (Plus (Size p1) n) ->
+    p2 (Plus (Size (p1 n)) n) ->
     c
   ) ->
   c
 unRebind (Rebind p1 p2) f =
-  case axiomAssoc @(Size p2) @(Size p1) @n of
+  case axiomAssoc @(Size (p2 n)) @(Size (p1 n)) @n of
     Refl ->
       withSNat (size p1) $
         withSNat (size p2) $
           withSNat (sPlus (size p1) (snat @n)) $
             f p1 p2
+-}

@@ -21,7 +21,9 @@ import AutoEnv.Lib
 import AutoEnv
 import AutoEnv.MonadScoped
 import qualified AutoEnv.Bind as B
+import AutoEnv.Pat.Simple (PatList(..))
 import qualified AutoEnv.Pat.Simple as Pat
+import AutoEnv.Pat.Scoped (TeleList(..),(<:>))
 import qualified AutoEnv.Pat.Scoped as Scoped
 import qualified AutoEnv.Pat.LocalBind as Local
 import AutoEnv.Context
@@ -69,11 +71,11 @@ inferType a ctx = case a of
   -- Type constructor application
   (TyCon c params) -> do
     (DataDef delta _ cs) <- Env.lookupTCon c
-    unless (length params == toInt (Scoped.size delta)) $
+    unless (length params == toInt (Scoped.scopedSize delta)) $
       Env.err
         [ DS "Datatype constructor",
           DS c,
-          DS ("should have " ++ show (Scoped.size delta) ++ " parameters, but was given"),
+          DS ("should have " ++ show (Scoped.scopedSize delta) ++ " parameters, but was given"),
           DC (length params)
         ]
     let delta' = weakenTeleClosed delta
@@ -89,7 +91,7 @@ inferType a ctx = case a of
     case matches of
       [ (tname, ScopedConstructorDef 
                     TNil (ConstructorDef _ (thetai :: Telescope m Z))) ] -> do
-        let numArgs = toInt $ Scoped.size thetai
+        let numArgs = toInt $ Scoped.scopedSize thetai
         unless (length args == numArgs) $
           Env.err
             [ DS "Constructor", DS c, DS "should have", DC numArgs,
@@ -210,7 +212,7 @@ checkType tm ty ctx = do
       case ty' of
         (TyCon tname params) -> do
           ScopedConstructorDef delta (ConstructorDef cn theta) <- Env.lookupDCon c tname
-          let numArgs = toInt $ Scoped.size theta
+          let numArgs = toInt $ Scoped.scopedSize theta
           unless (length args == numArgs) $
             Env.err
               [ DS "Constructor", DS c, DS "should have", DC numArgs,
@@ -226,7 +228,6 @@ checkType tm ty ctx = do
     (Case scrut alts) -> do
       sty <- inferType scrut ctx
       (c, args) <- Equal.ensureTCon sty
-      scrut' <- Equal.whnf scrut 
       let 
         checkAlt :: Match n -> TcMonad n ()
         checkAlt (Branch bnd) = do
@@ -237,7 +238,7 @@ checkType tm ty ctx = do
             (ctx', tm', r1) <- declarePat pat (TyCon c args) ctx
           
             -- shift scrutinee and result type into the scope of the branch
-            let scrut'' = applyE @Term (shiftNE (snat @p)) scrut'
+            let scrut'' = applyE @Term (shiftNE (snat @p)) scrut
             let ty1 = applyE @Term (shiftNE (snat @p)) ty'
             
             -- compare scrutinee and pattern: fails if branch is inaccessible
@@ -255,7 +256,7 @@ checkType tm ty ctx = do
             -- check the branch
             push pat $ checkType body' ty3 ctx''
       mapM_ checkAlt alts
-      exhaustivityCheck scrut' sty (map getSomePat alts) ctx
+      exhaustivityCheck sty (map getSomePat alts) ctx
     
     -- c-infer
     _ -> do
@@ -288,15 +289,15 @@ getSomePat (Branch bnd) = Some (Pat.getPat bnd)
 tcTypeTele :: forall p1 n. 
    Telescope p1 n -> Context n -> TcMonad n (Context (Plus p1 n))
 tcTypeTele TNil ctx = return ctx
-tcTypeTele (TCons (Scoped.Rebind (LocalDef x tm) (tele :: Telescope p2 n))) ctx = do
+tcTypeTele (TCons (LocalDef x tm) (tele :: Telescope p2 n)) ctx = do
   ty1 <- inferType (Var x) ctx
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
   -- TODO: substitute in telescope as well as context??!!! 
   let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
   tcTypeTele tele ctx'
-tcTypeTele (TCons (Scoped.Rebind (LocalDecl x ty) 
-  (tl :: Telescope p2 (S n)))) ctx = do
+tcTypeTele (TCons  (LocalDecl x ty) 
+  (tl :: Telescope p2 (S n))) ctx = do
   tcType ty ctx
   push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
@@ -313,19 +314,16 @@ G |- tm, tms : (x:A, Theta) ==> {tm/x},sigma
 tcArgTele :: forall p n. 
   [Term n] -> Telescope p n -> Context n -> TcMonad n (Env Term (Plus p n) n, Refinement Term n)
 tcArgTele [] TNil ctx = return (idE, emptyR)
-tcArgTele args (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p2 n))) ctx = do
-  --case axiomPlusZ @p2 of 
-  --  Refl -> do
+tcArgTele args (TCons (LocalDef x ty) (tele :: Telescope p2 n)) ctx = do
        -- ensure that the equality is provable at this point
        Equal.equate (Var x) ty 
        (rho, ref) <- tcArgTele args tele ctx
        r1 <- (singletonR (x, ty) `joinR` ref) `Env.whenNothing` [DS "BUG: cannot join refinements"]
        return (rho, r1)
           
-tcArgTele (tm : terms) (TCons (Scoped.Rebind (LocalDecl ln ty) 
-          (tele :: Telescope p1 (S n)))) ctx = case (--axiomAssoc @p1 @N1 @n, 
-          axiom @p1 @n) of 
-    ({-Refl,-} Refl) -> do
+tcArgTele (tm : terms) (TCons (LocalDecl ln ty) 
+          (tele :: Telescope p1 (S n))) ctx = case (axiom @p1 @n) of 
+    Refl -> do
       checkType tm ty ctx
       tele' <- doSubst @N1 (tm .: idE) tele
       (ss,r) <- tcArgTele terms tele' ctx
@@ -349,11 +347,21 @@ mkSubst [] _ =
 mkSubst _ SZ =
   Env.err [DS "Too many arguments provided."]
 
-
-
--- | increment all free variables by m
-shiftNRE :: (SubstVar v) => SNat m -> Env v n (Plus n m)
-shiftNRE m = Env (var . shiftRN m)
+-- Iterate over the list in result
+mkSubst' :: forall p n. [Term n] -> SNat p -> TcMonad n (Env Term (Plus p n) n)
+mkSubst' args p = do
+        (rargs, r) <- go p 
+        case rargs of
+           [] -> return r
+           _  -> Env.err [DS "Too many arguments provided."]
+     where
+       go :: forall p. SNat p -> TcMonad n ([Term n], Env Term (Plus p n) n)
+       go SZ     = return (args, idE)
+       go (SS m) = do
+         (rargs,ss) <- go m
+         case rargs of 
+            (tm:tms) -> return (tms, tm .: ss)
+            [] -> Env.err [DS "Too few arguments provided"]
 
 -- | Substitute a list of terms for the variables bound in a telescope
 -- This is used to instantiate the parameters of a data constructor
@@ -367,12 +375,10 @@ substTele :: forall p1 p2 n.
           -> Telescope p2 p1   -- theta
           -> TcMonad n (Telescope p2 n)
 substTele delta params theta = 
-  do let delta' = weakenTeleClosed delta -- applyE @Term (weakenE' (snat @n)) delta
-     (ss :: Env Term (Plus p1 n) n) <- mkSubst (reverse params) (Scoped.size delta')
+  do let delta' = weakenTeleClosed delta 
+     (ss :: Env Term (Plus p1 n) n) <- mkSubst' params (Scoped.scopedSize delta')
      s <- scope
-     let --shift :: Env Term p1 (Plus p1 n)
-         --shift = Env (var . shiftRN (snat @n))
-         weaken :: Env Term p1 (Plus p1 n)
+     let weaken :: Env Term p1 (Plus p1 n)
          weaken = Env (var . weakenFinRight (scope_size s))
      let theta' :: Telescope p2 (Plus p1 n)
          theta' = applyE @Term weaken theta
@@ -383,9 +389,9 @@ substTele delta params theta =
 
 doSubst :: forall q n p. Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad n (Telescope p n)
 doSubst r TNil = return TNil
-doSubst r (TCons (Scoped.Rebind e (t :: Telescope p2 m))) = case e of 
-    LocalDef x (tm :: Term (Plus q n)) -> case (axiomPlusZ @q, axiomPlusZ @p2) of 
-      (Refl,Refl) -> do
+doSubst r (TCons  e (t :: Telescope p2 m)) = case e of 
+    LocalDef x (tm :: Term (Plus q n)) -> case axiomPlusZ @p2 of 
+      Refl -> do
         let tx' = applyE r (Var x)
         let tm' = applyE r tm
         defs <- Equal.unify tx' tm'
@@ -399,7 +405,7 @@ doSubst r (TCons (Scoped.Rebind e (t :: Telescope p2 m))) = case e of
         Refl -> do
           let ty' = applyE r ty
           (t' :: Telescope p2 (S n)) <- push nm $ doSubst @q @(S n) (up r) t
-          return $ TCons (Scoped.rebind (LocalDecl nm ty') t')
+          return $ LocalDecl nm ty' <:> t'
 
 appendDefs :: Refinement Term n -> Telescope p n -> Telescope p n
 appendDefs (Refinement m) = go (Map.toList m) where
@@ -407,7 +413,7 @@ appendDefs (Refinement m) = go (Map.toList m) where
    go [] t = t
    go ((x,tm):defs) (t :: Telescope p1 n) = 
     case axiomPlusZ @p1 of 
-      Refl -> TCons (Scoped.Rebind (LocalDef x tm) (go defs t))
+      Refl -> (LocalDef x tm) <:> (go defs t)
 
 -----------------------------------------------------------
 -- Typechecking pattern matching
@@ -425,7 +431,7 @@ declarePat (PatCon dc (pats :: PatList Pattern p)) ty ctx = do
       (ConstructorDef cn (thetai :: Telescope p2 p1)) <- Env.lookupDCon dc tc
   case axiomPlusZ @n of 
     Refl ->
-      case testEquality (Pat.size pats) (Scoped.size thetai) of
+      case testEquality (size pats) (Scoped.scopedSize thetai) of
          Just Refl -> do
            (tele :: Telescope p2 n) <- substTele delta params thetai
            (ctx', tms', r) <- declarePats pats tele ctx
@@ -440,17 +446,17 @@ declarePat (PatCon dc (pats :: PatList Pattern p)) ty ctx = do
 -- n is the current scope
 declarePats :: forall p pt n. 
   PatList Pattern p -> Telescope pt n -> Context n -> TcMonad n (Context (Plus p n), [Term (Plus p n)], Refinement Term (Plus p n))
-declarePats pats (TCons (Scoped.Rebind (LocalDef x ty) (tele :: Telescope p1 n))) ctx = do
+declarePats pats (TCons  (LocalDef x ty) (tele :: Telescope p1 n)) ctx = do
   case axiomPlusZ @p1 of 
     Refl -> do
       (ctx', tms', rf)  <- declarePats pats tele ctx
-      let r1 = shiftRefinement (Pat.size pats) (singletonR (x,ty))
+      let r1 = shiftRefinement (size pats) (singletonR (x,ty))
       r' <- joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
       pure (ctx', tms', r')
       -- TODO: substitute for x in tele'
       -- pure (ctx', tms')
 declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2)) 
-  (TCons (Scoped.Rebind (LocalDecl x ty1) (tele2 :: Telescope p3 (S n)))) ctx = do
+  (TCons  (LocalDecl x ty1) (tele2 :: Telescope p3 (S n))) ctx = do
     let fact :: Plus p2 (Plus p1 n) :~: Plus p n
         fact = axiomAssoc @p2 @p1 @n
     case fact of
@@ -460,15 +466,15 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2))
           rf1 :: Refinement Term (Plus p1 n)) <- declarePat @p1 p1 ty1 ctx
         s <- scope
         let ss :: Env Term (S n) (Plus p1 n)
-            ss = Scoped.instantiateWeakenEnv (Pat.size p1) (scope_size s) tm
+            ss = Scoped.instantiateWeakenEnv (size p1) (scope_size s) tm
         let tele' :: Telescope p3 (Plus p1 n)
             tele' = applyE ss tele2
         (ctx2  :: Context (Plus p2 (Plus p1 n)), 
            tms :: [Term (Plus p2 (Plus p1 n))], 
            rf2 :: Refinement Term (Plus p2 (Plus p1 n))) <- 
               push p1 $ declarePats @p2 @p3 @(Plus p1 n) p2 tele' ctx1
-        case joinR (shiftRefinement (Pat.size p2) rf1) rf2 of 
-          Just rf -> return (ctx2, applyE @Term (shiftNE (Pat.size p2)) tm : tms, rf)
+        case joinR (shiftRefinement (size p2) rf1) rf2 of 
+          Just rf -> return (ctx2, applyE @Term (shiftNE (size p2)) tm : tms, rf)
           Nothing -> Env.err [DS "cannot create refinement"]
 declarePats PNil TNil ctx = return (ctx, [], emptyR)
 declarePats PNil _ _ = Env.err [DS "Not enough patterns in match for data constructor"]
@@ -635,9 +641,9 @@ data Some (p :: Nat -> Type) where Some :: forall x p. SNatI x => (p x) -> Some 
 -- code looks up the data constructors for that type and makes sure that
 -- there are patterns for each one.
 
-exhaustivityCheck :: forall n. Term n -> Typ n -> [Some Pattern] -> Context n -> TcMonad n ()
-exhaustivityCheck _scrut ty (Some (PatVar x) : _) ctx = return ()
-exhaustivityCheck _scrut ty pats ctx = do
+exhaustivityCheck :: forall n. Typ n -> [Some Pattern] -> Context n -> TcMonad n ()
+exhaustivityCheck ty (Some (PatVar x) : _) ctx = return ()
+exhaustivityCheck ty pats ctx = do
   (tcon, tys) <- Equal.ensureTCon ty
   DataDef (delta :: Telescope p1 Z) sort datacons <- Env.lookupTCon tcon
   let   loop :: [Some Pattern] -> [ConstructorDef p1] -> TcMonad n ()
@@ -650,7 +656,7 @@ exhaustivityCheck _scrut ty pats ctx = do
         loop  (Some (PatVar x) : _) dcons = return ()
         loop  (Some (PatCon dc (args :: PatList Pattern p)) : pats') dcons = do
           (ConstructorDef _ (tele :: Telescope p2 p1), dcons') <- removeDCon dc dcons
-          case testEquality (snat @p) (Scoped.size tele) of 
+          case testEquality (snat @p) (Scoped.scopedSize tele) of 
             Just Refl -> do
                 tele' <- substTele delta tys tele
                 let (aargs, pats'') = relatedPats dc pats'
@@ -717,9 +723,9 @@ relatedPats dc (pc : pats) =
 -- are pattern variables.
 checkSubPats :: forall p n. DataConName -> Telescope p n -> [Some (PatList Pattern)] -> TcMonad n ()
 checkSubPats dc TNil _ = return ()
-checkSubPats dc (TCons (Scoped.Rebind (LocalDef _ _) (tele :: Telescope p2 n))) (patss :: [Some (PatList Pattern)]) = 
+checkSubPats dc (TCons  (LocalDef _ _) (tele :: Telescope p2 n)) (patss :: [Some (PatList Pattern)]) = 
   checkSubPats dc tele patss
-checkSubPats dc (TCons (Scoped.Rebind (LocalDecl x _) (tele :: Telescope p2 (S n)))) 
+checkSubPats dc (TCons (LocalDecl x _) (tele :: Telescope p2 (S n))) 
                 (patss :: [Some (PatList Pattern)]) = do
       case allHeadVars patss of 
         Just tls -> push x $ checkSubPats @_ @(S n) dc tele tls
@@ -730,6 +736,6 @@ checkSubPats dc (TCons (Scoped.Rebind (LocalDecl x _) (tele :: Telescope p2 (S n
 allHeadVars :: [Some (PatList Pattern)] -> Maybe [Some (PatList Pattern)]
 allHeadVars [] = Just []
 allHeadVars (Some (PCons (PatVar x) (pats :: PatList Pattern p2)) : patss) = do
-  withSNat (Pat.size pats) $
+  withSNat (size pats) $
     (Some pats :) <$> allHeadVars patss
 allHeadVars _ = Nothing

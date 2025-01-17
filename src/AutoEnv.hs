@@ -6,10 +6,11 @@ module AutoEnv
   (module AutoEnv.Lib,
    module AutoEnv.Classes,
    module AutoEnv.Env,
-   module AutoEnv.LocalName)
+   module AutoEnv.MonadScoped)
 where
 
 import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Env
-import AutoEnv.LocalName
+import AutoEnv.MonadScoped
+

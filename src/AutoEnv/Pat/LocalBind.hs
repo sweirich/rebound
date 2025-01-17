@@ -1,7 +1,6 @@
 -- single binder, but includes a cached name
 module AutoEnv.Pat.LocalBind
    (module AutoEnv.Classes,
-    module AutoEnv.LocalName,
     type Bind,
     bind,
     getLocalName,
@@ -13,7 +12,6 @@ module AutoEnv.Pat.LocalBind
     ) where
 
 import AutoEnv.Classes
-import AutoEnv.LocalName
 import AutoEnv.MonadScoped(Named)
 import qualified AutoEnv.Pat.Simple as Pat
 import AutoEnv.Lib
