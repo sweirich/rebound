@@ -150,3 +150,7 @@ instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where
      , Just Refl <- patEq y1 y2
      = Just Refl
    patEq _ _ = Nothing
+
+------------------------------------------
+
+

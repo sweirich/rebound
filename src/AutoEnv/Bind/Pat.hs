@@ -1,18 +1,27 @@
 -- | A "Simple" pattern can bind variables but 
 -- cannot contain references to free variables in scope 
--- (i.e. in a type annotation).
+-- (e.g. in a type annotation).
 
 -- The pattern type must have kind `Type`
-
-module AutoEnv.Bind.Pat where
+-- See Pat.LocalName for example
+module AutoEnv.Bind.Pat(
+  module AutoEnv.Classes,
+  type Bind,
+  bind,
+  getPat,
+  getBody,
+  instantiate,
+  instantiateWith,
+  unbind,
+  unbindWith,
+  applyUnder,
+  type Rebind(..),
+  type PatList(..),
+) where
 
 import AutoEnv
+import AutoEnv.Classes
 import Data.Vec as Vec
-
-
--- A pattern is any type that can be made an instance of the
--- `Sized` type class below
-
 
 ----------------------------------------------------------
 -- Pattern binding (N-ary binding)
@@ -60,7 +69,7 @@ instantiate ::
   Env v (Size pat) n ->
   c n
 instantiate b e =
-  unBindWith
+  unbindWith
     b
     (\p r t -> withSNat (size p) $ applyE (e .++ r) t)
 
@@ -71,7 +80,7 @@ instantiateWith ::
   Env v (Size pat) n ->
   (forall m n. Env v m n -> c m -> c n) ->
   c n
-instantiateWith b v f = unBindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
+instantiateWith b v f = unbindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
   
 
   
@@ -89,12 +98,12 @@ unbind bnd f =
 
 -- | Apply a function to the pattern, suspended environment, and body
 -- in a pattern binding
-unBindWith ::
+unbindWith ::
   (Sized pat, SubstVar v) =>
   Bind v c pat n ->
   (forall m. pat -> Env v m n -> c (Plus (Size pat) m )-> d) ->
   d
-unBindWith (Bind pat (r :: Env v m n) t) f = 
+unbindWith (Bind pat (r :: Env v m n) t) f = 
   f pat r t
 
 -- | apply an environment-parameterized function & environment

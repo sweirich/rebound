@@ -1,6 +1,20 @@
-module AutoEnv.Bind.Single where
+-- | Simplest form of binding: a single variable
+-- with no other information stored with the binder
+module AutoEnv.Bind.Single
+  (module AutoEnv.Classes,
+  type Bind,
+  bind,
+  unbind,
+  getBody,
+  instantiate, 
+  instantiateWith,
+  instantiateWeakenEnv,
+  instantiateShift,
+  unbindWith,
+  applyUnder) where
 
 import AutoEnv
+import AutoEnv.Classes
 
 ----------------------------------------------------------------
 -- Single binders

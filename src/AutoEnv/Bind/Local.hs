@@ -1,4 +1,5 @@
--- single binder, but includes a cached name
+-- | single binder, but includes a name for pretty printing
+-- type synonym for Pat.Bind with an opaque name as the pattern
 module AutoEnv.Bind.Local
    (module AutoEnv.Classes,
     type Bind,
@@ -15,16 +16,6 @@ import AutoEnv
 import AutoEnv.Classes
 import qualified AutoEnv.Bind.Pat as Pat
 
-
-
-
-{-
-instance Pat.PatEq LocalName LocalName where
-  patEq (Box _) (Box _) = Just Refl
-
-instance Eq LocalName where
-  x == y = True
--}
 ---------------------------------------------------------------
 -- LocalBind operations (convenience wrappers)
 

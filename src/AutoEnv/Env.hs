@@ -13,6 +13,7 @@ module AutoEnv.Env(Env,
   upN,
   shift1E,
   shiftNE,
+  fromVec,
   Refinement(..),
   emptyR,
   joinR,
@@ -140,6 +141,18 @@ upN ::
   Env v (Plus p m) (Plus p n)
 upN SZ = id
 upN (SS n) = \e -> var FZ .: (upN n e .>> shift1E)
+
+----------------------------------------------------
+-- Create an environment from a length-indexed 
+-- vector of scoped values
+
+fromVec :: Vec m (v n) -> Env v m n
+fromVec VNil = zeroE
+fromVec (x ::: vs) = x .: fromVec vs
+
+-- toVec :: SNat m -> Env v m n -> Vec m (v n)
+-- toVec SZ r = VNil
+-- toVec (SS x) r = r x ::: toVec x (tail r)
 
 ----------------------------------------------------------------
 -- Refinements
