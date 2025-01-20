@@ -15,9 +15,9 @@ import AutoEnv.Context
 
 import AutoEnv
 import AutoEnv.Env
-import qualified AutoEnv.Pat.Simple as Pat
+import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.MonadScoped
-import qualified AutoEnv.Pat.LocalBind as Local
+import qualified AutoEnv.Bind.Local as Local
 import PiForall.Syntax
 import PiForall.PrettyPrint
 
@@ -53,15 +53,15 @@ data TcEnv n = TcEnv
     -- | what part of the file we are in (for errors/warnings)
     sourceLocation :: [SourceLocation],
     -- | the current scope of local variables
-    env_scope :: Scope n,
+    env_scope :: Scope LocalName n,
     -- | current refinement for variables in scope
     env_refinement :: Refinement Term n
   }
 
-instance MonadScoped TcMonad where
+instance MonadScoped LocalName TcMonad where
   scope = asks env_scope
 
-  push :: Named pat => pat -> TcMonad (Plus (Size pat) n) a -> TcMonad n a
+  push :: Named LocalName pat => pat -> TcMonad (Plus (Size pat) n) a -> TcMonad n a
   push pat (TcMonad m) =
     TcMonad (ReaderT $ \env ->
       runReaderT m
@@ -246,7 +246,7 @@ extendLocal (LocalDef x u) k ctx = error "TODO: local definitions unsupported"
 
 -- | Marked locations in the source code
 data SourceLocation where
-  SourceLocation :: forall a n. Display a => SourcePos -> a -> Scope n -> SourceLocation
+  SourceLocation :: forall a n. Display a => SourcePos -> a -> Scope LocalName n -> SourceLocation
 
 -- | Push a new source position on the location stack.
 extendSourceLocation :: (Display t) => SourcePos -> t -> TcMonad n a -> TcMonad n a
@@ -273,7 +273,7 @@ instance Monoid Err where
   mempty :: Err
   mempty = Err [] mempty
 
-scopedDisplay :: Display a => a -> Scope n -> Doc ()
+scopedDisplay :: Display a => a -> Scope LocalName n -> Doc ()
 scopedDisplay a s =
   display a (namesDI (toList (scope_locals s)))
 

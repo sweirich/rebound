@@ -8,12 +8,12 @@
 module PiForall.ScopeCheck where
 
 
-import qualified AutoEnv.Bind as B
-import AutoEnv.Pat.Simple (PatList(..))
-import qualified AutoEnv.Pat.Simple as Pat
-import AutoEnv.Pat.Scoped ((<:>))
-import qualified AutoEnv.Pat.Scoped as Scoped
-import qualified AutoEnv.Pat.LocalBind as L
+import qualified AutoEnv.Bind.Single as B
+import AutoEnv.Bind.Pat (PatList(..))
+import qualified AutoEnv.Bind.Pat as Pat
+import AutoEnv.Bind.Scoped ((<:>))
+import qualified AutoEnv.Bind.Scoped as Scoped
+import qualified AutoEnv.Bind.Local as L
 import Data.Maybe (fromJust)
 import qualified PiForall.ConcreteSyntax as C
 import qualified PiForall.Syntax as S

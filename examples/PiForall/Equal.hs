@@ -8,9 +8,9 @@ import PiForall.PrettyPrint
 import AutoEnv.Env as Env
 import AutoEnv
 import AutoEnv.MonadScoped
-import AutoEnv.Pat.Simple as Pat
-import AutoEnv.Pat.LocalBind as L
-import AutoEnv.Pat.Scoped as Scoped
+import AutoEnv.Bind.Pat as Pat
+import AutoEnv.Bind.Local as L
+import AutoEnv.Bind.Scoped as Scoped
 
 import Prettyprinter as PP
 
@@ -32,17 +32,17 @@ equate t1 t2 = do
     (TyType, TyType) -> return ()
     (Var x,  Var y) | x == y -> return ()
     (Lam bnd1, Lam bnd2) -> do
-      push (Pat.getPat bnd1)
+      push @LocalName (Pat.getPat bnd1)
          (equate (L.getBody bnd1) (L.getBody bnd2))
     (App a1 a2, App b1 b2) ->
       equate a1 b1 >> equate a2 b2
     (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
       equate tyA1 tyA2
-      push (L.getLocalName bnd1)
+      push @LocalName (L.getLocalName bnd1)
         (equate (L.getBody bnd1) (L.getBody bnd2))
     (Let rhs1 bnd1, Let rhs2 bnd2) -> do
       equate rhs1 rhs2
-      push (L.getLocalName bnd1)
+      push @LocalName (L.getLocalName bnd1)
         (equate (L.getBody bnd1) (L.getBody bnd2))
     (TyCon c1 ts1, TyCon c2 ts2) | c1 == c2 ->
       zipWithM_ equateArgs [ts1] [ts2]
@@ -53,7 +53,7 @@ equate t1 t2 = do
       equate s1 s2
       -- require branches to be in the same order
       -- on both expressions
-      s <- scope
+      s <- scope @LocalName
       withSNat (scope_size s) $ do
         let
           matchBr :: Match n -> Match n -> TcMonad n ()
@@ -62,7 +62,7 @@ equate t1 t2 = do
               Pat.unbind bnd2 $ \p2 a2 -> do
                 Refl <- patEq p1 p2 `Env.whenNothing` 
                         [DS "Cannot match branches in", DD n1, DS "and", DD n2]
-                push p1 (equate a1 a2)
+                push @LocalName p1 (equate a1 a2)
         zipWithM_ matchBr brs1 brs2
     (TyEq a1 b1, TyEq a2 b2) -> do
       equate a1 a2
@@ -170,7 +170,7 @@ whnf tm = do
   return tm
 
 
-instance Named (SNat p) where
+instance Named LocalName (SNat p) where
   patLocals = go where
     go :: forall p. SNat p -> Vec p LocalName
     go SZ = VNil
@@ -184,7 +184,7 @@ instance Named (SNat p) where
 -- succeed with an empty list
 unify :: forall n. Term n -> Term n -> TcMonad n (Refinement Term n)
 unify t1 t2 = do 
-     s <- scope 
+     s <- scope @LocalName
      withSNat (scope_size s) $ go SZ t1 t2
   where
     go :: forall n p. SNatI n => SNat p -> Term (Plus p n) -> Term (Plus p n) -> TcMonad (Plus p n) (Refinement Term n)
@@ -212,12 +212,12 @@ unify t1 t2 = do
           (TyCon s1 tms1, TyCon s2 tms2)
             | s1 == s2 -> goArgs p tms1 tms2
           (Lam bnd1, Lam bnd2) -> do
-            push (L.getLocalName bnd1)
+            push @LocalName (L.getLocalName bnd1)
               (go @n (SS p) (L.getBody bnd1) (L.getBody bnd2))
           (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
             ds1 <- go p tyA1 tyA2
             ds2 <-
-              push (L.getLocalName bnd1)
+              push @LocalName (L.getLocalName bnd1)
                 (go @n (SS p) (L.getBody bnd1) (L.getBody bnd2))
             joinR ds1 ds2 `Env.whenNothing` [DS "cannot join refinements"]
           (TyEq a1 b1, TyEq a2 b2) -> do

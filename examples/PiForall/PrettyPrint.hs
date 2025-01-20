@@ -14,11 +14,11 @@ import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Context
 import AutoEnv.Env
-import AutoEnv.Pat.LocalBind as Local
-import AutoEnv.Pat.Scoped (TeleList(..))
-import qualified AutoEnv.Pat.Scoped as Scoped
-import AutoEnv.Pat.Simple (PatList(..))
-import qualified AutoEnv.Pat.Simple as Pat
+import AutoEnv.Bind.Local as Local
+import AutoEnv.Bind.Scoped (TeleList(..))
+import qualified AutoEnv.Bind.Scoped as Scoped
+import AutoEnv.Bind.Pat (PatList(..))
+import qualified AutoEnv.Bind.Pat as Pat
 
 
 import PiForall.Syntax

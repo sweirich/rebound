@@ -3,9 +3,9 @@
 module PTS where
 
 import AutoEnv
-import qualified AutoEnv.Bind as B
-import qualified AutoEnv.Pat.Simple as Pat
-import qualified AutoEnv.Pat.PatN as PN
+import qualified AutoEnv.Bind.Single as B
+import qualified AutoEnv.Bind.Pat as Pat
+import qualified AutoEnv.Bind.PatN as PN
 import AutoEnv.Context
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin qualified

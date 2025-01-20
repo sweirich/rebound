@@ -11,76 +11,66 @@ module AutoEnv.MonadScoped(
 import AutoEnv.Lib
 import AutoEnv.Classes
 import Data.Vec as Vec
-import AutoEnv.Pat.Simple as Pat
-
 
 import Control.Monad.Reader
 import Control.Monad.Identity
 
 
-class Sized pat => Named pat where
-    patLocals :: pat -> Vec (Size pat) LocalName
+class Sized pat => Named name pat where
+    patLocals :: pat -> Vec (Size pat) name
 
-instance Named LocalName where
+instance Named LocalName LocalName where
     patLocals ln = ln ::: VNil
 
-instance Named (Vec n a) where
-  patLocals v = undefined
+-- instance Named LocalName (Vec n a) where
+-- patLocals v = undefined
 
 -- Scoped monads provide implicit access to the current scope 
 -- and a way to extend that scope with an arbitrary pattern
 -- containing local names
-class (forall n. Monad (m n)) => MonadScoped m where
-  scope :: m n (Scope n)
-  push  :: Named pat => pat -> m (Plus (Size pat) n) a -> m n a
+class (forall n. Monad (m n)) => MonadScoped name m where
+  scope :: m n (Scope name n)
+  push  :: Named name pat => pat -> m (Plus (Size pat) n) a -> m n a
 
 -- Scopes know how big they are and remember local names for printing 
-data Scope n = Scope { 
-  scope_size   :: SNat n,           -- number of names in scope
-  scope_locals :: Vec n LocalName   -- stack of names currently in scope
+data Scope name n = Scope { 
+  scope_size   :: SNat n,       -- number of names in scope
+  scope_locals :: Vec n name    -- stack of names currently in scope
 }
 
-emptyScope :: Scope Z
+emptyScope :: Scope name Z
 emptyScope = Scope { 
     scope_size = SZ , 
     scope_locals = VNil 
   } 
 
-extendScope :: Named pat => pat -> Scope n -> Scope (Plus (Size pat) n)
+extendScope :: Named name pat => pat -> Scope name n -> Scope name (Plus (Size pat) n)
 extendScope pat s = 
    Scope { scope_size = sPlus (size pat) (scope_size s),
            scope_locals = Vec.append (patLocals pat) (scope_locals s) 
          }
 
 -- Trivial instance of a MonadScoped
-type ScopedReader = ScopedReaderT Identity
+type ScopedReader name = ScopedReaderT name Identity
 
 -- Monad transformer that adds a scope environment to any existing monad
 -- This is the Reader monad containing a Scope
 
-newtype ScopedReaderT m n a = 
-    ScopedReaderT { runScopedReaderT :: Scope n -> m a }
+newtype ScopedReaderT name m n a = 
+    ScopedReaderT { runScopedReaderT :: Scope name n -> m a }
        deriving (Functor)
 
-instance Applicative m => Applicative (ScopedReaderT m n) where
+instance Applicative m => Applicative (ScopedReaderT name m n) where
     pure f = ScopedReaderT $ \x -> pure f
     ScopedReaderT f <*> ScopedReaderT x = ScopedReaderT (\e -> f e <*> x e)
 
-instance Monad m => Monad (ScopedReaderT m n) where
+instance Monad m => Monad (ScopedReaderT name m n) where
     ScopedReaderT m >>= k = ScopedReaderT $ \e -> 
         m e >>= (\v -> let x = k v in runScopedReaderT x e)
 
 instance Monad m => 
-    MonadScoped (ScopedReaderT m) where
+    MonadScoped name (ScopedReaderT name m) where
         scope = ScopedReaderT $ \s -> return s
         push n m = ScopedReaderT $ \env -> runScopedReaderT m (extendScope n env)
      
 
-instance (forall p. Named (pat p)) => Named (PatList pat p) where
-  patLocals :: PatList pat p -> Vec p LocalName
-  patLocals PNil = VNil
-  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
-    let test :: Size (pat p1) :~: p1
-        test = Refl
-    in
-      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)

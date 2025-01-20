@@ -9,10 +9,10 @@ module DepMatch where
 import AutoEnv
 import AutoEnv.Context
 
-import qualified AutoEnv.Bind as B
-import qualified AutoEnv.Pat.Simple as Pat
-import qualified AutoEnv.Pat.Scoped as Scoped
-import qualified AutoEnv.Pat.PatN as PN
+import qualified AutoEnv.Bind.Single as B
+import qualified AutoEnv.Bind.Pat as Pat
+import qualified AutoEnv.Bind.Scoped as Scoped
+import qualified AutoEnv.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)

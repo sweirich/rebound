@@ -6,11 +6,11 @@ module PiForall.Syntax where
 
 import AutoEnv
 
-import qualified AutoEnv.Bind as B
-import qualified AutoEnv.Pat.Simple as Pat
-import AutoEnv.Pat.Scoped (TeleList(..),(<:>))
-import qualified AutoEnv.Pat.Scoped as Scoped
-import qualified AutoEnv.Pat.LocalBind as Local
+import qualified AutoEnv.Bind.Single as B
+import qualified AutoEnv.Bind.Pat as Pat
+import AutoEnv.Bind.Scoped (TeleList(..),(<:>))
+import qualified AutoEnv.Bind.Scoped as Scoped
+import qualified AutoEnv.Bind.Local as Local
 
 import AutoEnv.MonadScoped
 
@@ -22,11 +22,11 @@ import Data.Vec qualified as Vec
 
 import Unsafe.Coerce (unsafeCoerce)
 
-inScope :: Scope n -> (SNatI n => a) -> a 
-inScope s = withSNat (scope_size s) 
+-- inScope :: Scope LocalName n -> (SNatI n => a) -> a 
+-- inScope s = withSNat (scope_size s) 
 
-getScope :: Pattern p -> Scope p
-getScope p = Scope { scope_size = size p, scope_locals = patLocals p }
+-- getScope :: Pattern p -> Scope LocalName p
+-- getScope p = Scope { scope_size = size p, scope_locals = patLocals p }
 
 -- | names of top level declarations/definitions
 -- must be unique
@@ -224,7 +224,7 @@ instance Sized (Pattern p) where
     size (PatCon _ p) = size p
     size (PatVar _) = s1
 
-instance Named (Pattern p) where
+instance Named LocalName (Pattern p) where
   patLocals :: Pattern p -> Vec p LocalName
   patLocals (PatVar x) = x ::: VNil
   patLocals (PatCon _ p) = patLocals p
@@ -241,7 +241,7 @@ instance Scoped.ScopedSized (Local p) where
 
 instance Scoped.IScopedSized Local
 
-instance Named (Local p n) where
+instance Named LocalName (Local p n) where
   patLocals (LocalDecl x _) = x ::: VNil
   patLocals (LocalDef _ _) = VNil
 

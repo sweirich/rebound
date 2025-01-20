@@ -16,8 +16,8 @@
 module Pat where
 
 import AutoEnv
-import qualified AutoEnv.Bind as B
-import qualified AutoEnv.Pat.Simple as Pat
+import qualified AutoEnv.Bind.Single as B
+import qualified AutoEnv.Bind.Pat as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
 import Data.Vec qualified

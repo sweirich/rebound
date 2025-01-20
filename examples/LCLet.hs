@@ -9,7 +9,7 @@
 module LCLet where
 
 import AutoEnv
-import AutoEnv.Bind
+import AutoEnv.Bind.Single
 import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
