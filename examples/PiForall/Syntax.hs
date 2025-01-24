@@ -367,26 +367,6 @@ weakenTeleClosed = unsafeCoerce
 -- Nothing
 
 instance Strengthen Term where
-  -- strengthen' :: SNat m -> SNat n -> Term (Plus m n) -> Maybe (Term n)
-  strengthen' m n (Var x) = Var <$> strengthen' m n x
-  strengthen' m n (Global s) = pure (Global s)
-  strengthen' m n TyType = pure TyType
-  strengthen' m n (Lam b) = Lam <$> strengthen' m n b
-  strengthen' m n (DataCon c args) = DataCon c <$> mapM (strengthen' m n) args
-  strengthen' m n (TyCon c args) = TyCon c <$> mapM (strengthen' m n) args
-  strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Case a b) = Case <$> strengthen' m n a <*> mapM (strengthen' m n) b
-  strengthen' m n (Ann a t) = Ann <$> strengthen' m n a <*> strengthen' m n t
-  strengthen' m n (Pos p a) = Pos p <$> strengthen' m n a
-  strengthen' m n (Let a b) = Let <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (TyEq a b) = TyEq <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n TmRefl = return TmRefl
-  strengthen' m n (Subst a b) = Subst <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Contra a) = Contra <$> strengthen' m n a
-  strengthen' m n TrustMe = pure TrustMe
-  strengthen' m n PrintMe = pure PrintMe
-
   strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
   strengthenRec k m n (Global s) = pure (Global s)
   strengthenRec k m n TyType = pure TyType
@@ -407,7 +387,6 @@ instance Strengthen Term where
   strengthenRec k m n PrintMe = pure PrintMe
 
 instance Strengthen Match where
-  strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
 
   strengthenRec k m n (Branch bnd) = Branch <$> strengthenRec k m n bnd
 --------------------------------------------------------

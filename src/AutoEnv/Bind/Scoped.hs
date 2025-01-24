@@ -198,18 +198,6 @@ instance
 instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
   Strengthen (Bind v c p)
   where
-  strengthen' (m :: SNat m) (n :: SNat n) (b :: Bind v c p (Plus m n)) =
-    case axiomM @m @(ScopedSize p) @n of
-      Refl ->
-        let sp :: SNat (ScopedSize p)
-            sp = size (getPat b)
-            body :: c (Plus (ScopedSize p) (Plus m n))
-            body = getBody b
-        in
-        withSNat n $
-        case strengthen' m n (getPat b) of
-          Just p' -> bind p' <$> strengthen' m (sPlus sp n) (getBody b)
-          Nothing -> Nothing
 
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
@@ -301,15 +289,6 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
   appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (shiftN (iscopedSize p1) n) p2
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
-  strengthen' :: forall m n p pat . (forall (p1 :: Nat). Strengthen (pat p1)) => 
-              SNat m -> SNat n -> TeleList pat p (Plus m n) -> Maybe (TeleList pat p n)
-  strengthen' m n TNil = Just TNil
-  strengthen' m n (TCons (p1 :: pat p1 (Plus m n)) p2) =
-    case axiomM @m @p1 @n of
-       Refl ->
-        (<:>) <$> strengthen' m n p1
-              <*> strengthen' m (sPlus (iscopedSize p1) n) p2
-
   strengthenRec k m n TNil = Just TNil
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (Plus k (Plus m n))) p2) = 
      case (axiomAssoc @p1 @k @(Plus m n), 
@@ -366,21 +345,6 @@ instance (forall n. ScopedSized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: (ScopedSized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = appearsFree (shiftN (size p1) n) p2
 
-
-instance (forall n. ScopedSized p1, Strengthen p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
-  strengthen' ::
-    forall m n p.
-    SNat m ->
-    SNat n ->
-    Rebind p1 p2 (Plus m n) ->
-    Maybe (Rebind p1 p2 n)
-  strengthen' m n (Rebind p1 p2) =
-    case axiomM @m @(Size (p1 n)) @n of
-      Refl ->
-        rebind <$> strengthen' m n p1
-          <*> strengthen' m (sPlus (size p1) n) p2
-
-  
 
 unRebind ::
   forall p1 p2 n c.

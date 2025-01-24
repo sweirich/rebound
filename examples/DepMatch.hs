@@ -212,16 +212,6 @@ weakenBind' m = applyE @Exp (weakenE' m)
 -- Nothing
 
 instance Strengthen Exp where
-  -- strengthen' :: SNat m -> SNat n -> Exp (Plus m n) -> Maybe (Exp n)
-  strengthen' m n (Var x) = Var <$> strengthen' m n x
-  strengthen' m n Star = pure Star
-  strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Pair a b) = Pair <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Sigma a b) = Sigma <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Match b) = Match <$> mapM (strengthen' m n) b
-  strengthen' m n (Annot a t) = Annot <$> strengthen' m n a <*> strengthen' m n t
-
   strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
   strengthenRec k m n Star = pure Star
   strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
@@ -232,12 +222,6 @@ instance Strengthen Exp where
   strengthenRec k m n (Annot a t) = Annot <$> strengthenRec k m n a <*> strengthenRec k m n t
 
 instance Strengthen (Pat p) where
-  strengthen' :: forall m n p. SNat m -> SNat n -> Pat p (Plus m n) -> Maybe (Pat p n)
-  strengthen' m n PVar = pure PVar
-  strengthen' m n (PPair (p1 :: Pat p1 (Plus m n)) (p2 :: Pat p2 (Plus p1 (Plus m n)))) = 
-      case axiomM @p1 @m @n of Refl -> PPair <$> strengthen' m n p1 <*> strengthen' m (sPlus (size p1) n) p2
-  strengthen' m n (PAnnot p1 e2) = PAnnot <$> strengthen' m n p1 <*> strengthen' m n e2
-
   strengthenRec k m n PVar = pure PVar
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (Plus k (Plus m n))) 
     (p2 :: Pat p2 (Plus p1 (Plus k (Plus m n))))) =
@@ -250,7 +234,6 @@ instance Strengthen (Pat p) where
   strengthenRec k m n (PAnnot p1 e2) = PAnnot <$> strengthenRec k m n p1 <*> strengthenRec k m n e2
 
 instance Strengthen Branch where
-  strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
 
   strengthenRec k m n (Branch bnd) = Branch <$> strengthenRec k m n bnd
 ----------------------------------------------

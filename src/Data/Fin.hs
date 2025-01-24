@@ -28,16 +28,11 @@ axiom = unsafeCoerce Refl
 axiomPlusZ :: forall m. Plus m Z :~: m
 axiomPlusZ = unsafeCoerce Refl
 
--- that property generalized to +m
-axiomM :: forall m p n. Plus p (Plus m n) :~: Plus m (Plus p n)
-axiomM = unsafeCoerce Refl
-
 axiomAssoc :: forall p m n. Plus p (Plus m n) :~: Plus (Plus p m) n
 axiomAssoc = unsafeCoerce Refl
 
 axiomIncrInj :: forall p1 p2. (Plus p1 N1 ~ Plus p2 N1) => p1 :~: p2
-axiomIncrInj = case (axiomM @p1 @N1 @N0, axiomPlusZ @p1, axiomM @p2 @N1 @N0, axiomPlusZ @p2) of
-  (Refl,Refl,Refl,Refl) -> Refl
+axiomIncrInj = unsafeCoerce Refl
 
 -----------------------------------------------------
 -- Type

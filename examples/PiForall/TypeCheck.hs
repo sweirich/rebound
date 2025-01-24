@@ -388,24 +388,28 @@ substTele delta params theta =
 -- reworking the constraints
 
 doSubst :: forall q n p. Env Term (Plus q n) n -> Telescope p (Plus q n) -> TcMonad n (Telescope p n)
-doSubst r TNil = return TNil
-doSubst r (TCons  e (t :: Telescope p2 m)) = case e of 
-    LocalDef x (tm :: Term (Plus q n)) -> case axiomPlusZ @p2 of 
+doSubst = doSubstRec @q @n s0
+
+-- we need to generalize the recursion so that we can increase the scope as we traverse the telescope
+doSubstRec :: forall q n k p. SNat k -> Env Term (Plus (Plus k q) n) (Plus k n) -> Telescope p (Plus (Plus k q) n) -> TcMonad (Plus k n) (Telescope p (Plus k n))
+doSubstRec k r TNil = return TNil
+doSubstRec k r (TCons e (t :: Telescope p2 m)) = case e of 
+    LocalDef x (tm :: Term (Plus (Plus k q) n)) -> case axiomPlusZ @p2 of 
       Refl -> do
-        let tx' = applyE r (Var x)
-        let tm' = applyE r tm
-        defs <- Equal.unify tx' tm'
-        (tele' :: Telescope p2 n) <- doSubst @q r t 
+        let tx' :: Term (Plus k n)
+            tx' = applyE r (Var x)
+        let tm' :: Term (Plus k n)
+            tm' = applyE r tm
+        defs  <- Equal.unify tx' tm'
+        (tele' :: Telescope p2 (Plus k n)) <- doSubstRec @q @n k r t 
         return $ appendDefs defs tele'
 
-    LocalDecl nm (ty :: Term (Plus q n)) -> do
-      let fact :: Plus q (S n) :~: S (Plus q n)
-          fact = axiomM @N1 @q @n
-      case fact of 
-        Refl -> do
-          let ty' = applyE r ty
-          (t' :: Telescope p2 (S n)) <- push @LocalName nm $ doSubst @q @(S n) (up r) t
-          return $ LocalDecl nm ty' <:> t'
+    LocalDecl nm (ty :: Term (Plus (Plus k q) n)) -> do
+      let ty' :: Term (Plus k n)
+          ty' = applyE r ty
+      t' <- push @LocalName nm $ doSubstRec @q @n (SS k) (up r) t
+      return $ LocalDecl nm ty' <:> t'
+
 
 appendDefs :: Refinement Term n -> Telescope p n -> Telescope p n
 appendDefs (Refinement m) = go (Map.toList m) where
@@ -413,7 +417,7 @@ appendDefs (Refinement m) = go (Map.toList m) where
    go [] t = t
    go ((x,tm):defs) (t :: Telescope p1 n) = 
     case axiomPlusZ @p1 of 
-      Refl -> (LocalDef x tm) <:> (go defs t)
+      Refl -> LocalDef x tm <:> (go defs t)
 
 -----------------------------------------------------------
 -- Typechecking pattern matching

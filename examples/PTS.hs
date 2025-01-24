@@ -93,15 +93,16 @@ weaken' m = applyE @Exp (weakenE' m)
 -- Nothing
 
 instance Strengthen Exp where
-  strengthen' :: SNat m -> SNat n -> Exp (Plus m n) -> Maybe (Exp n)
-  strengthen' m n (Var x) = Var <$> strengthen' m n x
-  strengthen' m n Star = pure Star
-  strengthen' m n (Pi a b) = Pi <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Lam a b) = Lam <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (App a b) = App <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Sigma a b) = Sigma <$> strengthen' m n a <*> strengthen' m n b
-  strengthen' m n (Pair a b t) = Pair <$> strengthen' m n a <*> strengthen' m n b <*> strengthen' m n t
-  strengthen' m n (Split a b) = Split <$> strengthen' m n a <*> strengthen' m n b
+
+  strengthenRec :: SNat k -> SNat m -> SNat n -> Exp (Plus k (Plus m n)) -> Maybe (Exp (Plus k n))
+  strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
+  strengthenRec k m n Star = pure Star
+  strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Lam a b) = Lam <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Sigma a b) = Sigma <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Pair a b t) = Pair <$> strengthenRec k m n a <*> strengthenRec k m n b <*> strengthenRec k m n t
+  strengthenRec k m n (Split a b) = Split <$> strengthenRec k m n a <*> strengthenRec k m n b
 
 ----------------------------------------------
 -- Examples
@@ -450,7 +451,7 @@ inferType g (Split a b) = do
           g' = g +++ tyA' +++ B.unbind tyB'
       ty <- inferType g' (PN.unbind2 b)
       let ty' = whnf ty
-      case strengthen' s2 snat ty' of
+      case strengthenN s2 ty' of
         Nothing -> throwError (VarEscapes ty)
         Just ty'' -> pure ty''
     _ -> throwError (SigmaExpected tyA)

@@ -196,14 +196,14 @@ unify t1 t2 = do
         else case (txnf, tynf) of
           (Var x, Var y) | x == y -> return Env.emptyR
           (Var y, yty)   |
-            Just (Var y') <- strengthen' p (snat @n) (Var y),
-            Just yty' <- strengthen' p (snat @n) yty
+            Just (Var y') <- strengthenN p (Var y),
+            Just yty' <- strengthenN p yty
             -> if not (y' `appearsFree` yty')
                 then return (Env.singletonR (y', yty'))
                 else return Env.emptyR
           (yty, Var y)  |
-            Just (Var y') <- strengthen' p (snat @n) (Var y),
-            Just yty' <- strengthen' p (snat @n) yty
+            Just (Var y') <- strengthenN p (Var y),
+            Just yty' <- strengthenN p yty
             -> if not (y' `appearsFree` yty')
                 then return (Env.singletonR (y', yty'))
                 else return Env.emptyR

@@ -84,9 +84,7 @@ applyUnder f r2 (Bind r1 t) =
 -- TODO: this implementation of strengthening for binders is rather inefficient
 -- maybe there is a better way to do it???
 instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v c) where
-  strengthen' (m :: SNat m) (n :: SNat n) b =
-    case axiom @m @n of
-      Refl -> bind <$> strengthen' m (SS n) (unbind b)
+
   strengthenRec :: forall k m n v c. (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
     SNat k -> SNat m -> SNat n -> Bind v c (Plus k (Plus m n)) -> Maybe (Bind v c (Plus k n))
   strengthenRec k m n bnd = 

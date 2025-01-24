@@ -145,12 +145,6 @@ instance
   (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c) =>
   Strengthen (Bind v c p)
   where
-  strengthen' (m :: SNat m) (n :: SNat n) (Bind p (env :: Env v m' n') t) =
-    case axiomM @m @(Size p) @n of
-      Refl -> 
-        withSNat n $ 
-           bind p <$> strengthen' m (sPlus (size p) n) 
-              (applyE @v @c @(Plus (Size p) m') (upN (size p) env) t)
 
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
@@ -186,18 +180,6 @@ instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
 
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
-  strengthen' ::
-    forall m n p.
-    SNat m ->
-    SNat n ->
-    Rebind p1 p2 (Plus m n) ->
-    Maybe (Rebind p1 p2 n)
-  strengthen' m n (Rebind p1 p2) =
-    case axiomM @m @(Size p1) @n of
-      Refl ->
-        Rebind p1
-          <$> strengthen' m (sPlus (size p1) n) p2
-
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 
     case (axiomAssoc @(Size p1) @k @(Plus m n), axiomAssoc @(Size p1) @k @n) of 
       (Refl, Refl) ->
