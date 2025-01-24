@@ -151,6 +151,15 @@ instance
         withSNat n $ 
            bind p <$> strengthen' m (sPlus (size p) n) 
               (applyE @v @c @(Plus (Size p) m') (upN (size p) env) t)
+
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
+    withSNat (sPlus k (sPlus m n)) $
+      unbind bnd $ \(p :: p) t' ->
+        case (axiomAssoc @(Size p) @k @(Plus m n), 
+              axiomAssoc @(Size p) @k @n)  of 
+          (Refl, Refl) ->
+            bind p <$> strengthenRec (sPlus (size p) k) m n t'
+
           
 -----------------------------------------------------------------
 -- Rebind 
@@ -188,6 +197,11 @@ instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
       Refl ->
         Rebind p1
           <$> strengthen' m (sPlus (size p1) n) p2
+
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 
+    case (axiomAssoc @(Size p1) @k @(Plus m n), axiomAssoc @(Size p1) @k @n) of 
+      (Refl, Refl) ->
+       Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
 
 --------------------------------------------------------------
 -- Lists of patterns

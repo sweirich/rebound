@@ -22,5 +22,6 @@ emptyC :: Ctx v N0
 emptyC = zeroE
 
 -- | Append a new definition to the context
+-- All existing types in the context need to be shifted (lazily)
 (+++) :: forall v n. (Subst v v) => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = shiftC @v @v a .: shiftCtx g

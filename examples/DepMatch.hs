@@ -90,6 +90,8 @@ instance Sized (Pat p n) where
 instance Scoped.ScopedSized (Pat p) where
   type ScopedSize (Pat p) = p
 
+instance Scoped.IScopedSized Pat
+
 -- A term that matches the "(x,(y:x))" and has type exists x:*. x
 tm0 :: Exp Z
 tm0 = Pair Star ty0
@@ -220,6 +222,15 @@ instance Strengthen Exp where
   strengthen' m n (Match b) = Match <$> mapM (strengthen' m n) b
   strengthen' m n (Annot a t) = Annot <$> strengthen' m n a <*> strengthen' m n t
 
+  strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
+  strengthenRec k m n Star = pure Star
+  strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Pair a b) = Pair <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Sigma a b) = Sigma <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Match b) = Match <$> mapM (strengthenRec k m n) b
+  strengthenRec k m n (Annot a t) = Annot <$> strengthenRec k m n a <*> strengthenRec k m n t
+
 instance Strengthen (Pat p) where
   strengthen' :: forall m n p. SNat m -> SNat n -> Pat p (Plus m n) -> Maybe (Pat p n)
   strengthen' m n PVar = pure PVar
@@ -227,9 +238,21 @@ instance Strengthen (Pat p) where
       case axiomM @p1 @m @n of Refl -> PPair <$> strengthen' m n p1 <*> strengthen' m (sPlus (size p1) n) p2
   strengthen' m n (PAnnot p1 e2) = PAnnot <$> strengthen' m n p1 <*> strengthen' m n e2
 
+  strengthenRec k m n PVar = pure PVar
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (Plus k (Plus m n))) 
+    (p2 :: Pat p2 (Plus p1 (Plus k (Plus m n))))) =
+      case (axiomAssoc @p1 @k @(Plus m n), 
+            axiomAssoc @p1 @k @n) of
+       (Refl, Refl) -> 
+         let r = strengthenRec (sPlus (Scoped.iscopedSize p1) k) m n p2 in
+         PPair <$> strengthenRec k m n p1 
+                             <*> r
+  strengthenRec k m n (PAnnot p1 e2) = PAnnot <$> strengthenRec k m n p1 <*> strengthenRec k m n e2
+
 instance Strengthen Branch where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
 
+  strengthenRec k m n (Branch bnd) = Branch <$> strengthenRec k m n bnd
 ----------------------------------------------
 -- Some Examples
 ----------------------------------------------

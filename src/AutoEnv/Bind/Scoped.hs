@@ -211,6 +211,18 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
           Just p' -> bind p' <$> strengthen' m (sPlus sp n) (getBody b)
           Nothing -> Nothing
 
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
+    withSNat (sPlus k (sPlus m n)) $
+      unbind bnd $ \(p :: p (Plus k (Plus m n))) t' ->
+        case (axiomAssoc @(ScopedSize p) @k @(Plus m n), 
+              axiomAssoc @(ScopedSize p) @k @n)  of 
+          (Refl, Refl) ->
+            let p' :: Maybe (p (Plus k n))
+                p' = strengthenRec k m n p
+
+                r  :: Maybe (c (Plus (ScopedSize p) (Plus k n)))
+                r  = strengthenRec (sPlus (scopedSize p) k) m n t'
+            in bind <$> p' <*> r
 -----------------------------------------------------------------
 -- Telescopes
 ---------------------------------------------------------------
@@ -297,6 +309,14 @@ instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
        Refl ->
         (<:>) <$> strengthen' m n p1
               <*> strengthen' m (sPlus (iscopedSize p1) n) p2
+
+  strengthenRec k m n TNil = Just TNil
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (Plus k (Plus m n))) p2) = 
+     case (axiomAssoc @p1 @k @(Plus m n), 
+              axiomAssoc @p1 @k @n)  of 
+          (Refl, Refl) ->
+             (<:>) <$> strengthenRec k m n p1
+                   <*> strengthenRec (sPlus (iscopedSize p1) k) m n p2
 instance 
   (forall p1 p2 n1 n2. PatEq (pat p1 n1) (pat p2 n2), IScopedSized pat) =>
   PatEq (TeleList pat p1 n1) (TeleList pat p2 n2) where

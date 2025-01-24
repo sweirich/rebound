@@ -387,10 +387,29 @@ instance Strengthen Term where
   strengthen' m n TrustMe = pure TrustMe
   strengthen' m n PrintMe = pure PrintMe
 
+  strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
+  strengthenRec k m n (Global s) = pure (Global s)
+  strengthenRec k m n TyType = pure TyType
+  strengthenRec k m n (Lam b) = Lam <$> strengthenRec k m n b
+  strengthenRec k m n (DataCon c args) = DataCon c <$> mapM (strengthenRec k m n) args
+  strengthenRec k m n (TyCon c args) = TyCon c <$> mapM (strengthenRec k m n) args
+  strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Case a b) = Case <$> strengthenRec k m n a <*> mapM (strengthenRec k m n) b
+  strengthenRec k m n (Ann a t) = Ann <$> strengthenRec k m n a <*> strengthenRec k m n t
+  strengthenRec k m n (Pos p a) = Pos p <$> strengthenRec k m n a
+  strengthenRec k m n (Let a b) = Let <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (TyEq a b) = TyEq <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n TmRefl = return TmRefl
+  strengthenRec k m n (Subst a b) = Subst <$> strengthenRec k m n a <*> strengthenRec k m n b
+  strengthenRec k m n (Contra a) = Contra <$> strengthenRec k m n a
+  strengthenRec k m n TrustMe = pure TrustMe
+  strengthenRec k m n PrintMe = pure PrintMe
 
 instance Strengthen Match where
   strengthen' m n (Branch bnd) = Branch <$> strengthen' m n bnd
 
+  strengthenRec k m n (Branch bnd) = Branch <$> strengthenRec k m n bnd
 --------------------------------------------------------
 -- Alpha equivalence (Eq type class)
 --------------------------------------------------------

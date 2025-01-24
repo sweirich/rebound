@@ -87,6 +87,12 @@ instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v 
   strengthen' (m :: SNat m) (n :: SNat n) b =
     case axiom @m @n of
       Refl -> bind <$> strengthen' m (SS n) (unbind b)
+  strengthenRec :: forall k m n v c. (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
+    SNat k -> SNat m -> SNat n -> Bind v c (Plus k (Plus m n)) -> Maybe (Bind v c (Plus k n))
+  strengthenRec k m n bnd = 
+      bind <$> strengthenRec (SS k) m n (unbind bnd)
+                  
+                  
 
 -- | Create a substitution that instantiates a binder
 -- with `a` and shifts at the same time. This is useful for

@@ -49,7 +49,7 @@ class FV (t :: Nat -> Type) where
 -- these functions need to be provided
 class Strengthen t where
   strengthenOne' :: SNat n -> t (S n) -> Maybe (t n)
-  strengthenOne' = strengthen' (SS SZ)
+  strengthenOne' = strengthenRec s0 s1
 
   strengthen' :: SNat m -> SNat n -> t (Plus m n) -> Maybe (t n)
   strengthen' SZ n f = Just f
@@ -57,6 +57,13 @@ class Strengthen t where
   strengthen' (SS m) (SS n) f = do
     f' <- strengthenOne' (sPlus m (SS n)) f
     strengthen' m (SS n) f'
+  
+  -- generalize strengthening -- remove m variables from the middle of the scope
+  strengthenRec :: SNat k -> SNat m -> SNat n -> t (Plus k (Plus m n)) -> Maybe (t (Plus k n))
+
+  -- Remove a single variable from the middle of the scope
+  strengthenOneRec :: forall k n. SNat k -> SNat n -> t (Plus k (S n)) -> Maybe (t (Plus k n))
+  strengthenOneRec k = strengthenRec k (SS SZ)
 
 strengthen :: forall m n t. 
     (Strengthen t, SNatI m, SNatI n) => t (Plus m n) -> Maybe (t n)
@@ -70,6 +77,9 @@ instance FV Fin where
 instance Strengthen Fin where
   strengthen' :: SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
   strengthen' = strengthenFin
+
+  strengthenRec :: SNat k -> SNat m -> SNat n-> Fin (Plus k (Plus m n)) -> Maybe (Fin (Plus k n))
+  strengthenRec = strengthenRecFin
 
 
 -- >>> strengthenOne' (SS (SS SZ)) (FZ :: Fin N3) :: Maybe (Fin N2)
