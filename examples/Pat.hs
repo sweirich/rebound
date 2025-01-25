@@ -357,6 +357,7 @@ patternMatch :: Pat p -> Exp m -> Maybe (Env Exp p m)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PHead p) e = patternMatchApp p e
 
+-- Fin p -> Exp m
 patternMatchApp :: ConApp p -> Exp m -> Maybe (Env Exp p m)
 patternMatchApp (PApp p1 p2) (App e1 e2) = do
   env1 <- patternMatchApp p1 e1

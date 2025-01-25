@@ -21,6 +21,7 @@ import Data.Vec qualified
 -- The `Var` constructor of this datatype takes an index that must
 -- be strictly less than the bound. Note that the type `Fin (S n)`
 -- has `n` different elements.
+
 -- The `Lam` constructor binds a variable, using the the type `Bind`
 -- from the library. The type arguments state that the binder is
 -- for a single expression variable, inside an expression term, that may
@@ -56,7 +57,6 @@ t1 =
     )
 
 -- >>> t0
--- (λ. 0)
 
 -- >>> t1
 -- (λ. (λ. (1 ((λ. 0) 0))))
@@ -92,8 +92,14 @@ instance SubstVar Exp where
 -- The library represents a substitution using an "Environment".
 -- The type `Env Exp n m` is a substitution that can be applied to
 -- indices bounded by n. It produces a result `Exp` with indices
--- bounded by m. The function `applyEnv` looks up a mapping in
+-- bounded by m. It is equivalent to a total function of type:
+--
+--       Fin n -> Exp m
+--
+-- The function `applyEnv` looks up a mapping in
 -- an environment.
+
+
 
 -- | The operation `applyE` applies an environment
 -- (explicit substitution) to an expression.
@@ -139,7 +145,7 @@ instance Show (Exp n) where
 -- >>> eval (t1 `App` t0)
 -- (λ. ((λ. 0) ((λ. 0) 0)))
 
--- NOTE: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
+-- TODO: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
 
 -- | Calculate the value of a lambda-calculus expression
 -- This function looks like it uses call-by-value evaluation:
@@ -184,6 +190,7 @@ eval' e
 --------------------------------------------------------
 -- full normalization
 --------------------------------------------------------
+
 
 -- | Calculate the normal form of a lambda expression. This
 -- is like evaluation except that it also reduces in the bodies
@@ -240,7 +247,7 @@ evalEnv r (Lam b) = applyE r (Lam b)
 evalEnv r (App e1 e2) =
   let v = evalEnv r e2
    in case evalEnv r e1 of
-        Lam b ->
+        Lam b -> 
           unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 

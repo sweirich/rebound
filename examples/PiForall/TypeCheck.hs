@@ -179,7 +179,7 @@ checkType tm ty ctx = do
       r' <- fromRefinement <$> joinR edecl pdecl 
               `Env.whenNothing` [DS "incompatible equality in subst"]
 
-      -- TODO: defer all of these substitutions
+      -- TODO: defer all of these substitutions as refinements
       -- refine the scutrutinee
       let a' = applyE r' a 
       -- refine the result type
@@ -293,7 +293,6 @@ tcTypeTele (TCons (LocalDef x tm) (tele :: Telescope p2 n)) ctx = do
   ty1 <- inferType (Var x) ctx
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
-  -- TODO: substitute in telescope as well as context??!!! 
   let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
   tcTypeTele tele ctx'
 tcTypeTele (TCons  (LocalDecl x ty) 

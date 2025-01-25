@@ -36,7 +36,7 @@ data Exp (n :: Nat)
   = Star
   | Pi (Exp n) (B.Bind Exp Exp n)
   | Var (Fin n)
-  | Match [Branch n]  -- n-way abstractions
+  | Match [Branch n]  -- case lambda
   | App (Exp n) (Exp n)
   | Sigma (Exp n) (B.Bind Exp Exp n)
   | Pair (Exp n) (Exp n)

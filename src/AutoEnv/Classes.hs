@@ -13,7 +13,8 @@ import Data.Vec qualified as Vec
 -- For now, we represent this directly as a function,
 -- but we might want to change that. So we wrap it in
 -- a newtype to hide the representation.
-newtype Env v m n = Env {applyEnv :: Fin m -> v n}
+newtype Env (v :: Nat -> Type) (m :: Nat) (n :: Nat) = 
+  Env { applyEnv :: Fin m -> v n }
 
 ----------------------------------------------------------
 -- Substitution, free variables
@@ -35,19 +36,18 @@ class (SubstVar v) => Subst v c where
 class FV (t :: Nat -> Type) where
   appearsFree :: Fin n -> t n -> Bool
 
--- | Are the two terms alpha equivalent? The terms do not 
--- need to be in the same scope
--- class Alpha (t :: Nat -> Type) where
---     aeq :: t n1 -> t n2 -> Bool
-
-
 ----------------------------------------------------------
 -- * Strengthening
 ----------------------------------------------------------
 
+
+-- entry point for eliminating the most recently bound variable from the scope (if unused)
+strengthen :: forall n t. (Strengthen t, SNatI n) => t (S n) -> Maybe (t n)
+strengthen = strengthenRec s0 s1 (snat :: SNat n)
+
 -- Strengthening cannot be implemented through substitution because it
 -- must fail if the term uses invalid variables. Therefore, we make a
--- class of nat-indexed types that can be strengthened.
+-- class of scoped types that can be strengthened.
 class Strengthen t where
   -- generalize strengthening -- remove m variables from the middle of the scope
   strengthenRec :: SNat k -> SNat m -> SNat n -> t (Plus k (Plus m n)) -> Maybe (t (Plus k n))
@@ -55,10 +55,6 @@ class Strengthen t where
   -- Remove a single variable from the middle of the scope
   strengthenOneRec :: forall k n. SNat k -> SNat n -> t (Plus k (S n)) -> Maybe (t (Plus k n))
   strengthenOneRec k = strengthenRec k (SS SZ)
-
--- entry point for eliminating the most recently bound variable from the scope (if unused)
-strengthen :: forall n t. (Strengthen t, SNatI n) => t (S n) -> Maybe (t n)
-strengthen = strengthenRec s0 s1 (snat :: SNat n)
 
 -- n-ary version of strengthen
 strengthenN :: forall m n t. (Strengthen t, SNatI n) => SNat m -> t (Plus m n) -> Maybe (t n)
