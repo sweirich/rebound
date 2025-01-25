@@ -1,9 +1,9 @@
 # Autoenv
 
 *NOTE: this library is a work in progress. The interface is still under active 
-development and subject to change.*
+development and will change.*
 
-A variable binding library based on well-scoped de Bruijn indices and environments.
+This is a variable binding library based on well-scoped de Bruijn indices and environments.
 
 This library is designed to represent variables using the type `Fin n`; a type of 
 bounded natural numbers. It represents simultaneous substitutions (also called 
@@ -18,24 +18,24 @@ will help you put together a prototype implementation quickly.
 
 1. *Correctness*: This library uses Dependent Haskell to statically track the scopes of 
     bound variables. Because variables are represented by de Bruijn indices, scopes are 
-    represented as natural number indices to datatypes. 
-    (TODO: replace axioms about natural numbers with type checker nat plugin?)
+    represented by natural numbers, bounding the indices that can be used. If the scope
+    is 0, then the term must be closed. 
     
 
 2. *Convenience*: The library is based on a type-directed approach to binding, where 
-    AST terms can indicate binding structure through the use of types defined here. 
-    As a result the interface provides a clean, uniform, and automatic interface to 
+    AST terms can indicate binding structure through the use of types defined in this library. 
+    As a result the library provides a clean, uniform, and automatic interface to 
     common operations such as substitution, alpha-equality, and scope change. 
     (TODO: Use datatype generic programming to automate type class instances).
 
 3. *Efficiency*: Behind the scenes, the library uses explicit substitutions (environments) 
     to delay the execution of operations such as shifting and substitution. However, 
     these environments are accessible to library users who would like fine control over 
-    their data structures.
+    when these operations.
     (TODO: improve efficiency by changing the representation of environments and natural 
     numbers.)
 
-3. *Accessibility*: This library comes with many tutorials and examples demonstrating 
+3. *Accessibility*: This library comes with tutorials and examples demonstrating 
     how to use it effectively. Many of these tutorials are also examples of programming
     with Dependent Haskell.
 
