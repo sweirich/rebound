@@ -1,4 +1,7 @@
-
+-- |
+-- Module      : AutoEnv.Classes
+-- Description : Type class definitions
+-- Stability   : experimental
 module AutoEnv.Classes where
 
 import AutoEnv.Lib

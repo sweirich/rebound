@@ -1,3 +1,7 @@
+-- |
+-- Module      : AutoEnv.Env
+-- Description : Environments
+-- Stability   : experimental
 module AutoEnv.Env(Env,
   zeroE,
   oneE,

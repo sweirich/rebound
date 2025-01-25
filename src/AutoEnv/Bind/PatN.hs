@@ -46,7 +46,7 @@ instantiateNWith :: forall m v c n.
   (forall m n. Env v m n -> c m -> c n) ->
   c n
 instantiateNWith b v f =
-  unbindNWith b (\r e -> f (appendE (snat @m) (fromVec v) r) e)
+  unbindNWith b (f . appendE (snat @m) (fromVec v))
 
 
 ----------------------------------------------------------------
