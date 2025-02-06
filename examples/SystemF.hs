@@ -8,14 +8,19 @@ module SystemF where
 
 -}
 
+import Prelude hiding (lookup)
 import AutoEnv
 import AutoEnv.Bind.Single
-import AutoEnv.Context
+
 
 data Ty (n :: Nat) where
     TVar :: Fin n -> Ty n
     TAll :: Bind Ty Ty n -> Ty n
     TArr :: Ty n -> Ty n -> Ty n
+      deriving (Eq)
+
+instance Eq (Bind Ty Ty n) where
+    b1 == b2 = getBody b1 == getBody b2
 
 -- swap the order of the scopes so that we can talk about 
 -- substituting a type inside of an expression
@@ -69,4 +74,33 @@ instance Subst (Exp m) (Exp m) where
         in ETLam (bind (TyExp (applyE (upTyScope r) te)))
     applyE r (ETApp e t) = ETApp (applyE r e) t    
 
+-- System F context
+data FCtx m n where
+    Empty     :: FCtx Z Z
+    ConsTmVar :: Ty m -> FCtx m n -> FCtx m (S n)
+    ConsTyVar :: FCtx m n -> FCtx (S m) n
 
+lookup :: Fin n -> FCtx m n -> Ty m
+lookup FZ (ConsTmVar ty _) = ty
+lookup FZ (ConsTyVar g) = applyE @Ty shift1E $ lookup FZ g
+lookup (FS x) (ConsTmVar _ g) = lookup x g
+lookup (FS x) (ConsTyVar g) = applyE @Ty shift1E $ lookup (FS x) g
+
+tc :: FCtx m n -> Exp m n -> Maybe (Ty m)
+tc g (EVar x) = return $ lookup x g
+tc g (ELam ty b) = tc (ConsTmVar ty g) (getBody b)
+tc g (EApp a b) = do 
+    t1 <- tc g a
+    t2 <- tc g b
+    case t1 of 
+        TArr t11 t12 -> if t1 == t2 then return t12 else Nothing
+        _ -> Nothing
+tc g (ETLam b) = do
+    t1 <- tc (ConsTyVar g) (unTyExp (getBody b))
+    return (TAll (bind t1))
+tc g (ETApp a ty) = do 
+    t1 <- tc g a 
+    case t1 of 
+        TAll tb -> return $ instantiate tb ty
+        _ -> Nothing
+             
