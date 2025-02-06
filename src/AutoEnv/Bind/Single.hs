@@ -105,8 +105,11 @@ instantiateWeakenEnv ::
   v (Plus p n) ->
   Env v (S n) (Plus p n)
 instantiateWeakenEnv p n a =
+  a .: shiftNE p
+{-  
+  withSNat (sPlus p (SS n)) $
   shiftNE @v p
-    .>> Env
+    .>> env
       ( \(x :: Fin (Plus p (S n))) ->
           case checkBound @p @(S n) p x of
             Left pf -> var (weakenFinRight n pf)
@@ -114,7 +117,7 @@ instantiateWeakenEnv p n a =
               FZ -> a
               FS (f :: Fin n) -> var (shiftN p f)
       )
-
+-}
 -- | instantiate a single binder with a term from a larger scope
 -- this simultaneously shifts the body of the bind to that scope
 -- TODO: add a version of instantiateShift for pattern binding

@@ -13,8 +13,8 @@ import Data.Vec qualified as Vec
 -- For now, we represent this directly as a function,
 -- but we might want to change that. So we wrap it in
 -- a newtype to hide the representation.
-newtype Env (v :: Nat -> Type) (m :: Nat) (n :: Nat) = 
-  Env { applyEnv :: Fin m -> v n }
+-- newtype Env (v :: Nat -> Type) (m :: Nat) (n :: Nat) = 
+--  Env { applyEnv :: Fin m -> v n }
 
 ----------------------------------------------------------
 -- Substitution, free variables
@@ -23,14 +23,14 @@ newtype Env (v :: Nat -> Type) (m :: Nat) (n :: Nat) =
 -- | Well-scoped types that can be the range of
 -- an environment. This should generally be the `Var`
 -- constructor from the syntax.
-class SubstVar (v :: Nat -> Type) where
-  var :: Fin n -> v n
+-- class SubstVar (v :: Nat -> Type) where
+--  var :: Fin n -> v n
 
 -- | Apply the environment throughout a term of
 -- type `c n`, replacing variables with values
 -- of type `v m`
-class (SubstVar v) => Subst v c where
-  applyE :: Env v n m -> c n -> c m
+-- class (SubstVar v) => Subst v c where
+--  applyE :: Env v n m -> c n -> c m
 
 -- | Does a variable appear free?
 class FV (t :: Nat -> Type) where

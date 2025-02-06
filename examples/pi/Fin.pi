@@ -22,7 +22,6 @@ data Fin (n : Nat) : Type where
   Zero of [m:Nat][n = Succ m] 
   Succ of [m:Nat][n = Succ m] (Fin m)
 
-
 x0 : Fin 3
 x0 = Zero [2]
 

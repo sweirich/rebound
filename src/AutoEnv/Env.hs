@@ -2,10 +2,13 @@
 -- Module      : AutoEnv.Env
 -- Description : Environments
 -- Stability   : experimental
-module AutoEnv.Env(Env,
+{-# LANGUAGE UndecidableSuperClasses #-}
+module AutoEnv.Env(Env, applyEnv, SubstVar(..), Subst(..),
+  -- env, -- temporary???
+  transform,
   zeroE,
   oneE,
-  singleton,
+  -- singleton,
   idE,
   (.>>),
   (.:),
@@ -28,47 +31,123 @@ module AutoEnv.Env(Env,
   refine,
   tabulate,
   fromTable,
-  weakenE'
+  weakenE',
+  weakenER
   ) where
 
 import AutoEnv.Lib
-import AutoEnv.Classes
+--import AutoEnv.Classes
 import Prelude hiding (head,tail)   
+import qualified Data.Vec as Vec
 import qualified Data.Map as Map
 import Control.Monad
+
+
+data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
+  Zero  :: Env a Z n
+  WeakR :: !(SNat m) -> Env a n (Plus n m) --  weaken values in range by m
+  Weak  :: !(SNat m) -> Env a n (Plus m n) --  weaken values in range by m
+  Inc   :: !(SNat m) -> Env a n (Plus m n) --  increment values in range (shift) by m
+  Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
+  (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
+
+--  Value of the index x in the substitution s
+applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
+applyEnv Zero x = case x of {}
+applyEnv (Inc m) x = var (shiftN m x)
+applyEnv (WeakR m) x = var (weakenFinRight m x)
+applyEnv (Weak m) x = var (weakenFin m x)
+applyEnv (Cons ty _s) FZ = ty
+applyEnv (Cons _ty s) (FS x) = applyEnv s x
+applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
+{-# INLINEABLE applyEnv #-}
+
+-- | smart constructor for composition
+comp :: forall a m n p. SubstVar a => Env a m n -> Env a n p -> Env a m p
+comp Zero s = Zero
+comp (Weak (k1 :: SNat m1)) (Weak (k2 :: SNat m2))  = 
+  case axiomAssoc @m2 @m1 @m of
+    Refl -> Weak (sPlus k2 k1)
+comp (Weak SZ) s = s
+comp s (Weak SZ) = s
+comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
+  case axiomAssoc @m2 @m1 @m of
+    Refl -> Inc (sPlus k2 k1)
+comp (Inc SZ) s = s
+comp s (Inc SZ) = s
+comp (Inc (SS n)) (Cons _t s) = comp (Inc n) s
+comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
+comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
+comp s1 s2 = s1 :<> s2
+
+-- | mapping operation for range
+-- TODO: look up conor's name
+transform :: (forall m. a m -> b m) -> Env a n m -> Env b n m
+transform f Zero = Zero
+transform f (Weak x) = Weak x 
+transform f (WeakR x) = WeakR x
+transform f (Inc x) = Inc x
+transform f (Cons a r) = Cons (f a) (transform f r)
+transform f (r1 :<> r2) = transform f r1 :<> transform f r2
+
+----------------------------------------------------------
+-- Substitution, free variables
+----------------------------------------------------------
+
+-- | Well-scoped types that can be the range of
+-- an environment. This should generally be the `Var`
+-- constructor from the syntax.
+class (Subst v v) => SubstVar (v :: Nat -> Type) where
+  var :: Fin n -> v n
+
+-- | Apply the environment throughout a term of
+-- type `c n`, replacing variables with values
+-- of type `v m`
+class (SubstVar v) => Subst v c where
+  applyE :: Env v n m -> c n -> c m
 
 ----------------------------------------------
 -- operations on environments/substitutions
 ----------------------------------------------
 
+-- TODO: do we want to replace uses of this operation with something else?
+env :: forall m v n. SNatI m => (Fin m -> v n) -> Env v m n
+env f = fromVec v where
+        v :: Vec m (v n)
+        v = Vec.tabulate (snat @m) f
+  
+
 -- | The empty environment (zero domain)
 zeroE :: Env v Z n
-zeroE = Env $ \case {}
+zeroE = Zero
 
 -- | A singleton environment (single index domain)
 -- maps that single variable to `v n`
 oneE :: v n -> Env v (S Z) n
-oneE v = Env $ const v
+oneE v = Cons v zeroE
+
+singletonE :: (SubstVar v) => v n -> Env v (S n) n
+singletonE v = v .: idE
 
 -- | an environment that maps index 0 to v and leaves
 -- all other indices alone. Unlike oneE above, the
 -- domain of the environment must match the number of
 -- variables in the range.
-singleton :: (SubstVar v) => v n -> Env v n n
-singleton v = Env $ \case FZ -> v; FS y -> var (FS y)
+-- singleton :: (SubstVar v) => v n -> Env v n n
+-- singleton v = v .: idE
 
 -- | identity environment, any size
 idE :: (SubstVar v) => Env v n n
-idE = Env var
+idE = Inc s0
 
 -- | composition: do f then g
 (.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
-f .>> g = Env $ applyE g . applyEnv f
+f .>> g = comp f g
 
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: v m -> Env v n m -> Env v (S n) m
-v .: f = Env $ \case FZ -> v; (FS x) -> applyEnv f x
+v .: f = Cons v f
 
 -- | append two environments
 -- The `SNatI` constraint is a runtime witness for the length
@@ -94,7 +173,7 @@ appendE (SS p1) e1 e2 = head e1 .: appendE p1 (tail e1) e2
 
 -- | inverse of `cons` -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
-tail f = Env (applyEnv f . FS)
+tail = comp (Inc s1)
 
 -- | access value at index 0
 head :: (SubstVar v) => Env v (S n) m -> v m
@@ -102,12 +181,13 @@ head f = applyEnv f FZ
 
 -- | increment all free variables by 1
 shift1E :: (SubstVar v) => Env v n (S n)
-shift1E = Env (var . FS)
+shift1E = Inc s1
 
 -- | increment all free variables by m
 shiftNE :: (SubstVar v) => SNat m -> Env v n (Plus m n)
-shiftNE m = Env (var . shiftN m)
+shiftNE = Inc
 
+{-
 -- | increment all free variables by m, but in the middle
 shiftRE ::
   forall v n1 n2 n.
@@ -123,19 +203,27 @@ shiftLE ::
   SNat n1 ->
   Env v (Plus n2 n) (Plus (Plus n1 n2) n)
 shiftLE n1 = Env (var . shiftL @n1 @n2 @n n1)
+-}
 
+{-
 -- | weaken variables by 1
 -- makes their bound bigger but does not change any of their indices
 weakenOneE :: (SubstVar v) => Env v n (S n)
 weakenOneE = Env (var . weaken1Fin)
+-}
 
-weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (Plus m n)
-weakenE' sm = Env (var . weakenFin sm)
+-- make the bound bigger, but do not change any indices
+weakenE' :: forall m v n. SNat m -> Env v n (Plus m n)
+weakenE' = Weak
+  -- Env (var . weakenFin sm)
+
+weakenER :: forall m v n. SNat m -> Env v n (Plus n m)
+weakenER = WeakR 
 
 -- | modify an environment so that it can go under
 -- a binder
 up :: (Subst v v) => Env v m n -> Env v (S m) (S n)
-up e = var FZ .: (e .>> shift1E)
+up e = var f0 .: comp e (Inc s1)
 
 -- | Shift an environment by size `p`
 upN ::
@@ -144,7 +232,7 @@ upN ::
   Env v m n ->
   Env v (Plus p m) (Plus p n)
 upN SZ = id
-upN (SS n) = \e -> var FZ .: (upN n e .>> shift1E)
+upN (SS n) = \e -> var FZ .: comp (upN n e) (Inc s1)
 
 ----------------------------------------------------
 -- Create an environment from a length-indexed 
@@ -171,7 +259,8 @@ emptyR :: Refinement v n
 emptyR = Refinement Map.empty
 
 -- | Note, this operation fails when xs and ys have overlapping domains
-joinR :: forall v n. (Subst v v, Eq (v n)) => Refinement v n -> Refinement v n -> Maybe (Refinement v n)
+joinR :: forall v n. (SNatI n, Subst v v, Eq (v n)) => 
+   Refinement v n -> Refinement v n -> Maybe (Refinement v n)
 joinR (Refinement xs) (Refinement ys) = 
   Refinement <$> foldM f ys xs' where
      xs' = Map.toList xs
@@ -195,26 +284,29 @@ shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g' wher
   g' = Map.map (applyE @v (shiftNE p)) f'
 
 
-fromRefinement :: SubstVar v => Refinement v n -> Env v n n
+fromRefinement :: (SNatI n, SubstVar v) => Refinement v n -> Env v n n
 fromRefinement (Refinement x) = fromTable (Map.toList x)
 
-toRefinement :: SNatI n => Env v n n -> Refinement v n
+toRefinement :: (SNatI n, SubstVar v) => Env v n n -> Refinement v n
 toRefinement r = Refinement (Map.fromList (tabulate r))
 
-refine :: (Subst v c) => Refinement v n -> c n -> c n
+refine :: (SNatI n, Subst v c) => Refinement v n -> c n -> c n
 refine r = applyE (fromRefinement r)
 
 ----------------------------------------------------------------
 -- show for environments
 ----------------------------------------------------------------
 
-instance (SNatI n, Show (v m)) => Show (Env v n m) where
+instance (SNatI n, Show (v m), SubstVar v) => Show (Env v n m) where
   show x = show (tabulate x)
 
-tabulate :: (SNatI n) => Env v n m -> [(Fin n, v m)]
+tabulate :: (SNatI n, Subst v v) => Env v n m -> [(Fin n, v m)]
 tabulate r = map (\f -> (f, applyEnv r f)) (enumFin snat)
 
-fromTable :: SubstVar v => [(Fin n, v n)] -> Env v n n
-fromTable rho = Env $ \f -> case lookup f rho of 
-                                    Just t -> t 
-                                    Nothing -> var f
+fromTable :: forall n v. (SNatI n, SubstVar v) => 
+  [(Fin n, v n)] -> Env v n n
+fromTable rho = 
+  env $ \f -> case lookup f rho of 
+                Just t -> t 
+                Nothing -> var f
+                                    

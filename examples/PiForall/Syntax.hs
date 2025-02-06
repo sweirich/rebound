@@ -340,7 +340,13 @@ instance FV (Local p) where
 -- weaken' s1 t00 :: Term ('S ('S N1))
 
 -- >>> weaken' s1 t00
--- 0 0
+-- /Users/sweirich/github/haskell/autoenv/examples/PiForall/Syntax.hs:352:27: error: [GHC-88464]
+--     • Variable not in scope:
+--         weakenE' :: SNat m -> Env Term n (Plus m n)
+--     • In the second argument of ‘applyE’, namely ‘(weakenE' m)’
+--       In the expression: applyE @Term (weakenE' m)
+--       In an equation for ‘weaken'’: weaken' m = applyE @Term (weakenE' m)
+-- (deferred type error)
 
 weaken' :: SNat m -> Term n -> Term (Plus m n)
 weaken' m = applyE @Term (weakenE' m)

@@ -456,11 +456,9 @@ inferType g (Split a b) = do
         Just ty'' -> pure ty''
     _ -> throwError (SigmaExpected tyA)
 
-emptyE :: Ctx Exp Z
-emptyE = Env $ \case {}
 
--- >>> inferType emptyE tmid :: Either Err (Exp N0)
+-- >>> inferType zeroE tmid :: Either Err (Exp N0)
 -- Right (Pi *. 0 -> 1)
 
--- >>> inferType emptyE (App tmid tyid) :: Either Err (Exp N0)
+-- >>> inferType zeroE (App tmid tyid) :: Either Err (Exp N0)
 -- Right ((Pi *. 0 -> 1) -> Pi *. 0 -> 1)

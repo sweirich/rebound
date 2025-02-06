@@ -149,7 +149,8 @@ applyUnder f r2 (Bind p r1 t) =
     p' :: pat n2
     p' = applyE r2 p
 
-
+-- Map variable 0 to given value, and shift everything else 
+-- in the environment 
 instantiateWeakenEnv ::
   forall p n v c.
   (SubstVar v, Subst v v) =>
@@ -158,8 +159,12 @@ instantiateWeakenEnv ::
   v (Plus p n) ->
   Env v (S n) (Plus p n)
 instantiateWeakenEnv p n a = 
+  a .: shiftNE p
+{-
+instantiateWeakenEnv p n a = 
+  withSNat (sPlus p (SS n)) $
   shiftNE @v p
-    .>> Env
+    .>> env
       ( \(x :: Fin (Plus p (S n))) ->
           case checkBound @p @(S n) p x of
             Left pf -> var (weakenFinRight n pf)
@@ -167,7 +172,7 @@ instantiateWeakenEnv p n a =
               FZ -> a
               FS (f :: Fin n) -> var (shiftN p f)
       )
-
+-}
 -----------------------------------------------------------------
 -- instances for Bind
 -----------------------------------------------------------------
@@ -308,6 +313,9 @@ instance
 
 -----------------------------------------------------------------
 -- Rebind 
+-- TODO: this is the binary version of a telescope. 
+-- Captures the left-to-right relationship between two patterns
+-- without the list. 
 ---------------------------------------------------------------
 {- 
 data Rebind p1 p2 n where

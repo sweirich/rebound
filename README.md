@@ -39,7 +39,13 @@ will help you put together a prototype implementation quickly.
     how to use it effectively. Many of these tutorials are also examples of programming
     with Dependent Haskell.
 
-## Tutorials and Examples
+## 
+
+1. [Tutorial](examples/Tutorial.lhs) 
+
+An overview of the use and implementation of the library, using the lambda calculus as an example.
+
+## Examples
 
 1. [Untyped lambda calculus](examples/LC.hs)
 
@@ -62,9 +68,13 @@ Example of advanced binding forms: recursive definitions and sequenced definitio
 
 An implementation of a simple type checker for a dependent-type system. Language includes Pi and Sigma types.
 
+5. [Dependent Pattern Matching](examples/DepMatch.hs)
+
+A dependent type system with nested, dependent pattern matching. Patterns may also include scoped terms.
+
 5. [PiForall](examples/PiForall.hs)
 
-A simplification of the [pi-forall](https://github.com/sweirich/pi-forall) language, which includes dependent pattern matching.
+A simplification of the [pi-forall](https://github.com/sweirich/pi-forall) language, which includes dependent pattern matching for arbitrary user-defined datatypes.
 
 ## Related libraries
 

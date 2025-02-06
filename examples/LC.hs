@@ -57,6 +57,7 @@ t1 =
     )
 
 -- >>> t0
+-- (λ. 0)
 
 -- >>> t1
 -- (λ. (λ. (1 ((λ. 0) 0))))
@@ -154,8 +155,8 @@ instance Show (Exp n) where
 -- the bound variable of `Bind` by v. However, this is Haskell,
 -- a lazy language, so that result won't be evaluated unless the
 -- function actually uses its argument.
-eval :: Exp n -> Exp n
-eval (Var x) = Var x
+eval :: Exp Z -> Exp Z
+eval (Var x) = case x of {}
 eval (Lam b) = Lam b
 eval (App e1 e2) =
   let v = eval e2
@@ -190,7 +191,6 @@ eval' e
 --------------------------------------------------------
 -- full normalization
 --------------------------------------------------------
-
 
 -- | Calculate the normal form of a lambda expression. This
 -- is like evaluation except that it also reduces in the bodies
@@ -241,6 +241,10 @@ nf (App e1 e2) =
 -- Because `evalEnv` takes the body of the lambda term directly,
 -- without substitution, it doesn't do any repeat work.
 
+-- >>> :t unbind
+-- unbind :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
+
+
 evalEnv :: Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam b) = applyE r (Lam b)
@@ -248,7 +252,8 @@ evalEnv r (App e1 e2) =
   let v = evalEnv r e2
    in case evalEnv r e1 of
         Lam b -> 
-          unbindWith b (\r' e' -> evalEnv (v .: r') e')
+          instantiateWith b v evalEnv 
+          -- unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 
 -- >>> evalEnv zeroE t1     -- start with "empty environment"

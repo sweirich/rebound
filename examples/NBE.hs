@@ -9,6 +9,7 @@
 module NBE where
 
 import AutoEnv
+import AutoEnv.Bind.Single
 
 -- we use the lambda calculus implementation as is
 import LC hiding (eval)
@@ -38,7 +39,6 @@ instance Subst Val Val where
   applyE r (VVar x) = applyEnv r x 
   applyE r (VApp a b) = VApp (applyE r a) (applyE r b)
   applyE r (VLam b) = VLam (applyBind (applyE r) b)
-
 
 -- weaken the levels in a `Val`. This only makes the scope larger, it does not 
 -- shift the index. It is an identity function.

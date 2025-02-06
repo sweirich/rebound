@@ -69,7 +69,8 @@ inferType a ctx = case a of
     Env.extendSourceLocation p a $ inferType a ctx
 
   -- Type constructor application
-  (TyCon c params) -> do
+  tm@(TyCon c params) -> do
+    
     (DataDef delta _ cs) <- Env.lookupTCon c
     unless (length params == toInt (Scoped.scopedSize delta)) $
       Env.err
@@ -77,7 +78,7 @@ inferType a ctx = case a of
           DS c,
           DS ("should have " ++ show (Scoped.scopedSize delta) ++ " parameters, but was given"),
           DC (length params)
-        ]
+        ]   
     let delta' = weakenTeleClosed delta
     tcArgTele params delta' ctx
     return TyType
@@ -165,6 +166,7 @@ checkType tm ty ctx = do
                
     -- c-subst
     tm@(Subst a b) -> do
+      s <- scope @LocalName
       -- infer the type of the proof 'b'
       tp <- inferType b ctx
       -- make sure that it is an equality between some m and n
@@ -175,19 +177,18 @@ checkType tm ty ctx = do
       edecl <- Equal.unify m n
       -- if proof is a variable, add a definition to the context
       pdecl <- Equal.unify b TmRefl
+      s <- scope @LocalName
       -- I don't think this join can fail, but we have to check
-      r' <- fromRefinement <$> joinR edecl pdecl 
+      r' <- withSNat (scope_size s) $ fromRefinement <$> joinR edecl pdecl 
               `Env.whenNothing` [DS "incompatible equality in subst"]
-
       -- TODO: defer all of these substitutions as refinements
       -- refine the scutrutinee
       let a' = applyE r' a 
       -- refine the result type
       let ty'' = applyE r' ty'
       -- refine the context
-      let ctx' = case ctx of Env f -> Env $ \x -> applyE r' (f x)
-  
-      checkType a' ty'' ctx'
+      let ctx'' = ctx .>> r' 
+      checkType a' ty'' ctx''
       
     -- c-contra 
     (Contra p) -> do
@@ -252,7 +253,7 @@ checkType tm ty ctx = do
             let ty'' = applyE r ty1
             ty3 <- push @LocalName pat $ Equal.whnf ty''
             -- refine context
-            let ctx'' = case ctx' of Env f -> Env $ \x -> applyE r (f x)
+            let ctx'' = ctx' .>> r
             -- check the branch
             push @LocalName pat $ checkType body' ty3 ctx''
       mapM_ checkAlt alts
@@ -283,8 +284,6 @@ getSomePat (Branch bnd) = Some (Pat.getPat bnd)
 -- Instantiate Theta with type constructor arguments (could fail)
 -- Check Data constructor arguments against Theta
 
-
-
 -- | Check all of the types contained within a telescope
 tcTypeTele :: forall p1 n. 
    Telescope p1 n -> Context n -> TcMonad n (Context (Plus p1 n))
@@ -293,8 +292,10 @@ tcTypeTele (TCons (LocalDef x tm) (tele :: Telescope p2 n)) ctx = do
   ty1 <- inferType (Var x) ctx
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
-  let ctx' = case ctx of Env f -> Env $ \x -> applyE (fromRefinement r) (f x)
-  tcTypeTele tele ctx'
+  s <- scope @LocalName
+  let r' = withSNat (scope_size s) $ fromRefinement r
+  let ctx'' = ctx .>> r'
+  tcTypeTele tele ctx''
 tcTypeTele (TCons  (LocalDecl x ty) 
   (tl :: Telescope p2 (S n))) ctx = do
   tcType ty ctx
@@ -315,9 +316,12 @@ tcArgTele :: forall p n.
 tcArgTele [] TNil ctx = return (idE, emptyR)
 tcArgTele args (TCons (LocalDef x ty) (tele :: Telescope p2 n)) ctx = do
        -- ensure that the equality is provable at this point
+       s <- scope @LocalName
        Equal.equate (Var x) ty 
        (rho, ref) <- tcArgTele args tele ctx
-       r1 <- (singletonR (x, ty) `joinR` ref) `Env.whenNothing` [DS "BUG: cannot join refinements"]
+       r1 <- 
+         withSNat (scope_size s) $
+         (singletonR (x, ty) `joinR` ref) `Env.whenNothing` [DS "BUG: cannot join refinements"]
        return (rho, r1)
           
 tcArgTele (tm : terms) (TCons (LocalDecl ln ty) 
@@ -375,10 +379,11 @@ substTele :: forall p1 p2 n.
           -> TcMonad n (Telescope p2 n)
 substTele delta params theta = 
   do let delta' = weakenTeleClosed delta 
-     (ss :: Env Term (Plus p1 n) n) <- mkSubst' params (Scoped.scopedSize delta')
+     (ss :: Env Term (Plus p1 n) n) <- 
+        mkSubst' params (Scoped.scopedSize delta')
      s <- scope @LocalName
      let weaken :: Env Term p1 (Plus p1 n)
-         weaken = Env (var . weakenFinRight (scope_size s))
+         weaken = withSNat (size delta) $ weakenER (scope_size s)
      let theta' :: Telescope p2 (Plus p1 n)
          theta' = applyE @Term weaken theta
      doSubst @p1 ss theta'
@@ -454,7 +459,10 @@ declarePats pats (TCons  (LocalDef x ty) (tele :: Telescope p1 n)) ctx = do
     Refl -> do
       (ctx', tms', rf)  <- declarePats pats tele ctx
       let r1 = shiftRefinement (size pats) (singletonR (x,ty))
-      r' <- joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
+      s <- scope @LocalName
+      r' <- 
+         withSNat (sPlus (size pats) (scope_size s)) $
+           joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
       pure (ctx', tms', r')
       -- TODO: substitute for x in tele'
       -- pure (ctx', tms')
@@ -476,9 +484,10 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2))
            tms :: [Term (Plus p2 (Plus p1 n))], 
            rf2 :: Refinement Term (Plus p2 (Plus p1 n))) <- 
               push @LocalName p1 $ declarePats @p2 @p3 @(Plus p1 n) p2 tele' ctx1
-        case joinR (shiftRefinement (size p2) rf1) rf2 of 
-          Just rf -> return (ctx2, applyE @Term (shiftNE (size p2)) tm : tms, rf)
-          Nothing -> Env.err [DS "cannot create refinement"]
+        withSNat (sPlus (size p2) (sPlus (size p1) (scope_size s))) $
+          case joinR (shiftRefinement (size p2) rf1) rf2 of 
+            Just rf -> return (ctx2, applyE @Term (shiftNE (size p2)) tm : tms, rf)
+            Nothing -> Env.err [DS "cannot create refinement"]
 declarePats PNil TNil ctx = return (ctx, [], emptyR)
 declarePats PNil _ _ = Env.err [DS "Not enough patterns in match for data constructor"]
 declarePats pats TNil ctx = Env.err [DS "Too many patterns in match for data constructor"]
