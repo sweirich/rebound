@@ -4,11 +4,10 @@
 -- Stability   : experimental
 {-# LANGUAGE UndecidableSuperClasses #-}
 module AutoEnv.Env(Env, applyEnv, SubstVar(..), Subst(..),
-  -- env, -- temporary???
   transform,
   zeroE,
   oneE,
-  -- singleton,
+  singletonE,
   idE,
   (.>>),
   (.:),
@@ -42,6 +41,7 @@ import qualified Data.Vec as Vec
 import qualified Data.Map as Map
 import Control.Monad
 
+-- type Env a n m = Fin n -> a m
 
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
@@ -79,6 +79,7 @@ comp (Inc (SS n)) (Cons _t s) = comp (Inc n) s
 comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
 comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
 comp s1 s2 = s1 :<> s2
+{-# INLINEABLE comp #-}
 
 -- | mapping operation for range
 -- TODO: look up conor's name
