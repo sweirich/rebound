@@ -258,6 +258,10 @@ data TeleList (pat :: Nat -> Nat -> Type) p n where
       Plus p2 (Plus p1 n) ~ Plus (Plus p2 p1) n) =>
     pat p1 n -> TeleList pat p2 (Plus p1 n) -> TeleList pat (Plus p2 p1) n
 
+lengthTele :: TeleList pat p n -> Int 
+lengthTele TNil = 0
+lengthTele (TCons _ ps) = 1 + lengthTele ps
+
 -- Smart constructor
 (<:>) :: forall p1 p2 pat n. 
          (IScopedSized pat) =>

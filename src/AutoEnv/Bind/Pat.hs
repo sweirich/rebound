@@ -17,6 +17,7 @@ module AutoEnv.Bind.Pat(
   applyUnder,
   type Rebind(..),
   type PatList(..),
+  lengthPL
 ) where
 
 import AutoEnv
@@ -198,6 +199,10 @@ data PatList (pat :: Nat -> Type) p where
   PNil :: PatList pat N0
   PCons :: Size (pat p1) ~ p1 =>
     pat p1 -> PatList pat p2 -> PatList pat (Plus p2 p1)
+
+lengthPL :: PatList pat p -> Int
+lengthPL PNil = 0
+lengthPL (PCons _ ps) = 1 + lengthPL ps
 
 instance (forall n. Sized (pat n)) => Sized (PatList pat p) where
     type Size (PatList pat p) = p

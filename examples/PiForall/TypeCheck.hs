@@ -427,24 +427,28 @@ appendDefs (Refinement m) = go (Map.toList m) where
 -- Typechecking pattern matching
 -----------------------------------------------------------
 
+
 -- | Create a binding for each of the variables in the pattern, producing an extended context and 
 -- a term corresponding to the variables
 declarePat :: forall p n. 
   Pattern p -> Typ n -> Context n -> TcMonad n (Context (Plus p n), Term (Plus p n), Refinement Term (Plus p n))
 declarePat (PatVar x) ty ctx = do
   pure (Env.extendTy ty ctx, Var f0, emptyR)
-declarePat (PatCon dc (pats :: PatList Pattern p)) ty ctx = do 
+declarePat p@(PatCon dc (pats :: PatList Pattern p)) ty ctx = do 
   (tc,params) <- Equal.ensureTCon ty 
   ScopedConstructorDef (delta :: Telescope p1 'Z) 
       (ConstructorDef cn (thetai :: Telescope p2 p1)) <- Env.lookupDCon dc tc
+  Env.warn [DS "found pat", DS (pp p), DS "of type", DD ty]
+  Env.warn [DS "size pats", DS (show (size pats)), 
+            DS "size thetai", DS (show (Scoped.scopedSize thetai))]
   case axiomPlusZ @n of 
-    Refl ->
-      case testEquality (size pats) (Scoped.scopedSize thetai) of
-         Just Refl -> do
+    Refl -> if Pat.lengthPL pats == toInt (Scoped.scopedSize thetai) then do
+      -- case testEquality (size pats) (Scoped.scopedSize thetai) of
+      --   Just Refl -> do
            (tele :: Telescope p2 n) <- substTele delta params thetai
            (ctx', tms', r) <- declarePats pats tele ctx
            pure (ctx', DataCon dc tms', r)
-         Nothing -> Env.err [DS "Wrong number of arguments to data constructor", DC cn]
+            else  Env.err [DS "Wrong number of arguments to data constructor", DC cn]
 
 -- | Given a list of pattern arguments and a telescope, create a binding for 
 -- each of the variables in the pattern, the term form of the pattern, and a refinement
@@ -668,15 +672,13 @@ exhaustivityCheck ty pats ctx = do
         loop  (Some (PatVar x) : _) dcons = return ()
         loop  (Some (PatCon dc (args :: PatList Pattern p)) : pats') dcons = do
           (ConstructorDef _ (tele :: Telescope p2 p1), dcons') <- removeDCon dc dcons
-          case testEquality (snat @p) (Scoped.scopedSize tele) of 
-            Just Refl -> do
-                tele' <- substTele delta tys tele
-                let (aargs, pats'') = relatedPats dc pats'
+          tele' <- substTele delta tys tele
+          let (aargs, pats'') = relatedPats dc pats'
                 -- check the arguments of the data constructor together with 
                 -- all other related argument lists
-                checkSubPats dc tele' (Some args : aargs)
-                loop pats'' dcons'
-            Nothing -> error "BUG: removeDCon returned invalid constructor"
+          checkSubPats dc tele' (Some args : aargs)
+          loop pats'' dcons'
+            
 
         -- make sure that the given list of constructors is impossible
         -- in the current environment
