@@ -73,9 +73,7 @@ t1 =
 instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
   b1 == b2 = unbind b1 == unbind b2
 
--- | The derivable equality instance
--- is alpha-equivalence
-deriving instance (Eq (Exp n))
+deriving instance Eq (Exp n)
 
 ----------------------------------------------
 -- Substitution
@@ -113,8 +111,8 @@ instance SubstVar Exp where
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
   applyE r (Var x) = applyEnv r x
-  applyE r (Lam b) = Lam (applyE r b)
-  applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
+  applyE r e = gapplyE r e
+deriving instance (Generic1 Exp)
 
 ----------------------------------------------
 -- Display (Show)
@@ -141,10 +139,10 @@ instance Show (Exp n) where
 -----------------------------------------------
 
 -- >>> eval t1
--- (λ. (λ. (1 ((λ. 0) 0))))
 
 -- >>> eval (t1 `App` t0)
 -- (λ. ((λ. 0) ((λ. 0) 0)))
+
 
 -- TODO: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
 

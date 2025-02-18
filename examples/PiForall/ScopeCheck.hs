@@ -4,9 +4,10 @@
 -- Stability   : experimental
 --
 -- This module demonstrates a translation from unscoped to well-scoped terms
-
+{-# LANGUAGE OverloadedLists #-}
 module PiForall.ScopeCheck where
 
+import GHC.IsList 
 
 import qualified AutoEnv.Bind.Single as B
 import AutoEnv.Bind.Pat (PatList(..))
@@ -147,14 +148,14 @@ to vs (C.App f a) = do
   return $ S.App f' a'
 to vs (C.TyCon n tys) = do
   tys' <- mapM (to vs) tys
-  return $ S.TyCon n tys'
+  return $ S.TyCon n (fromList tys')
 to vs (C.DataCon n args) = do
   args' <- mapM (to vs) args
-  return $ S.DataCon n args'
+  return $ S.DataCon n (fromList args')
 to vs (C.Case a brs) = do
   a' <- to vs a
   brs' <- mapM (toM vs) brs
-  return $ S.Case a' brs'
+  return $ S.Case a' (fromList brs')
 to vs (C.Ann a b) = do
   a' <- to vs a
   b' <- to vs b

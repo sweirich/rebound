@@ -185,7 +185,7 @@ lemma_plus_n_zero = \ n .
       let IH = (lemma_plus_n_zero p: plus p 0 = p) in
       m_eq_n_Sm_eq_Sn (plus p 0) (p) IH
 
-
+{-
 test : [A:Type] -> (n:Nat) -> (v: Vec A n) -> Vec A (plus n 0)
 test = \ [A] n v .
   -- let x = plus n 0 in
@@ -194,3 +194,4 @@ test = \ [A] n v .
   -- let eq = ((subst lemma_plus_n_zero n by (Refl: x = plus n 0)): x = 0) in
   --PRINTME
   subst v by eq1
+-}

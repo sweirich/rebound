@@ -7,7 +7,8 @@ module AutoEnv
    module AutoEnv.Env,
    module AutoEnv.MonadScoped, 
    module AutoEnv.Lib,
-   module AutoEnv.Context)
+   module AutoEnv.Context,
+   Generic(..),Generic1(..))
 where
   
 import AutoEnv.Classes
@@ -15,5 +16,6 @@ import AutoEnv.Context
 import AutoEnv.Env
 import AutoEnv.Lib
 import AutoEnv.MonadScoped
+import GHC.Generics hiding (S)
 
 

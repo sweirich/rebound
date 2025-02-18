@@ -16,6 +16,8 @@ module AutoEnv.Bind.Single
 import AutoEnv
 import AutoEnv.Classes
 
+import GHC.Generics hiding (S)
+
 ----------------------------------------------------------------
 -- Single binders
 ----------------------------------------------------------------
@@ -32,6 +34,9 @@ data Bind v c (n :: Nat) where
 instance (Subst v v) => Subst v (Bind v c) where
   applyE :: (Subst v v) => Env v n m -> Bind v c n -> Bind v c m
   applyE env1 (Bind env2 m) = Bind (env2 .>> env1) m
+
+instance (Subst v v) => GSubst v (Bind v c) where
+  gsubst = applyE
 
 -- TODO: more effiencient implmentation that looks at the env??
 instance (Subst v v, Subst v c, FV c) => FV (Bind v c) where

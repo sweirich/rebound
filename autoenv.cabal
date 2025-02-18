@@ -63,7 +63,8 @@ library
       , Data.Nat
       , Data.Fin
       , Data.Vec
-      , Data.LocalName      
+      , Data.LocalName    
+      , Data.Scoped.List  
       , LC
       , LCLet
       , PTS

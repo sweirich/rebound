@@ -1,5 +1,6 @@
 module PiForall.Environment where
 
+import qualified Data.Scoped.List as L
 import Data.List
 import Data.Foldable (toList)
 import Data.Maybe ( listToMaybe )

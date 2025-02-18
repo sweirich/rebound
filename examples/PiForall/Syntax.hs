@@ -2,6 +2,7 @@
 -- This version distinguishes between global and local names
 -- Global names are strings (which must be unique). Local names 
 -- are represented by indices.
+{-# LANGUAGE OverloadedLists #-}
 module PiForall.Syntax where
 
 import AutoEnv
@@ -19,8 +20,10 @@ import Data.Maybe qualified as Maybe
 import Data.Set qualified as Set
 import Data.Vec qualified as Vec
 
+import Data.Scoped.List qualified as L
 
 import Unsafe.Coerce (unsafeCoerce)
+import GHC.Generics
 
 -- inScope :: Scope LocalName n -> (SNatI n => a) -> a 
 -- inScope s = withSNat (scope_size s) 
@@ -49,9 +52,9 @@ data Term (n :: Nat)
   | Pi (Typ n) (Local.Bind Term Typ n)
   | Pos SourcePos (Term n)
   | Let (Term n) (Local.Bind Term Term n)
-  | TyCon TyConName [Typ n]
-  | DataCon DataConName [Term n]
-  | Case (Term n) [Match n]
+  | TyCon TyConName (L.List Typ n)
+  | DataCon DataConName (L.List Term n)
+  | Case (Term n) (L.List Match n)
   | App (Term n) (Term n)
   | Ann (Term n) (Typ n)
   | -- | Equality type  `a = b`
@@ -76,6 +79,12 @@ data Pattern (p :: Nat)  where
 -- with expression variables, with an expression body
 data Match (n :: Nat)
   = forall p. SNatI p => Branch (Pat.Bind Term Term (Pattern p) n)
+
+-- cannot derive generic 
+instance Generic1 Match where
+  type Rep1 Match = Rec1 Match
+  from1 = Rec1
+  to1 (Rec1 x) = x
 
 ----------------------------------------------------------
 -- Datatype and constructor declarations
@@ -171,47 +180,6 @@ unPosFlaky :: Term n -> SourcePos
 unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
 ----------------------------------------------
--- TODO: move to Pat.Simple
-
-{-
-class (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
-instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
-
--- | lists of patterns where variables at each position bind 
--- later in the pattern
-data PatList (pat :: Nat -> Type) p where
-  PNil :: PatList pat N0
-  PCons :: Size (pat p1) ~ p1 =>
-    pat p1 -> PatList pat p2 -> PatList pat (Plus p2 p1)
-
-instance (forall n. Sized (pat n)) => Sized (PatList pat p) where
-    type Size (PatList pat p) = p
-    size PNil = s0
-    size (PCons (p1 :: pat p1) (p2 :: PatList pat p2)) = 
-        sPlus @p2 @(Size (pat p1)) (size p2) (size p1)
-
-instance (forall p. Named (pat p)) => Named (PatList pat p) where
-  patLocals :: PatList pat p -> Vec p LocalName
-  patLocals PNil = VNil
-  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
-    let test :: Size (pat p1) :~: p1
-        test = Refl
-    in
-      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)
-
-instance (forall p1 p2. PatEq (pat p1) (pat p2)) => 
-      PatEq (PatList pat p1) (PatList pat p2) where
-  patEq :: PatList pat p1 -> PatList pat p2 -> Maybe (p1 :~: p2)
-  patEq PNil PNil = Just Refl
-  patEq (PCons p1 ps1) (PCons p2 ps2) = do
-    Refl <- patEq p1 p2
-    Refl <- patEq ps1 ps2
-    return Refl
-  patEq _ _ = Nothing
--}
-------------------------------------------------------
-
-
 
 ----------------------------------------------
 --  Sized/Named instances
@@ -253,7 +221,16 @@ instance Named LocalName (Local p n) where
 instance SubstVar Term where
   var = Var
 
+deriving instance (Generic1 Term)
+
+
+instance (Generic1 f, Subst v f) => Subst v (L.List f)
+
+
 instance Subst Term Term where
+  applyE r (Var x) = applyEnv r x
+  applyE r a = gapplyE r a
+  {-
   applyE r TyType = TyType
   applyE r (Lam bnd) = Lam (applyE r bnd)
   applyE r (TyCon c es) = TyCon c (map (applyE r) es)
@@ -271,7 +248,7 @@ instance Subst Term Term where
   applyE r (Subst a b) = Subst (applyE r a) (applyE r b)
   applyE r (Contra p) = Contra (applyE r p)
   applyE r TrustMe = TrustMe
-  applyE r PrintMe = PrintMe 
+  applyE r PrintMe = PrintMe -}
 
 instance Subst Term Match where
   applyE r (Branch (b :: Pat.Bind Term Term (Pattern p) n)) =
@@ -312,9 +289,9 @@ instance FV Term where
   appearsFree n (Pi a b) = appearsFree n a || appearsFree n b
   appearsFree n (Lam b) = appearsFree n b
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (TyCon _ args) = any (appearsFree n) args
-  appearsFree n (DataCon _ args) = any (appearsFree n) args
-  appearsFree n (Case t b) = appearsFree n t || any (appearsFree n) b
+  appearsFree n (TyCon _ args) = L.any (appearsFree n) args
+  appearsFree n (DataCon _ args) = L.any (appearsFree n) args
+  appearsFree n (Case t b) = appearsFree n t || L.any (appearsFree n) b
   appearsFree n (Ann a t) = appearsFree n a || appearsFree n t
   appearsFree n (Pos _ a) = appearsFree n a
   appearsFree n (Let a b) = appearsFree n a || appearsFree n b
@@ -377,11 +354,11 @@ instance Strengthen Term where
   strengthenRec k m n (Global s) = pure (Global s)
   strengthenRec k m n TyType = pure TyType
   strengthenRec k m n (Lam b) = Lam <$> strengthenRec k m n b
-  strengthenRec k m n (DataCon c args) = DataCon c <$> mapM (strengthenRec k m n) args
-  strengthenRec k m n (TyCon c args) = TyCon c <$> mapM (strengthenRec k m n) args
+  strengthenRec k m n (DataCon c args) = DataCon c <$> L.mapM (strengthenRec k m n) args
+  strengthenRec k m n (TyCon c args) = TyCon c <$> L.mapM (strengthenRec k m n) args
   strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
   strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (Case a b) = Case <$> strengthenRec k m n a <*> mapM (strengthenRec k m n) b
+  strengthenRec k m n (Case a b) = Case <$> strengthenRec k m n a <*> L.mapM (strengthenRec k m n) b
   strengthenRec k m n (Ann a t) = Ann <$> strengthenRec k m n a <*> strengthenRec k m n t
   strengthenRec k m n (Pos p a) = Pos p <$> strengthenRec k m n a
   strengthenRec k m n (Let a b) = Let <$> strengthenRec k m n a <*> strengthenRec k m n b

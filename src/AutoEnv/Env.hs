@@ -3,7 +3,10 @@
 -- Description : Environments
 -- Stability   : experimental
 {-# LANGUAGE UndecidableSuperClasses #-}
-module AutoEnv.Env(Env, applyEnv, SubstVar(..), Subst(..),
+{-# LANGUAGE DefaultSignatures #-}
+module AutoEnv.Env(Env, applyEnv, 
+  SubstVar(..), Subst(..), 
+  GSubst(..), gapplyE,
   transform,
   zeroE,
   oneE,
@@ -40,6 +43,7 @@ import Prelude hiding (head,tail)
 import qualified Data.Vec as Vec
 import qualified Data.Map as Map
 import Control.Monad
+import GHC.Generics hiding (S)
 
 -- type Env a n m = Fin n -> a m
 
@@ -82,7 +86,7 @@ comp s1 s2 = s1 :<> s2
 {-# INLINEABLE comp #-}
 
 -- | mapping operation for range
--- TODO: look up conor's name
+-- TODO: does Conor have a name for this?
 transform :: (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f Zero = Zero
 transform f (Weak x) = Weak x 
@@ -106,6 +110,13 @@ class (Subst v v) => SubstVar (v :: Nat -> Type) where
 -- of type `v m`
 class (SubstVar v) => Subst v c where
   applyE :: Env v n m -> c n -> c m
+
+  default applyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) => Env v m n -> c m -> c n
+  applyE = gapplyE
+  {-# INLINE applyE #-}
+
+gapplyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) => Env v m n -> c m -> c n
+gapplyE s x = to1 $ gsubst s (from1 x)
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -310,4 +321,48 @@ fromTable rho =
   env $ \f -> case lookup f rho of 
                 Just t -> t 
                 Nothing -> var f
-                                    
+                                  
+--------------------------------------------
+-- Generic implementation of Subst class
+-----------------------------------------------
+
+newtype Ignore a = Ignore a
+
+class GSubst v (e :: Nat -> Type) where
+  gsubst :: Env v m n -> e m -> e n
+
+-- Constant types
+instance GSubst v (K1 i c) where
+  gsubst s (K1 c) = K1 c
+  {-# INLINE gsubst #-}
+
+instance GSubst v U1 where
+  gsubst _s U1 = U1
+  {-# INLINE gsubst #-}
+
+instance GSubst b f => GSubst b (M1 i c f) where
+  gsubst s = M1 . gsubst s . unM1
+  {-# INLINE gsubst #-}
+
+instance GSubst b V1 where
+  gsubst _s = error "BUG: void type"
+  {-# INLINE gsubst #-}
+
+instance (GSubst b f, GSubst b g) => GSubst b (f :*: g) where
+  gsubst s (f :*: g) = gsubst s f :*: gsubst s g
+  {-# INLINE gsubst #-}
+
+instance (GSubst b f, GSubst b g) => GSubst b (f :+: g) where
+  gsubst s (L1 f) = L1 $ gsubst s f
+  gsubst s (R1 g) = R1 $ gsubst s g
+  {-# INLINE gsubst #-}
+
+instance (Subst b g) => GSubst b (Rec1 g) where
+  gsubst s (Rec1 f) = Rec1 (applyE s f)
+
+instance SubstVar v => Subst v Fin where
+  applyE r e = error "BUG: must use Fin type only for indices in syntax"
+
+instance GSubst b Fin where
+  gsubst s f = error "BUG: add a Var case to your definition of applyE"
+
