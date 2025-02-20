@@ -12,6 +12,8 @@ import qualified Control.Monad as M
 -- This module is intended to be used with the OverloadedLists 
 -- Haskell language extension.
 
+-- newtype List a n = MkList [a n]
+
 data List :: (Nat -> Type) -> Nat -> Type where
    Nil  :: List a n
    (:<) :: a n -> List a n -> List a n

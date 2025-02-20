@@ -56,7 +56,7 @@ data Pat (p :: Nat) (n :: Nat) where
   -- Patterns are "telescopic"
   -- In Pair pattern, we increase the scope so that variables
   -- bound in the left subterm can be referred to in the right subterm
-  PPair :: Pat p1 n -> Pat p2 (Plus p1 n) -> Pat (Plus p2 p1) n
+  PPair :: Pat p1 n -> Pat p2 (p1 + n) -> Pat (p2 + p1) n
   -- Patterns can also include type annotations. 
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
@@ -195,10 +195,10 @@ instance FV (Pat p) where
 -- >>> weaken' s1 t00
 -- 0 0
 
-weaken' :: SNat m -> Exp n -> Exp (Plus m n)
+weaken' :: SNat m -> Exp n -> Exp (m + n)
 weaken' m = applyE @Exp (weakenE' m)
 
-weakenBind' :: SNat m -> B.Bind Exp Exp n -> B.Bind Exp Exp (Plus m n)
+weakenBind' :: SNat m -> B.Bind Exp Exp n -> B.Bind Exp Exp (m + n)
 weakenBind' m = applyE @Exp (weakenE' m)
 
 ----------------------------------------------
@@ -223,9 +223,9 @@ instance Strengthen Exp where
 
 instance Strengthen (Pat p) where
   strengthenRec k m n PVar = pure PVar
-  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (Plus k (Plus m n))) 
-    (p2 :: Pat p2 (Plus p1 (Plus k (Plus m n))))) =
-      case (axiomAssoc @p1 @k @(Plus m n), 
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (k + (m + n))) 
+    (p2 :: Pat p2 (p1 + (k + (m + n))))) =
+      case (axiomAssoc @p1 @k @(m + n), 
             axiomAssoc @p1 @k @n) of
        (Refl, Refl) -> 
          let r = strengthenRec (sPlus (Scoped.iscopedSize p1) k) m n p2 in
@@ -559,7 +559,7 @@ inferPattern ::
   (MonadError Err m, SNatI n) =>
   Ctx Exp n -> -- input context
   Pat p n -> -- pattern to check
-  m (Ctx Exp (Plus p n), Exp (Plus p n), Exp n)
+  m (Ctx Exp (p + n), Exp (p + n), Exp n)
 inferPattern g (PAnnot p ty) = do
   (g', e) <- checkPattern g p ty
   pure (g', e, ty)
@@ -576,10 +576,10 @@ checkPattern ::
   Ctx Exp n -> -- input context
   Pat p n -> -- pattern to check
   Exp n -> -- expected type of pattern (should be in whnf)
-  m (Ctx Exp (Plus p n), Exp (Plus p n))
+  m (Ctx Exp (p + n), Exp (p + n))
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
-checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (Plus p1 n))) (Sigma tyA tyB) = 
+checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) = 
   -- The context for the recursive call on p2 needs a little preparation
   -- need to have implicit version of p1 + n
   withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $ 

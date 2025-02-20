@@ -30,7 +30,7 @@ instance Named LocalName LocalName where
 -- containing local names
 class (forall n. Monad (m n)) => MonadScoped name m where
   scope :: m n (Scope name n)
-  push  :: Named name pat => pat -> m (Plus (Size pat) n) a -> m n a
+  push  :: Named name pat => pat -> m (Size pat + n) a -> m n a
 
 -- Scopes know how big they are and remember local names for printing 
 data Scope name n = Scope { 
@@ -44,7 +44,7 @@ emptyScope = Scope {
     scope_locals = VNil 
   } 
 
-extendScope :: Named name pat => pat -> Scope name n -> Scope name (Plus (Size pat) n)
+extendScope :: Named name pat => pat -> Scope name n -> Scope name (Size pat + n)
 extendScope pat s = 
    Scope { scope_size = sPlus (size pat) (scope_size s),
            scope_locals = Vec.append (patLocals pat) (scope_locals s) 

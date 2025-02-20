@@ -62,7 +62,7 @@ data Pat (m :: Nat) where
 
 data ConApp (m :: Nat) where
   PCon :: String -> ConApp N0 -- binds zero variables
-  PApp :: ConApp m1 -> Pat m2 -> ConApp (Plus m1 m2)
+  PApp :: ConApp m1 -> Pat m2 -> ConApp (m1 + m2)
 
 -- NOTE: The index `n` is the number of free variables that
 -- appear in the pattern. Patterns here does not include any

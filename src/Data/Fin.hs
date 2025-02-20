@@ -22,16 +22,16 @@ import Test.QuickCheck
 import Unsafe.Coerce (unsafeCoerce)
 
 -- a property about addition
-axiom :: forall m n. Plus m (S n) :~: S (Plus m n)
+axiom :: forall m n. m + S n :~: S (m + n)
 axiom = unsafeCoerce Refl
 
-axiomPlusZ :: forall m. Plus m Z :~: m
+axiomPlusZ :: forall m. m + Z :~: m
 axiomPlusZ = unsafeCoerce Refl
 
-axiomAssoc :: forall p m n. Plus p (Plus m n) :~: Plus (Plus p m) n
+axiomAssoc :: forall p m n. p + (m + n) :~: (p + m) + n
 axiomAssoc = unsafeCoerce Refl
 
-axiomIncrInj :: forall p1 p2. (Plus p1 N1 ~ Plus p2 N1) => p1 :~: p2
+axiomIncrInj :: forall p1 p2. (p1 + N1 ~ p2 + N1) => p1 :~: p2
 axiomIncrInj = unsafeCoerce Refl
 
 -----------------------------------------------------
@@ -116,7 +116,7 @@ universe = enumFin snat
 -- 2
 
 -- increment by a fixed amount (on the left)
-shiftN :: SNat m -> Fin n -> Fin (Plus m n)
+shiftN :: SNat m -> Fin n -> Fin (m + n)
 shiftN SZ f = f
 shiftN (SS n) f = FS (shiftN n f)
 
@@ -124,7 +124,7 @@ shiftN (SS n) f = FS (shiftN n f)
 -- 2
 
 -- TODO: remove unsafeCoerce here
-shiftRN :: forall m n. SNat n -> Fin m -> Fin (Plus m n)
+shiftRN :: forall m n. SNat n -> Fin m -> Fin (m + n)
 shiftRN m f = unsafeCoerce (shiftN m f)
 
 -- >>> shiftL @N2 @N2 @N1 s2 (FZ :: Fin N3)
@@ -132,10 +132,10 @@ shiftRN m f = unsafeCoerce (shiftN m f)
 
 -- increment by a fixed amount
 -- TODO: remove unsafeCoerce here
-shiftL :: forall m1 m n. SNat m1 -> Fin (Plus m n) -> Fin (Plus (Plus m1 m) n)
+shiftL :: forall m1 m n. SNat m1 -> Fin (m + n) -> Fin ((m1 + m) + n)
 shiftL m1 f = unsafeCoerce (shiftN m1 f)
 
-shiftR :: forall m m1 n. SNat m1 -> Fin (Plus m n) -> Fin (Plus (Plus m m1) n)
+shiftR :: forall m m1 n. SNat m1 -> Fin (m + n) -> Fin ((m + m1) + n)
 shiftR m1 f = unsafeCoerce (shiftN m1 f)
 
 -------------------------------------------------------------------------------
@@ -153,7 +153,7 @@ shiftR m1 f = unsafeCoerce (shiftN m1 f)
 -- 1
 
 -- | weaken the bound of a Fin by an arbitrary amount
-weakenFin :: SNat m -> Fin n -> Fin (Plus m n)
+weakenFin :: SNat m -> Fin n -> Fin (m + n)
 weakenFin SZ f = f
 weakenFin (SS m) FZ = FZ
 weakenFin (SS (m :: SNat m0)) (FS (f :: Fin n0)) = case axiom @m0 @n0 of
@@ -164,7 +164,7 @@ weaken1Fin = weakenFin s1
 
 
 -- | weaken the bound of of a Fin by an arbitrary amound on the right
-weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (Plus n m)
+weakenFinRight :: forall m n. SNat m -> Fin n -> Fin (n + m)
 weakenFinRight SZ n =
   case axiomPlusZ @n of
     Refl -> n
@@ -186,12 +186,12 @@ weakenFinRight (SS (m :: SNat m1)) n =
 checkBound ::
   forall p n.
   SNat p ->
-  Fin (Plus p n) ->
+  Fin (p + n) ->
   Either (Fin p) (Fin n)
 checkBound SZ = Right
 checkBound (SS (p' :: SNat n2)) = \case
   FZ -> Left FZ
-  (FS (f' :: Fin (Plus n2 n))) ->
+  (FS (f' :: Fin (n2 + n))) ->
     case checkBound @n2 @n p' f' of
       Left x -> Left (FS x)
       Right y -> Right y
@@ -235,7 +235,7 @@ f2 = FS f1
 -- update a reference so that it is valid for a smaller context
 -- in other words, given 0 <= x < m + n,  if x >= m return x - m, otherwise return nothing
 
-strengthenFin :: forall m n. SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
+strengthenFin :: forall m n. SNat m -> SNat n -> Fin (m + n) -> Maybe (Fin n)
 strengthenFin SZ      n                    f      = Just f  -- (a)
 strengthenFin (SS m)  n                    FZ     = Nothing -- (b)
 strengthenFin (SS m0) SZ                   (FS f) = Nothing -- (c)
@@ -255,7 +255,7 @@ strengthenFin (SS m0) (SS (n0 :: SNat n0)) (FS f) = strengthenFin m0 (SS n0) f
 
 -- given 0 <= x < k + m + n, if x < k then leave alone, if k <= x < k+m return nothing, x >= k + m  return x - m
 -- variables < k are left alone, variables k <= .. < k + m return Nothing, variables >= k + m shifted
-strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (Plus k (Plus m n)) -> Maybe (Fin (Plus k n))
+strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
 strengthenRecFin SZ SZ n x = Just x  -- Base case: k = 0, m = 0
 strengthenRecFin SZ (SS m) n FZ = Nothing  -- Case: k = 0, m > 0, and x is in the `m` range
 strengthenRecFin SZ (SS m) n (FS x) = strengthenRecFin SZ m n x 
@@ -279,7 +279,7 @@ strengthenRecFin (SS k) m n (FS x) = FS <$> strengthenRecFin k m n x
                 r = strengthenRecFin k m0 (SS n0) x0
 -}
 
-strengthenFin' :: SNat m -> SNat n -> Fin (Plus m n) -> Maybe (Fin n)
+strengthenFin' :: SNat m -> SNat n -> Fin (m + n) -> Maybe (Fin n)
 strengthenFin' = strengthenRecFin SZ
 
 {-

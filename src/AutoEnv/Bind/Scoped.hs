@@ -13,7 +13,7 @@ import Data.Fin
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
 
-congPlusL :: forall m1 m2 n. m1 :~: m2 -> Plus m1 n :~: Plus m2 n
+congPlusL :: forall m1 m2 n. m1 :~: m2 -> m1 + n :~: m2 + n
 congPlusL Refl = Refl
 
 ----------------------------------------------------------
@@ -68,7 +68,7 @@ data Bind v c (pat :: Nat -> Type) (n :: Nat) where
   Bind ::
     pat n ->
     Env v m n ->
-    c (Plus (ScopedSize pat) m) ->
+    c (ScopedSize pat + m) ->
     Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
@@ -76,7 +76,7 @@ bind ::
   forall v c pat n.
   (ScopedSized pat, Subst v c) =>
   pat n ->
-  c (Plus (ScopedSize pat) n) ->
+  c (ScopedSize pat + n) ->
   Bind v c pat n
 bind pat = Bind pat idE
 
@@ -91,9 +91,9 @@ getBody ::
   forall v c pat n.
   (ScopedSized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  c (Plus (ScopedSize pat) n)
+  c (ScopedSize pat + n)
 getBody (Bind (pat :: pat n) (env :: Env v m n) t) =
-  applyE @v @c @(Plus (ScopedSize pat) m) (upN (scopedSize pat) env) t
+  applyE @v @c @(ScopedSize pat + m) (upN (scopedSize pat) env) t
 
 instantiate ::
   forall v c pat n.
@@ -119,7 +119,7 @@ unbind ::
   forall v c pat n d.
   (SNatI n, forall n. ScopedSized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (forall m. (SNatI m, m ~ Plus (ScopedSize pat) n) => pat n -> c m -> d) ->
+  (forall m. (SNatI m, m ~ ScopedSize pat + n) => pat n -> c m -> d) ->
   d
 unbind bnd f =
   withSNat (sPlus (scopedSize (getPat bnd)) (snat @n)) $
@@ -130,7 +130,7 @@ unbind bnd f =
 unBindWith ::
   (forall n. Sized (pat n), SubstVar v) =>
   Bind v c pat n ->
-  (forall m. pat n -> Env v m n -> c (Plus (ScopedSize pat) m) -> d) ->
+  (forall m. pat n -> Env v m n -> c (ScopedSize pat + m) -> d) ->
   d
 unBindWith (Bind pat r t) f = f pat r t
 
@@ -156,8 +156,8 @@ instantiateWeakenEnv ::
   (SubstVar v, Subst v v) =>
   SNat p ->
   SNat n ->
-  v (Plus p n) ->
-  Env v (S n) (Plus p n)
+  v (p + n) ->
+  Env v (S n) (p + n)
 instantiateWeakenEnv p n a = 
   a .: shiftNE p
 {-
@@ -165,7 +165,7 @@ instantiateWeakenEnv p n a =
   withSNat (sPlus p (SS n)) $
   shiftNE @v p
     .>> env
-      ( \(x :: Fin (Plus p (S n))) ->
+      ( \(x :: Fin (p + (S n))) ->
           case checkBound @p @(S n) p x of
             Left pf -> var (weakenFinRight n pf)
             Right pf -> case pf of
@@ -206,14 +206,14 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
 
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
-      unbind bnd $ \(p :: p (Plus k (Plus m n))) t' ->
-        case (axiomAssoc @(ScopedSize p) @k @(Plus m n), 
+      unbind bnd $ \(p :: p (k + (m + n))) t' ->
+        case (axiomAssoc @(ScopedSize p) @k @(m + n), 
               axiomAssoc @(ScopedSize p) @k @n)  of 
           (Refl, Refl) ->
-            let p' :: Maybe (p (Plus k n))
+            let p' :: Maybe (p (k + n))
                 p' = strengthenRec k m n p
 
-                r  :: Maybe (c (Plus (ScopedSize p) (Plus k n)))
+                r  :: Maybe (c (ScopedSize p + (k + n)))
                 r  = strengthenRec (sPlus (scopedSize p) k) m n t'
             in bind <$> p' <*> r
 -----------------------------------------------------------------
@@ -255,8 +255,8 @@ data TeleList (pat :: Nat -> Nat -> Type) p n where
   TNil :: TeleList pat N0 n
   TCons :: 
     ( IScopedSized pat, 
-      Plus p2 (Plus p1 n) ~ Plus (Plus p2 p1) n) =>
-    pat p1 n -> TeleList pat p2 (Plus p1 n) -> TeleList pat (Plus p2 p1) n
+      p2 + (p1 + n) ~ (p2 + p1) + n) =>
+    pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
 
 lengthTele :: TeleList pat p n -> Int 
 lengthTele TNil = 0
@@ -265,7 +265,7 @@ lengthTele (TCons _ ps) = 1 + lengthTele ps
 -- Smart constructor
 (<:>) :: forall p1 p2 pat n. 
          (IScopedSized pat) =>
-         pat p1 n -> TeleList pat p2 (Plus p1 n) -> TeleList pat (Plus p2 p1) n
+         pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
 e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
 infixr <:>
 
@@ -299,8 +299,8 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
   strengthenRec k m n TNil = Just TNil
-  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (Plus k (Plus m n))) p2) = 
-     case (axiomAssoc @p1 @k @(Plus m n), 
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (k + (m + n))) p2) = 
+     case (axiomAssoc @p1 @k @(m + n), 
               axiomAssoc @p1 @k @n)  of 
           (Refl, Refl) ->
              (<:>) <$> strengthenRec k m n p1

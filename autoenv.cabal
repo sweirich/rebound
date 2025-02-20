@@ -32,6 +32,8 @@ common common-stanza
     , mtl
     , brick
     , vty
+    , fin >= 0.3.2
+    , vec
   default-language:
     GHC2021
   default-extensions:
@@ -44,6 +46,7 @@ common common-stanza
     , TypeFamilies
     , AllowAmbiguousTypes
     , UndecidableInstances
+    
 
 library
   import:

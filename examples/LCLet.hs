@@ -18,14 +18,14 @@ data Exp (n :: Nat) where
   Lam :: Bind Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
   Let ::
-    Exp n ->
     -- | single let expression
     -- "let x = e1 in e2" where x is bound in e2
+    Exp n ->
     (Bind Exp Exp n) ->
     Exp n
   LetRec ::
+    -- | "let rec x = e1 in e2" where x is bound in both e1 and e2  
     Bind Exp Exp n ->
-    -- | "let rec x = e1 in e2" where x is bound in both e1 and e2
     Bind Exp Exp n ->
     Exp n
   LetTele ::
@@ -231,7 +231,7 @@ eval (LetRec e1 e2) =
   -- use a Haskell recursive definition
   -- to tie the knot for a recursive definition
   -- in the object language
-  let v = instantiate e2 v
+  let v = instantiate e1 v
    in eval (instantiate e2 v)
 eval (LetTele e) = evalTele e
 

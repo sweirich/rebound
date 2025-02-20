@@ -4,10 +4,9 @@
 -- Stability   : experimental
 --
 -- This module demonstrates a translation from unscoped to well-scoped terms
-{-# LANGUAGE OverloadedLists #-}
+
 module PiForall.ScopeCheck where
 
-import GHC.IsList 
 
 import qualified AutoEnv.Bind.Single as B
 import AutoEnv.Bind.Pat (PatList(..))
@@ -33,10 +32,10 @@ snoc x ((y, fy) : vs)  =
 -}
 
 data ScopedPattern n = forall p. SNatI p =>
-   ScopedPattern (S.Pattern p) [(LocalName, Fin (Plus p n))]
+   ScopedPattern (S.Pattern p) [(LocalName, Fin (p + n))]
 
 data ScopedPatList n = forall p. SNatI p =>
-   ScopedPatList (Pat.PatList S.Pattern p) [(LocalName, Fin (Plus p n))]
+   ScopedPatList (Pat.PatList S.Pattern p) [(LocalName, Fin (p + n))]
 
 scopeCheckModule :: C.Module -> Maybe S.Module
 scopeCheckModule m = do 
@@ -54,7 +53,7 @@ scopeCheckEntry (C.ModuleDef gn tm) = S.ModuleDef gn <$> scopeCheck tm
 scopeCheckEntry (C.ModuleData dn datadef) = S.ModuleData dn <$> scopeCheckData datadef
 
 data ScopedTele n = 
-  forall p. SNatI p => ScopedTele [(LocalName, Fin (Plus p n))] (S.Telescope p n) 
+  forall p. SNatI p => ScopedTele [(LocalName, Fin (p + n))] (S.Telescope p n) 
 
 scopeCheckData :: C.DataDef -> Maybe S.DataDef
 scopeCheckData (C.DataDef delta s cs) = do 
@@ -68,9 +67,9 @@ scopeCheckTele scope (C.EntryDecl n ty : entries) = do
   ty' <- to scope ty 
   let scope' :: [(LocalName, Fin (S n))]
       scope' = push n scope
-  ScopedTele (ss    :: [(LocalName, Fin (Plus p ('S n)))]) 
+  ScopedTele (ss    :: [(LocalName, Fin (p + ('S n)))]) 
              (tele' :: S.Telescope p (S n)) <- scopeCheckTele scope' entries
-  let fact :: Plus p (S n) :~: Plus (Plus p N1) n
+  let fact :: p + (S n) :~: (p + N1) + n
       fact = axiomAssoc @p @N1 @n
   withSNat (sPlus (snat @p) (SS SZ)) $ case fact of { Refl -> do
     let ret = S.LocalDecl n ty' <:> tele'
@@ -148,14 +147,14 @@ to vs (C.App f a) = do
   return $ S.App f' a'
 to vs (C.TyCon n tys) = do
   tys' <- mapM (to vs) tys
-  return $ S.TyCon n (fromList tys')
+  return $ S.TyCon n tys'
 to vs (C.DataCon n args) = do
   args' <- mapM (to vs) args
-  return $ S.DataCon n (fromList args')
+  return $ S.DataCon n args'
 to vs (C.Case a brs) = do
   a' <- to vs a
   brs' <- mapM (toM vs) brs
-  return $ S.Case a' (fromList brs')
+  return $ S.Case a' brs'
 to vs (C.Ann a b) = do
   a' <- to vs a
   b' <- to vs b

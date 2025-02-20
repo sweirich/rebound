@@ -50,14 +50,14 @@ strengthen = strengthenRec s0 s1 (snat :: SNat n)
 -- class of scoped types that can be strengthened.
 class Strengthen t where
   -- generalize strengthening -- remove m variables from the middle of the scope
-  strengthenRec :: SNat k -> SNat m -> SNat n -> t (Plus k (Plus m n)) -> Maybe (t (Plus k n))
+  strengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
 
   -- Remove a single variable from the middle of the scope
-  strengthenOneRec :: forall k n. SNat k -> SNat n -> t (Plus k (S n)) -> Maybe (t (Plus k n))
+  strengthenOneRec :: forall k n. SNat k -> SNat n -> t (k + S n) -> Maybe (t (k + n))
   strengthenOneRec k = strengthenRec k (SS SZ)
 
 -- n-ary version of strengthen
-strengthenN :: forall m n t. (Strengthen t, SNatI n) => SNat m -> t (Plus m n) -> Maybe (t n)
+strengthenN :: forall m n t. (Strengthen t, SNatI n) => SNat m -> t (m + n) -> Maybe (t n)
 strengthenN m = strengthenRec s0 m (snat :: SNat n)
 
 ---------------------------------------------------------
@@ -66,7 +66,7 @@ instance FV Fin where
   appearsFree = (==)
 
 instance Strengthen Fin where
-  strengthenRec :: SNat k -> SNat m -> SNat n-> Fin (Plus k (Plus m n)) -> Maybe (Fin (Plus k n))
+  strengthenRec :: SNat k -> SNat m -> SNat n-> Fin (k + (m + n)) -> Maybe (Fin (k + n))
   strengthenRec = strengthenRecFin
 
 
@@ -139,7 +139,7 @@ instance PatEq () () where patEq _ _ = Just Refl
 -- ** Pairs 
 
 instance (Sized a, Sized b) => Sized (a,b) where
-   type Size (a,b) = Plus (Size a) (Size b)
+   type Size (a,b) = Size a + Size b
    size (x,y) = sPlus (size x) (size y)
 
 instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where

@@ -1,8 +1,4 @@
-{-# LANGUAGE OverloadedLists #-}
 module PiForall.Equal where
-
-import GHC.IsList
-import qualified Data.Scoped.List as L
 
 import PiForall.Syntax
 import PiForall.Environment (TcMonad, Context )
@@ -53,7 +49,7 @@ equate t1 t2 = do
     (DataCon d1 a1, DataCon d2 a2) | d1 == d2 -> do
       equateArgs a1 a2
     (Case s1 brs1, Case s2 brs2)
-      | L.length brs1 == L.length brs2 -> do
+      | length brs1 == length brs2 -> do
       equate s1 s2
       -- require branches to be in the same order
       -- on both expressions
@@ -67,7 +63,7 @@ equate t1 t2 = do
                 Refl <- patEq p1 p2 `Env.whenNothing` 
                         [DS "Cannot match branches in", DD n1, DS "and", DD n2]
                 push @LocalName p1 (equate a1 a2)
-        L.zipWithM_ matchBr brs1 brs2
+        zipWithM_ matchBr brs1 brs2
     (TyEq a1 b1, TyEq a2 b2) -> do
       equate a1 a2
       equate b1 b2
@@ -83,14 +79,14 @@ equate t1 t2 = do
                    DS "but found", DD n1]
 
 -- | Match up args
-equateArgs :: L.List Term n -> L.List Term n -> TcMonad n ()
-equateArgs (a1 L.:< t1s) (a2 L.:< t2s)  = do
+equateArgs :: [Term n] -> [Term n] -> TcMonad n ()
+equateArgs (a1:t1s) (a2:t2s)  = do
   equate a1 a2
   equateArgs t1s t2s
-equateArgs L.Nil L.Nil  = return ()
+equateArgs [] []  = return ()
 equateArgs a1 a2  = do
-          Env.err [DS "Expected", DC (L.length a2),
-                   DS "but found", DC (L.length a1) ]
+          Env.err [DS "Expected", DC (length a2),
+                   DS "but found", DC (length a1) ]
 
 
 
@@ -113,7 +109,7 @@ ensureEq aty = do
 -- | Ensure that the given type 'ty' is some tycon applied to 
 --  params (or could be normalized to be such)
 -- Throws an error if this is not the case 
-ensureTCon :: Term n -> TcMonad n (TyConName, L.List Term n)
+ensureTCon :: Term n -> TcMonad n (TyConName, [Term n])
 ensureTCon aty = do
   nf <- whnf aty
   case nf of
@@ -154,13 +150,13 @@ whnf (Case scrut mtchs) = do
   nf <- whnf scrut
   case nf of
     (DataCon d args) -> f mtchs  where
-      f (Branch bnd L.:< alts)  = (do
+      f (Branch bnd : alts)  = (do
           let pat = Pat.getPat bnd
           ss <- patternMatches nf pat
           whnf (Pat.instantiate bnd ss))
             `catchError` \ _ -> f alts
-      f L.Nil = Env.err $ [DS "Internal error: couldn't find a matching",
-                    DS "branch for", DD nf, DS "in"] ++ map DD (toList mtchs)
+      f [] = Env.err $ [DS "Internal error: couldn't find a matching",
+                    DS "branch for", DD nf, DS "in"] ++ map DD mtchs
     _ -> return (Case nf mtchs)
 whnf (Subst a b) = do
   nf <- whnf b
@@ -191,10 +187,10 @@ unify t1 t2 = do
      s <- scope @LocalName
      withSNat (scope_size s) $ go SZ t1 t2
   where
-    go :: forall n p. SNatI n => SNat p -> Term (Plus p n) -> Term (Plus p n) -> TcMonad (Plus p n) (Refinement Term n)
+    go :: forall n p. SNatI n => SNat p -> Term (p + n) -> Term (p + n) -> TcMonad (p + n) (Refinement Term n)
     go p tx ty = withSNat (sPlus p (snat :: SNat n)) $ do
-      (txnf :: Term (Plus p n)) <- whnf tx
-      (tynf :: Term (Plus p n)) <- whnf ty
+      (txnf :: Term (p + n)) <- whnf tx
+      (tynf :: Term (p + n)) <- whnf ty
       if txnf == tynf
         then return Env.emptyR
         else case (txnf, tynf) of
@@ -232,8 +228,7 @@ unify t1 t2 = do
             if amb txnf || amb tynf
               then return Env.emptyR
               else Env.err [DS "Cannot equate", DD txnf, DS "and", DD tynf]
-    -- goArgs :: SNat p -> L.List Term (Plus p n) -> L.List Term (Plus p n) -> TcMonad (Plus p n1) (Refinement Term n1)
-    goArgs p (t1 L.:< a1s) (t2 L.:< a2s) = do
+    goArgs p (t1 : a1s) (t2 : a2s) = do
       ds  <- go p t1 t2
       ds' <- goArgs p a1s a2s
       joinR ds ds' `Env.whenNothing` [DS "cannot join refinements"]
@@ -265,9 +260,9 @@ patternMatches (DataCon n args) (PatCon l ps)
 patternMatches nf pat = 
   Env.err [DS "arg", DD nf, DS "doesn't match pattern", DC pat]
 
-patternMatchList :: forall p n. L.List Term n -> PatList Pattern p -> TcMonad n (Env Term p n)
+patternMatchList :: forall p n. [Term n] -> PatList Pattern p -> TcMonad n (Env Term p n)
 patternMatchList [] PNil = return zeroE
-patternMatchList (e1 L.:< es) (PCons p1 ps) = do
+patternMatchList (e1 : es) (PCons p1 ps) = do
     env1 <- patternMatches e1 p1
     env2 <- patternMatchList es ps
     withSNat (size ps) $

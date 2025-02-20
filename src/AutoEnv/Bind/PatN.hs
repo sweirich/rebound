@@ -23,16 +23,16 @@ instance (SNatI p) => Sized (PatN p) where
 
 type BindN v c m n = Pat.Bind v c (PatN m) n
 
-bindN :: forall m v c n. (Subst v c, SNatI m) => c (Plus m n) -> BindN v c m n
+bindN :: forall m v c n. (Subst v c, SNatI m) => c (m + n) -> BindN v c m n
 bindN = Pat.bind (PatN (snat @m))
 
-unbindN :: forall m v c n. (Subst v v, Subst v c,SNatI m) => BindN v c m n -> c (Plus m n)
+unbindN :: forall m v c n. (Subst v v, Subst v c,SNatI m) => BindN v c m n -> c (m + n)
 unbindN = Pat.getBody
 
 unbindNWith ::
   (SubstVar v, SNatI m) =>
   BindN v c m n ->
-  (forall m1. Env v m1 n -> c (Plus m m1) -> d) ->
+  (forall m1. Env v m1 n -> c (m + m1) -> d) ->
   d
 unbindNWith b f = Pat.unbindWith b (const f)
 

@@ -1,6 +1,5 @@
 module PiForall.Environment where
 
-import qualified Data.Scoped.List as L
 import Data.List
 import Data.Foldable (toList)
 import Data.Maybe ( listToMaybe )
@@ -62,7 +61,7 @@ data TcEnv n = TcEnv
 instance MonadScoped LocalName TcMonad where
   scope = asks env_scope
 
-  push :: Named LocalName pat => pat -> TcMonad (Plus (Size pat) n) a -> TcMonad n a
+  push :: Named LocalName pat => pat -> TcMonad (Size pat + n) a -> TcMonad n a
   push pat (TcMonad m) =
     TcMonad (ReaderT $ \env ->
       runReaderT m
@@ -182,7 +181,7 @@ lookupDCon c tname = do
 -- include local definitions). 
 type Context a = Ctx Term a
 
-weakenDef :: SNat n -> (Fin p, Term p) -> (Fin (Plus n p), Term (Plus n p))
+weakenDef :: SNat n -> (Fin p, Term p) -> (Fin (n + p), Term (n + p))
 weakenDef m (x,y) = (weakenFin m x, applyE @Term (weakenE' m) y)
 
 emptyContext :: Context N0
@@ -238,7 +237,7 @@ extendTy d gamma = gamma +++ d
 extendDef :: Fin n -> Term n -> Context n -> Context n
 extendDef d = error "TODO: local definitions unsupported"
 
-extendLocal :: Local p n -> (Context (Plus p n) -> m a) -> (Context n -> m a)
+extendLocal :: Local p n -> (Context (p + n) -> m a) -> (Context n -> m a)
 extendLocal (LocalDecl x t) k ctx = k (extendTy t ctx)
 extendLocal (LocalDef x u) k ctx = error "TODO: local definitions unsupported"
 

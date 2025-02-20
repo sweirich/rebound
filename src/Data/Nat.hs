@@ -45,9 +45,9 @@ type N2 = S N1
 
 type N3 = S N2
 
-type family Plus (n :: Nat) (m :: Nat) :: Nat where
-  Plus Z m = m
-  Plus (S n) m = S (Plus n m)
+type family (n :: Nat) + (m :: Nat) :: Nat where
+  Z + m = m
+  (S n) + m = S (n + m)
 
 ---------------------------------------------------------
 -- Singleton
@@ -86,7 +86,7 @@ instance (SNatI n) => Arbitrary (SNat n) where
 
 instance Show (SNat n) where show = show . toIntSNat
 
-sPlus :: SNat n1 -> SNat n2 -> SNat (Plus n1 n2)
+sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
 sPlus SZ x = x
 sPlus (SS x) y = SS (sPlus x y)
 

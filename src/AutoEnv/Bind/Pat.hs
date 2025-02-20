@@ -35,7 +35,7 @@ data Bind v c (pat :: Type) (n :: Nat) where
   Bind ::
     pat ->
     Env v m n ->
-    c (Plus (Size pat) m) ->
+    c (Size pat + m) ->
     Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
@@ -43,7 +43,7 @@ bind ::
   forall v c pat n.
   (Sized pat, Subst v c) =>
   pat ->
-  c (Plus (Size pat) n) ->
+  c (Size pat + n) ->
   Bind v c pat n
 bind pat = Bind pat idE
 
@@ -56,11 +56,11 @@ getPat (Bind pat env t) = pat
 -- bound in the pattern
 getBody ::
   forall v c pat n.
-  (Sized pat, Subst v v, Subst v c) =>
+  (Sized pat, Subst v c) =>
   Bind v c pat n ->
-  c (Plus (Size pat) n)
+  c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
-  applyE @v @c @(Plus (Size pat) m) (upN (size pat) env) t
+  applyE @v @c @(Size pat + m) (upN (size pat) env) t
 
 -- | instantiate the body with terms for each variable in the pattern
 instantiate ::
@@ -91,7 +91,7 @@ unbind ::
   forall v c pat n d.
   (SNatI n, Sized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (forall m. (SNatI m, m ~ Plus (Size pat) n) => pat -> c m -> d) ->
+  (forall m. (SNatI m, m ~ (Size pat) + n) => pat -> c m -> d) ->
   d
 unbind bnd f =
   withSNat (sPlus (size (getPat bnd)) (snat @n)) $
@@ -102,7 +102,7 @@ unbind bnd f =
 unbindWith ::
   (Sized pat, SubstVar v) =>
   Bind v c pat n ->
-  (forall m. pat -> Env v m n -> c (Plus (Size pat) m )-> d) ->
+  (forall m. pat -> Env v m n -> c ((Size pat) + m )-> d) ->
   d
 unbindWith (Bind pat (r :: Env v m n) t) f = 
   f pat r t
@@ -150,7 +150,7 @@ instance
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
       unbind bnd $ \(p :: p) t' ->
-        case (axiomAssoc @(Size p) @k @(Plus m n), 
+        case (axiomAssoc @(Size p) @k @(m + n), 
               axiomAssoc @(Size p) @k @n)  of 
           (Refl, Refl) ->
             bind p <$> strengthenRec (sPlus (size p) k) m n t'
@@ -161,7 +161,7 @@ instance
 ---------------------------------------------------------------
 
 data Rebind p1 p2 n where
-  Rebind :: p1 -> p2 (Plus (Size p1) n) -> Rebind p1 p2 n
+  Rebind :: p1 -> p2 ((Size p1) + n) -> Rebind p1 p2 n
 
 instance
   (Subst v v, Sized p1, Subst v p2) =>
@@ -182,7 +182,7 @@ instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 
-    case (axiomAssoc @(Size p1) @k @(Plus m n), axiomAssoc @(Size p1) @k @n) of 
+    case (axiomAssoc @(Size p1) @k @(m + n), axiomAssoc @(Size p1) @k @n) of 
       (Refl, Refl) ->
        Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
 
@@ -198,7 +198,7 @@ instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
 data PatList (pat :: Nat -> Type) p where
   PNil :: PatList pat N0
   PCons :: Size (pat p1) ~ p1 =>
-    pat p1 -> PatList pat p2 -> PatList pat (Plus p2 p1)
+    pat p1 -> PatList pat p2 -> PatList pat (p2 + p1)
 
 lengthPL :: PatList pat p -> Int
 lengthPL PNil = 0

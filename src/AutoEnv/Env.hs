@@ -49,9 +49,9 @@ import GHC.Generics hiding (S)
 
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: !(SNat m) -> Env a n (Plus n m) --  weaken values in range by m
-  Weak  :: !(SNat m) -> Env a n (Plus m n) --  weaken values in range by m
-  Inc   :: !(SNat m) -> Env a n (Plus m n) --  increment values in range (shift) by m
+  WeakR :: !(SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: !(SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
   Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
   (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
@@ -169,7 +169,7 @@ v .: f = Cons v f
   (SNatI p, SubstVar v) =>
   Env v p n ->
   Env v m n ->
-  Env v (Plus p m) n
+  Env v (p + m) n
 (.++) = appendE snat
 
 -- | append two environments: explicit length `SNat p` required
@@ -179,7 +179,7 @@ appendE ::
   SNat p ->
   Env v p n ->
   Env v m n ->
-  Env v (Plus p m) n
+  Env v (p + m) n
 appendE SZ e1 e2 = e2
 appendE (SS p1) e1 e2 = head e1 .: appendE p1 (tail e1) e2
 
@@ -196,7 +196,7 @@ shift1E :: (SubstVar v) => Env v n (S n)
 shift1E = Inc s1
 
 -- | increment all free variables by m
-shiftNE :: (SubstVar v) => SNat m -> Env v n (Plus m n)
+shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 
 {-
@@ -225,11 +225,11 @@ weakenOneE = Env (var . weaken1Fin)
 -}
 
 -- make the bound bigger, but do not change any indices
-weakenE' :: forall m v n. SNat m -> Env v n (Plus m n)
+weakenE' :: forall m v n. SNat m -> Env v n (m + n)
 weakenE' = Weak
   -- Env (var . weakenFin sm)
 
-weakenER :: forall m v n. SNat m -> Env v n (Plus n m)
+weakenER :: forall m v n. SNat m -> Env v n (n + m)
 weakenER = WeakR 
 
 -- | modify an environment so that it can go under
@@ -242,7 +242,7 @@ upN ::
   (Subst v v) =>
   SNat p ->
   Env v m n ->
-  Env v (Plus p m) (Plus p n)
+  Env v (p + m) (p + n)
 upN SZ = id
 upN (SS n) = \e -> var FZ .: comp (upN n e) (Inc s1)
 
@@ -290,7 +290,7 @@ singletonR (x, t) =
 
 
 -- Move a refinement to a new scope
-shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (Plus p n)
+shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (p + n)
 shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g' where
   f' = Map.mapKeysMonotonic (shiftN @p @n p) r
   g' = Map.map (applyE @v (shiftNE p)) f'

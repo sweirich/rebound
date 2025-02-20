@@ -1,11 +1,9 @@
-{-# LANGUAGE OverloadedLists #-}
 -- | A Pretty Printer.
 module PiForall.PrettyPrint (Display (..), D (..), SourcePos, PP.Doc, pp, disp, debug, DispInfo, initDI, namesDI) where
 
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Data.Set qualified as S
 import qualified Data.Map as Map
-import Data.Scoped.List qualified as L
 
 import Text.ParserCombinators.Parsec.Error (ParseError)
 import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, sourceName)
@@ -376,19 +374,19 @@ instance Display (Term n) where
   display (TyCon n args) = do
     p <- ask prec
     dn <- display n
-    dargs <- withPrec (levelApp+1) $ L.mapM display args
+    dargs <- withPrec (levelApp+1) $ mapM display args
     return $
-      parens (levelApp < p && not (L.null args)) (PP.hsep (dn:dargs))
+      parens (levelApp < p && not (null args)) (PP.hsep (dn:dargs))
   display (DataCon n args) = do
     p <- ask prec
     dn <- display n
-    dargs <- withPrec (levelApp+1) $ L.mapM display args
+    dargs <- withPrec (levelApp+1) $ mapM display args
     return $
-      parens (levelApp < p && not (L.null args)) (PP.hsep (dn:dargs))
+      parens (levelApp < p && not (null args)) (PP.hsep (dn:dargs))
   display (Case scrut alts) = do
     p <- asks prec
     dscrut <- withPrec (levelCase+1) $ display scrut
-    dalts <- withPrec 0 $ L.mapM display alts
+    dalts <- withPrec 0 $ mapM display alts
     return $
       parens (levelCase < p) $ prettyCase dscrut dalts
   display (Subst a b) = do

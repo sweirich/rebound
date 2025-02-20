@@ -83,7 +83,7 @@ instance FV Exp where
 -- >>> weaken' s1 t00
 -- 0 0
 
-weaken' :: SNat m -> Exp n -> Exp (Plus m n)
+weaken' :: SNat m -> Exp n -> Exp (m + n)
 weaken' m = applyE @Exp (weakenE' m)
 
 -- >>> strengthen' s1 s1 t00
@@ -94,7 +94,6 @@ weaken' m = applyE @Exp (weakenE' m)
 
 instance Strengthen Exp where
 
-  strengthenRec :: SNat k -> SNat m -> SNat n -> Exp (Plus k (Plus m n)) -> Maybe (Exp (Plus k n))
   strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
   strengthenRec k m n Star = pure Star
   strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b

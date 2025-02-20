@@ -91,7 +91,7 @@ applyUnder f r2 (Bind r1 t) =
 instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v c) where
 
   strengthenRec :: forall k m n v c. (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
-    SNat k -> SNat m -> SNat n -> Bind v c (Plus k (Plus m n)) -> Maybe (Bind v c (Plus k n))
+    SNat k -> SNat m -> SNat n -> Bind v c (k + (m + n)) -> Maybe (Bind v c (k + n))
   strengthenRec k m n bnd = 
       bind <$> strengthenRec (SS k) m n (unbind bnd)
                   
@@ -107,8 +107,8 @@ instantiateWeakenEnv ::
   (SubstVar v, Subst v v) =>
   SNat p ->
   SNat n ->
-  v (Plus p n) ->
-  Env v (S n) (Plus p n)
+  v (p + n) ->
+  Env v (S n) (p + n)
 instantiateWeakenEnv p n a =
   a .: shiftNE p
 {-  
@@ -131,9 +131,9 @@ instantiateShift ::
   (SubstVar v, Subst v v, Subst v c, SNatI n) =>
   SNat p ->
   Bind v c n ->
-  v (Plus p n) ->
-  c (Plus p n)
+  v (p + n) ->
+  c (p + n)
 instantiateShift p b a =
-  let r :: Env v (S n) (Plus p n)
+  let r :: Env v (S n) (p + n)
       r = instantiateWeakenEnv p (snat @n) a
    in applyE r (unbind b)
