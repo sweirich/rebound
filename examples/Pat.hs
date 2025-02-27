@@ -20,7 +20,9 @@ import qualified AutoEnv.Bind.Single as B
 import qualified AutoEnv.Bind.Pat as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
-import Data.Vec qualified
+import Data.FinAux ( Fin, f0, f1 )
+import Data.FinAux qualified as Fin
+import Data.Vec qualified as Vec
 
 ----------------------------------------------
 
@@ -204,7 +206,7 @@ t3 = Con "cons" `App` Con "a" `App` (Con "cons" `App` Con "b" `App` Con "nil")
 
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
-  showsPrec _ (Var x) = shows (toInt x)
+  showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
       showsPrec 10 e1

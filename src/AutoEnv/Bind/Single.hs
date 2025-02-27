@@ -15,7 +15,7 @@ module AutoEnv.Bind.Single
 
 import AutoEnv
 import AutoEnv.Classes
-
+import Data.SNat qualified as SNat
 import GHC.Generics hiding (S)
 
 ----------------------------------------------------------------
@@ -93,7 +93,7 @@ instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v 
   strengthenRec :: forall k m n v c. (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
     SNat k -> SNat m -> SNat n -> Bind v c (k + (m + n)) -> Maybe (Bind v c (k + n))
   strengthenRec k m n bnd = 
-      bind <$> strengthenRec (SS k) m n (unbind bnd)
+      bind <$> strengthenRec (SNat.succ k) m n (unbind bnd)
                   
                   
 

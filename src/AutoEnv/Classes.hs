@@ -5,8 +5,10 @@
 module AutoEnv.Classes where
 
 import AutoEnv.Lib
+import Data.Fin
 import Data.Foldable
 import Data.Vec qualified as Vec
+import Data.FinAux
 
 -- | An environment (or explicit substitution) that map
 -- indices bounded by `m`, to values of type `v n`
@@ -54,7 +56,7 @@ class Strengthen t where
 
   -- Remove a single variable from the middle of the scope
   strengthenOneRec :: forall k n. SNat k -> SNat n -> t (k + S n) -> Maybe (t (k + n))
-  strengthenOneRec k = strengthenRec k (SS SZ)
+  strengthenOneRec k = strengthenRec k s1
 
 -- n-ary version of strengthen
 strengthenN :: forall m n t. (Strengthen t, SNatI n) => SNat m -> t (m + n) -> Maybe (t n)

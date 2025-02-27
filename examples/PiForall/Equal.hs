@@ -1,4 +1,7 @@
+{-# LANGUAGE ViewPatterns #-}
 module PiForall.Equal where
+
+import Data.SNat qualified as SNat
 
 import PiForall.Syntax
 import PiForall.Environment (TcMonad, Context )
@@ -174,7 +177,7 @@ instance Named LocalName (SNat p) where
   patLocals = go where
     go :: forall p. SNat p -> Vec p LocalName
     go SZ = VNil
-    go (SS q) = LocalName ("_" ++ show (toInt (SS q))) ::: go q
+    go (snat_ -> SS_ q) = LocalName ("_" ++ show  (SNat.succ q)) ::: go q
 
 -- | 'Unify' the two terms, producing a list of definitions that 
 -- must hold for the terms to be equal
@@ -213,12 +216,12 @@ unify t1 t2 = do
             | s1 == s2 -> goArgs p tms1 tms2
           (Lam bnd1, Lam bnd2) -> do
             push @LocalName (L.getLocalName bnd1)
-              (go @n (SS p) (L.getBody bnd1) (L.getBody bnd2))
+              (go @n (SNat.succ p) (L.getBody bnd1) (L.getBody bnd2))
           (Pi tyA1 bnd1, Pi tyA2 bnd2) -> do
             ds1 <- go p tyA1 tyA2
             ds2 <-
               push @LocalName (L.getLocalName bnd1)
-                (go @n (SS p) (L.getBody bnd1) (L.getBody bnd2))
+                (go @n (SNat.succ p) (L.getBody bnd1) (L.getBody bnd2))
             joinR ds1 ds2 `Env.whenNothing` [DS "cannot join refinements"]
           (TyEq a1 b1, TyEq a2 b2) -> do
             ds1 <- go p a1 a2

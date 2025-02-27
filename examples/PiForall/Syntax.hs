@@ -18,6 +18,7 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe
 import Data.Set qualified as Set
 import Data.Vec qualified as Vec
+import Data.FinAux
 
 
 import Unsafe.Coerce (unsafeCoerce)

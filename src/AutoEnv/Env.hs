@@ -4,6 +4,7 @@
 -- Stability   : experimental
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE ViewPatterns #-}
 module AutoEnv.Env(Env, applyEnv, 
   SubstVar(..), Subst(..), 
   GSubst(..), gapplyE,
@@ -44,6 +45,9 @@ import qualified Data.Vec as Vec
 import qualified Data.Map as Map
 import Control.Monad
 import GHC.Generics hiding (S)
+import Data.Fin (Fin(..))
+import qualified Data.Fin as Fin
+import qualified Data.FinAux as Fin
 
 -- type Env a n m = Fin n -> a m
 
@@ -56,15 +60,16 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
 --  Value of the index x in the substitution s
-applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
+applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
 applyEnv Zero x = case x of {}
-applyEnv (Inc m) x = var (shiftN m x)
-applyEnv (WeakR m) x = var (weakenFinRight m x)
-applyEnv (Weak m) x = var (weakenFin m x)
+applyEnv (Inc m) x = var (Fin.shiftN m x)
+applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
+applyEnv (Weak m) x = var (Fin.weakenFin m x)
 applyEnv (Cons ty _s) FZ = ty
 applyEnv (Cons _ty s) (FS x) = applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
+
 
 -- | smart constructor for composition
 comp :: forall a m n p. SubstVar a => Env a m n -> Env a n p -> Env a m p
@@ -77,9 +82,9 @@ comp s (Weak SZ) = s
 comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
   case axiomAssoc @m2 @m1 @m of
     Refl -> Inc (sPlus k2 k1)
-comp (Inc SZ) s = s
 comp s (Inc SZ) = s
-comp (Inc (SS n)) (Cons _t s) = comp (Inc n) s
+comp (Inc SZ) s = s
+comp (Inc (snat_ -> SS_ p1)) (Cons _t p) = comp (Inc p1) p
 comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
 comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
 comp s1 s2 = s1 :<> s2
@@ -126,7 +131,7 @@ gapplyE s x = to1 $ gsubst s (from1 x)
 env :: forall m v n. SNatI m => (Fin m -> v n) -> Env v m n
 env f = fromVec v where
         v :: Vec m (v n)
-        v = Vec.tabulate (snat @m) f
+        v = Vec.tabulate f
   
 
 -- | The empty environment (zero domain)
@@ -181,7 +186,13 @@ appendE ::
   Env v m n ->
   Env v (p + m) n
 appendE SZ e1 e2 = e2
-appendE (SS p1) e1 e2 = head e1 .: appendE p1 (tail e1) e2
+appendE (snat_ -> SS_ p1) e1 e2 = head e1 .: appendE p1 (tail e1) e2
+
+newtype AppendE v m n p =
+     MkAppendE { getAppendE :: 
+       Env v p n ->
+       Env v m n ->
+       Env v (p + m) n }
 
 -- | inverse of `cons` -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
@@ -235,16 +246,22 @@ weakenER = WeakR
 -- | modify an environment so that it can go under
 -- a binder
 up :: (Subst v v) => Env v m n -> Env v (S m) (S n)
-up e = var f0 .: comp e (Inc s1)
+up e = var Fin.f0 .: comp e (Inc s1)
 
 -- | Shift an environment by size `p`
-upN ::
+upN :: forall v p m n.
   (Subst v v) =>
   SNat p ->
   Env v m n ->
   Env v (p + m) (p + n)
-upN SZ = id
-upN (SS n) = \e -> var FZ .: comp (upN n e) (Inc s1)
+upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) where
+   base :: UpN v m n Z
+   base = MkUpN id
+   step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
+   step (MkUpN r) = MkUpN $ \e -> var FZ .: comp (r e) (Inc s1)
+
+newtype UpN v m n p = 
+    MkUpN { getUpN :: Env v m n -> Env v (p + m) (p + n) }
 
 ----------------------------------------------------
 -- Create an environment from a length-indexed 
@@ -292,7 +309,7 @@ singletonR (x, t) =
 -- Move a refinement to a new scope
 shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (p + n)
 shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g' where
-  f' = Map.mapKeysMonotonic (shiftN @p @n p) r
+  f' = Map.mapKeysMonotonic (Fin.shiftN @p @n p) r
   g' = Map.map (applyE @v (shiftNE p)) f'
 
 
@@ -313,7 +330,7 @@ instance (SNatI n, Show (v m), SubstVar v) => Show (Env v n m) where
   show x = show (tabulate x)
 
 tabulate :: (SNatI n, Subst v v) => Env v n m -> [(Fin n, v m)]
-tabulate r = map (\f -> (f, applyEnv r f)) (enumFin snat)
+tabulate r = map (\f -> (f, applyEnv r f)) Fin.universe
 
 fromTable :: forall n v. (SNatI n, SubstVar v) => 
   [(Fin n, v n)] -> Env v n n

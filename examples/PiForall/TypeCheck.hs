@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 module PiForall.TypeCheck (tcModules, inferType, checkType) where
 
 import Control.Monad
@@ -9,6 +10,8 @@ import Data.List (nub)
 import Data.Foldable
 import Data.Maybe ( catMaybes )
 import qualified Data.Map as Map
+import qualified Data.SNat as SNat
+import qualified Data.FinAux as Fin
 
 import PiForall.Environment (TcMonad, Context)
 import PiForall.Environment qualified as Env
@@ -325,7 +328,7 @@ tcArgTele args (TCons (LocalDef x ty) (tele :: Telescope p2 n)) ctx = do
        return (rho, r1)
           
 tcArgTele (tm : terms) (TCons (LocalDecl ln ty) 
-          (tele :: Telescope p1 (S n))) ctx = case (axiom @p1 @n) of 
+          (tele :: Telescope p1 (S n))) ctx = case (axiomSus @p1 @n) of 
     Refl -> do
       checkType tm ty ctx
       tele' <- doSubst @N1 (tm .: idE) tele
@@ -342,7 +345,7 @@ tcArgTele _ TNil _ =
 mkSubst :: forall p n.  
   [Term n] -> SNat p -> TcMonad n (Env Term (p + n) n)
 mkSubst [] SZ = return idE
-mkSubst (tm : tms) (SS m) = do
+mkSubst (tm : tms) (snat_ -> SS_ m) = do
   ss <- mkSubst tms m
   return $ tm .: ss
 mkSubst [] _ =
@@ -360,7 +363,7 @@ mkSubst' args p = do
      where
        go :: forall p. SNat p -> TcMonad n ([Term n], Env Term (p + n) n)
        go SZ     = return (args, idE)
-       go (SS m) = do
+       go (snat_ -> SS_ m) = do
          (rargs,ss) <- go m
          case rargs of 
             (tm:tms) -> return (tms, tm .: ss)
@@ -411,7 +414,7 @@ doSubstRec k r (TCons e (t :: Telescope p2 m)) = case e of
     LocalDecl nm (ty :: Term ((k + q) + n)) -> do
       let ty' :: Term (k + n)
           ty' = applyE r ty
-      t' <- push @LocalName nm $ doSubstRec @q @n (SS k) (up r) t
+      t' <- push @LocalName nm $ doSubstRec @q @n (SNat.succ k) (up r) t
       return $ LocalDecl nm ty' <:> t'
 
 
@@ -433,7 +436,7 @@ appendDefs (Refinement m) = go (Map.toList m) where
 declarePat :: forall p n. 
   Pattern p -> Typ n -> Context n -> TcMonad n (Context (p + n), Term (p + n), Refinement Term (p + n))
 declarePat (PatVar x) ty ctx = do
-  pure (Env.extendTy ty ctx, Var f0, emptyR)
+  pure (Env.extendTy ty ctx, Var Fin.f0, emptyR)
 declarePat p@(PatCon dc (pats :: PatList Pattern p)) ty ctx = do 
   (tc,params) <- Equal.ensureTCon ty 
   ScopedConstructorDef (delta :: Telescope p1 'Z) 

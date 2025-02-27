@@ -8,9 +8,14 @@ module AutoEnv
    module AutoEnv.MonadScoped, 
    module AutoEnv.Lib,
    module AutoEnv.Context,
-   Generic(..),Generic1(..))
+   Generic(..),
+   Generic1(..))
 where
   
+import Data.SNat (Nat(..))
+import Data.FinAux
+import Data.Vec (Vec(..))
+
 import AutoEnv.Classes
 import AutoEnv.Context
 import AutoEnv.Env

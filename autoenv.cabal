@@ -32,7 +32,7 @@ common common-stanza
     , mtl
     , brick
     , vty
-    , fin >= 0.3.2
+    , fin >= 0.3
     , vec
   default-language:
     GHC2021
@@ -63,8 +63,8 @@ library
       , AutoEnv.Bind.PatN
       , AutoEnv.Bind.Pat
       , AutoEnv.Bind.Scoped
-      , Data.Nat
-      , Data.Fin
+      , Data.SNat
+      , Data.FinAux
       , Data.Vec
       , Data.LocalName    
       , Data.Scoped.List  

@@ -10,6 +10,7 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, s
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
+import qualified Data.FinAux as Fin
 import AutoEnv.Lib
 import AutoEnv.Classes
 import AutoEnv.Context
@@ -308,7 +309,7 @@ instance Display (Term n) where
     Local.unbind bnd $ \(n, b) -> do
       p <- ask prec
       lhs <-
-            if f0 `appearsFree` b
+            if Fin.f0 `appearsFree` b
               then do
                 dn <- display n
                 da <- withPrec 0 (display a)
@@ -334,7 +335,7 @@ instance Display (Term n) where
 
   display (TyCon "Sigma" [tyA, Lam bnd]) =
     Local.unbind bnd $ \(x, tyB) -> do
-      if f0 `appearsFree` tyB then do
+      if Fin.f0 `appearsFree` tyB then do
         dx <- display x
         dA <- withPrec 0 $ display tyA
         dB <- local (push x) $ withPrec 0 $ display tyB

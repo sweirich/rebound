@@ -8,8 +8,9 @@ import qualified AutoEnv.Bind.Pat as Pat
 import qualified AutoEnv.Bind.PatN as PN
 import AutoEnv.Context
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
-import Data.Fin qualified
-import Data.Vec qualified
+import Data.FinAux(Fin(..), f0,f1,f2)
+import Data.FinAux qualified as Fin
+import Data.Vec qualified as Vec
 
 -- In a pure type system, terms and types are combined
 -- into the same syntactic class.
@@ -177,7 +178,7 @@ instance Show (Exp n) where
           showsPrec 11 a
             . showString " * "
             . showsPrec 10 (B.unbind b)
-  showsPrec _ (Var x) = shows (toInt x)
+  showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
       showsPrec 10 e1

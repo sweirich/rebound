@@ -1,7 +1,11 @@
 module AutoEnv.Bind.PatN where
 
 import Data.Nat
-import Data.Vec as Vec
+import Data.SNat
+import Data.FinAux (Fin)
+import qualified Data.FinAux as Fin
+import Data.Vec (Vec)
+import qualified Data.Vec as Vec
 import AutoEnv.Classes
 import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Env

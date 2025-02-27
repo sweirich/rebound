@@ -1,5 +1,6 @@
 module PiForall.Environment where
 
+import Data.FinAux qualified as Fin
 import Data.List
 import Data.Foldable (toList)
 import Data.Maybe ( listToMaybe )
@@ -182,7 +183,7 @@ lookupDCon c tname = do
 type Context a = Ctx Term a
 
 weakenDef :: SNat n -> (Fin p, Term p) -> (Fin (n + p), Term (n + p))
-weakenDef m (x,y) = (weakenFin m x, applyE @Term (weakenE' m) y)
+weakenDef m (x,y) = (Fin.weakenFin m x, applyE @Term (weakenE' m) y)
 
 emptyContext :: Context N0
 emptyContext = emptyC 

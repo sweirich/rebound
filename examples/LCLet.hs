@@ -10,7 +10,8 @@ module LCLet where
 
 import AutoEnv
 import AutoEnv.Bind.Single
-import Data.Vec qualified
+import Data.FinAux
+import Data.Vec qualified as Vec
 
 -- | Datatype of well-scoped lambda-calculus expressions
 data Exp (n :: Nat) where
@@ -173,7 +174,7 @@ instance Subst Exp Tele where
 -- operation to access the body of the lambda expression.
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
-  showsPrec _ (Var x) = shows (toInt x)
+  showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen True $
       showsPrec 10 e1

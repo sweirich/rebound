@@ -16,7 +16,7 @@ import qualified AutoEnv.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
-import Data.Fin qualified
+import Data.FinAux
 import Data.List qualified as List
 import Data.Maybe qualified as Maybe
 import Data.Vec qualified
@@ -321,7 +321,7 @@ instance Show (Exp n) where
           showsPrec 11 a
             . showString " * "
             . showsPrec 10 (B.unbind b)
-  showsPrec _ (Var x) = shows (toInt x)
+  showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
       showsPrec 10 e1

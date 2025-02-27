@@ -67,11 +67,11 @@ scopeCheckTele scope (C.EntryDecl n ty : entries) = do
   ty' <- to scope ty 
   let scope' :: [(LocalName, Fin (S n))]
       scope' = push n scope
-  ScopedTele (ss    :: [(LocalName, Fin (p + ('S n)))]) 
+  ScopedTele (ss    :: [(LocalName, Fin (p + 'S n))]) 
              (tele' :: S.Telescope p (S n)) <- scopeCheckTele scope' entries
-  let fact :: p + (S n) :~: (p + N1) + n
+  let fact :: p + S n :~: (p + N1) + n
       fact = axiomAssoc @p @N1 @n
-  withSNat (sPlus (snat @p) (SS SZ)) $ case fact of { Refl -> do
+  withSNat (sPlus (snat @p) s1) $ case fact of { Refl -> do
     let ret = S.LocalDecl n ty' <:> tele'
     return $ ScopedTele ss ret }
 scopeCheckTele scope (C.EntryDef n tm : entries) = do

@@ -7,8 +7,9 @@
 
 module AutoEnv.Bind.Scoped where
 
-import Data.Vec as Vec
-import Data.Fin
+import qualified Data.Vec as Vec
+import Data.FinAux(Fin(..))
+import qualified Data.FinAux as Fin
 
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
@@ -197,7 +198,7 @@ instance
   appearsFree n b =
     let pat = getPat b
      in appearsFree n pat
-          || appearsFree (shiftN (scopedSize pat) n) (getBody b)
+          || appearsFree (Fin.shiftN (scopedSize pat) n) (getBody b)
 
 
 instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
@@ -295,7 +296,7 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
   appearsFree :: forall n. (IScopedSized pat, forall p1. FV (pat p1)) => 
       Fin n -> TeleList pat p n -> Bool
   appearsFree n TNil = False
-  appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (shiftN (iscopedSize p1) n) p2
+  appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (Fin.shiftN (iscopedSize p1) n) p2
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
   strengthenRec k m n TNil = Just TNil

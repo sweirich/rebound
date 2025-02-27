@@ -22,7 +22,9 @@ module AutoEnv.Bind.Pat(
 
 import AutoEnv
 import AutoEnv.Classes
-import Data.Vec as Vec
+import Data.FinAux (Fin)
+import qualified Data.FinAux as Fin
+import qualified Data.Vec as Vec
 
 ----------------------------------------------------------
 -- Pattern binding (N-ary binding)
@@ -140,7 +142,7 @@ instance
   where
   appearsFree n b =
     let pat = getPat b
-     in appearsFree (shiftN (size pat) n) (getBody b)
+     in appearsFree (Fin.shiftN (size pat) n) (getBody b)
 
 instance
   (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c) =>
@@ -161,7 +163,7 @@ instance
 ---------------------------------------------------------------
 
 data Rebind p1 p2 n where
-  Rebind :: p1 -> p2 ((Size p1) + n) -> Rebind p1 p2 n
+  Rebind :: p1 -> p2 (Size p1 + n) -> Rebind p1 p2 n
 
 instance
   (Subst v v, Sized p1, Subst v p2) =>
@@ -177,7 +179,7 @@ instance
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: (Sized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
-  appearsFree n (Rebind p1 p2) = appearsFree (shiftN (size p1) n) p2
+  appearsFree n (Rebind p1 p2) = appearsFree (Fin.shiftN (size p1) n) p2
 
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
