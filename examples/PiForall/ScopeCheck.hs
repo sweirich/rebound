@@ -23,14 +23,6 @@ import AutoEnv.Lib
 push :: a -> [(a, Fin n)] -> [(a, Fin (S n))]
 push x vs = (x, FZ) : map (fmap FS) vs
 
-{-
-snoc :: forall n a. a -> [(a, Fin n)] -> [(a, Fin (Plus n N1))]
-snoc x [] = case axiom @n @N0 of { Refl -> [(x, FZ)] }
-snoc x ((y, fy) : vs)  = 
-  case (axiomPlusZ @n, axiom @n @N0) of 
-    (Refl, Refl) -> (y, weaken1Fin fy) : snoc x vs
--}
-
 data ScopedPattern n = forall p. SNatI p =>
    ScopedPattern (S.Pattern p) [(LocalName, Fin (p + n))]
 

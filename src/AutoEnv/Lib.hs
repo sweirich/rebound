@@ -5,8 +5,8 @@ module AutoEnv.Lib
     type Type,
     module Data.Type.Equality,
     SNat(..), Nat(..), Fin(..), Vec (..),
+    ToInt(..),
     module Data.LocalName,
-    ToInt(..)
   )
 where
 
@@ -16,5 +16,4 @@ import Data.Nat
 import Data.SNat
 import Data.Vec ( Vec(..) )
 import Data.FinAux( Fin(..))
-
 import Data.LocalName

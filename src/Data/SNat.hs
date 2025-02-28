@@ -28,19 +28,17 @@ import Unsafe.Coerce (unsafeCoerce)
 -- axioms (use unsafeCoerce)
 -----------------------------------------------------
 
--- a property about addition
--- Somewhat sus. Can we get rid of this?
-axiomSus :: forall m n. m + S n :~: S (m + n)
-axiomSus = unsafeCoerce Refl
-
+-- Monoid properties for plus
 axiomPlusZ :: forall m. m + Z :~: m
 axiomPlusZ = unsafeCoerce Refl
 
 axiomAssoc :: forall p m n. p + (m + n) :~: (p + m) + n
 axiomAssoc = unsafeCoerce Refl
 
-axiomIncrInj :: forall p1 p2. (p1 + N1 ~ p2 + N1) => p1 :~: p2
-axiomIncrInj = unsafeCoerce Refl
+-- Another property about addition
+-- Somewhat sus. Can we get rid of this?
+axiomSus :: forall m n. m + S n :~: S (m + n)
+axiomSus = unsafeCoerce Refl
 
 -----------------------------------------------------
 -- Nats (singleton nats and implicit singletons)
@@ -55,7 +53,7 @@ type N2 = S N1
 type N3 = S N2
 
 ---------------------------------------------------------
--- Singletons
+-- Singletons and instances
 ---------------------------------------------------------
 
 s0 :: SNat N0

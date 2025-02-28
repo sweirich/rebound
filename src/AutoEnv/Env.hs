@@ -228,13 +228,6 @@ shiftLE ::
 shiftLE n1 = Env (var . shiftL @n1 @n2 @n n1)
 -}
 
-{-
--- | weaken variables by 1
--- makes their bound bigger but does not change any of their indices
-weakenOneE :: (SubstVar v) => Env v n (S n)
-weakenOneE = Env (var . weaken1Fin)
--}
-
 -- make the bound bigger, but do not change any indices
 weakenE' :: forall m v n. SNat m -> Env v n (m + n)
 weakenE' = Weak
