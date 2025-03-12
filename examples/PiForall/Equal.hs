@@ -173,12 +173,6 @@ whnf tm = do
   return tm
 
 
-instance Named LocalName (SNat p) where
-  patLocals = go where
-    go :: forall p. SNat p -> Vec p LocalName
-    go SZ = VNil
-    go (snat_ -> SS_ q) = LocalName ("_" ++ show  (SNat.succ q)) ::: go q
-
 -- | 'Unify' the two terms, producing a list of definitions that 
 -- must hold for the terms to be equal
 -- If the terms are already equal, succeed with an empty list

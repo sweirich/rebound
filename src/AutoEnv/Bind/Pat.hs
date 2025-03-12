@@ -224,10 +224,10 @@ instance (forall p1 p2. PatEq (pat p1) (pat p2)) =>
   
 
 instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
-  patLocals :: PatList pat p -> Vec p name
-  patLocals PNil = VNil
-  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
+  names :: PatList pat p -> Vec p name
+  names PNil = VNil
+  names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
     let test :: Size (pat p1) :~: p1
         test = Refl
     in
-      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)
+      Vec.append @ps @(Size (pat p1)) (names ps) (names p1)

@@ -42,10 +42,10 @@ class (forall n. EqSized pat n) => ScopedSized pat where
 scopedSize :: forall p n. ScopedSized p => p n -> SNat (ScopedSize p)
 scopedSize = size
 
--- And we give the `patLocals` function a similar type
+-- And we give the `names` function a similar type
 scopedLocals :: (ScopedSized pat, Named name (pat n)) => 
                 pat n -> Vec (ScopedSize pat) name
-scopedLocals = patLocals
+scopedLocals = names
 
 scopedPatEq :: (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 n1) (pat2 n2)) =>
     pat1 n1 -> pat2 n2 -> Maybe (ScopedSize pat1 :~: ScopedSize pat2)
@@ -282,9 +282,9 @@ instance Sized (TeleList pat p n) where
 
 instance (forall p1 n. Named name (pat p1 n), 
           IScopedSized pat) => Named name (TeleList pat p n) where
-  patLocals TNil = VNil
-  patLocals (TCons p ps) = 
-        Vec.append (patLocals ps) (iscopedLocals p)
+  names TNil = VNil
+  names (TCons p ps) = 
+        Vec.append (names ps) (iscopedLocals p)
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => 
   Subst v (TeleList pat p) where

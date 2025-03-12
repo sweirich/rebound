@@ -27,7 +27,7 @@ import Unsafe.Coerce (unsafeCoerce)
 -- inScope s = withSNat (scope_size s) 
 
 -- getScope :: Pattern p -> Scope LocalName p
--- getScope p = Scope { scope_size = size p, scope_locals = patLocals p }
+-- getScope p = Scope { scope_size = size p, scope_locals = names p }
 
 -- | names of top level declarations/definitions
 -- must be unique
@@ -192,13 +192,13 @@ instance (forall n. Sized (pat n)) => Sized (PatList pat p) where
         sPlus @p2 @(Size (pat p1)) (size p2) (size p1)
 
 instance (forall p. Named (pat p)) => Named (PatList pat p) where
-  patLocals :: PatList pat p -> Vec p LocalName
-  patLocals PNil = VNil
-  patLocals (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
+  names :: PatList pat p -> Vec p LocalName
+  names PNil = VNil
+  names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
     let test :: Size (pat p1) :~: p1
         test = Refl
     in
-      Vec.append @ps @(Size (pat p1)) (patLocals ps) (patLocals p1)
+      Vec.append @ps @(Size (pat p1)) (names ps) (names p1)
 
 instance (forall p1 p2. PatEq (pat p1) (pat p2)) => 
       PatEq (PatList pat p1) (PatList pat p2) where
@@ -226,9 +226,9 @@ instance Sized (Pattern p) where
     size (PatVar _) = s1
 
 instance Named LocalName (Pattern p) where
-  patLocals :: Pattern p -> Vec p LocalName
-  patLocals (PatVar x) = x ::: VNil
-  patLocals (PatCon _ p) = patLocals p
+  names :: Pattern p -> Vec p LocalName
+  names (PatVar x) = x ::: VNil
+  names (PatCon _ p) = names p
 
 -- scoped patterns
 
@@ -243,8 +243,8 @@ instance Scoped.ScopedSized (Local p) where
 instance Scoped.IScopedSized Local
 
 instance Named LocalName (Local p n) where
-  patLocals (LocalDecl x _) = x ::: VNil
-  patLocals (LocalDef _ _) = VNil
+  names (LocalDecl x _) = x ::: VNil
+  names (LocalDef _ _) = VNil
 
 
 ----------------------------------------------

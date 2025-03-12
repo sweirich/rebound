@@ -1,5 +1,6 @@
 -- Monads supporting named scopes
--- TODO: generalize this library to remember arbitrary data?
+
+{-# LANGUAGE ViewPatterns #-}
 module AutoEnv.MonadScoped(
   Sized(..),
   Named(..),LocalName(..),
@@ -11,19 +12,23 @@ module AutoEnv.MonadScoped(
 import AutoEnv.Lib
 import AutoEnv.Classes
 import Data.Vec as Vec
+import Data.SNat as SNat
 
 import Control.Monad.Reader
 import Control.Monad.Identity
 
 
 class Sized pat => Named name pat where
-    patLocals :: pat -> Vec (Size pat) name
+    names :: pat -> Vec (Size pat) name
 
 instance Named LocalName LocalName where
-    patLocals ln = ln ::: VNil
+    names ln = ln ::: VNil
 
--- instance Named LocalName (Vec n a) where
--- patLocals v = undefined
+instance Named LocalName (SNat p) where
+  names = go where
+    go :: forall p. SNat p -> Vec p LocalName
+    go SZ = VNil
+    go (snat_ -> SS_ q) = LocalName ("_" <> show  (SNat.succ q)) ::: go q
 
 -- Scoped monads provide implicit access to the current scope 
 -- and a way to extend that scope with an arbitrary pattern
@@ -47,7 +52,7 @@ emptyScope = Scope {
 extendScope :: Named name pat => pat -> Scope name n -> Scope name (Size pat + n)
 extendScope pat s = 
    Scope { scope_size = sPlus (size pat) (scope_size s),
-           scope_locals = Vec.append (patLocals pat) (scope_locals s) 
+           scope_locals = Vec.append (names pat) (scope_locals s) 
          }
 
 -- Trivial instance of a MonadScoped
