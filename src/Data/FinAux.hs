@@ -14,6 +14,7 @@ module Data.FinAux(
   SNat(..),Nat(..),
   module Data.Fin,
   f0,f1,f2,
+  invert,
   shiftN,
   weakenFin,
   weakenFinRight,
@@ -50,6 +51,14 @@ instance ToInt (Fin n) where
 -- >>> universe :: [Fin N3]
 -- [0,1,2]
 
+-- >>> :info Fin
+
+-- | Convert an "index" Fin to a "level" Fin and vice versa
+invert :: forall n. SNatI n => Fin n -> Fin n
+invert f = case snat @n of 
+  SZ -> case f of {}
+  SS -> maxBound - f
+  
 -------------------------------------------------------------------------------
 -- Shifting and weakening
 -------------------------------------------------------------------------------

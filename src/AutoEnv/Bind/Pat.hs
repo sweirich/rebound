@@ -176,11 +176,9 @@ instance
     Rebind p1 p2 m
   applyE r (Rebind p1 p2) = Rebind p1 (applyE (upN (size p1) r) p2)
 
-
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: (Sized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = appearsFree (Fin.shiftN (size p1) n) p2
-
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 
@@ -192,8 +190,8 @@ instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
 -- Lists of patterns
 --------------------------------------------------------------
 
-class (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
-instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
+--class (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
+--instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
 
 -- | lists of patterns where variables at each position bind 
 -- later in the pattern

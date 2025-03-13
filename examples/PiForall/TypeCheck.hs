@@ -50,7 +50,7 @@ inferType a ctx = case a of
   (Pi tyA bnd) -> do
     tcType tyA ctx
     Local.unbind bnd $ \(x,tyB) -> do
-      push @LocalName x (tcType tyB (Env.extendTy tyA ctx))
+      push x (tcType tyB (Env.extendTy tyA ctx))
       return TyType
 
   -- i-app
@@ -141,7 +141,7 @@ checkType tm ty ctx = do
         -- unbind the variables in the lambda expression and pi type
         let tyB = Local.getBody bnd2
         -- check the type of the body of the lambda expression
-        push @LocalName x (checkType body tyB (Env.extendTy tyA ctx))
+        push x (checkType body tyB (Env.extendTy tyA ctx))
 
     -- Practicalities
     (Pos p a) -> 
@@ -150,8 +150,7 @@ checkType tm ty ctx = do
     TrustMe -> return ()
 
     PrintMe -> do
-      s <- scope @LocalName
-      withSNat (scope_size s) $
+      withSize $
         Env.err [DS "Unmet obligation.\nContext:", DD ctx,
             DS "\nGoal:", DD ty']  
 
@@ -169,7 +168,7 @@ checkType tm ty ctx = do
                
     -- c-subst
     tm@(Subst a b) -> do
-      s <- scope @LocalName
+      
       -- infer the type of the proof 'b'
       tp <- inferType b ctx
       -- make sure that it is an equality between some m and n
@@ -180,9 +179,8 @@ checkType tm ty ctx = do
       edecl <- Equal.unify m n
       -- if proof is a variable, add a definition to the context
       pdecl <- Equal.unify b TmRefl
-      s <- scope @LocalName
       -- I don't think this join can fail, but we have to check
-      r' <- withSNat (scope_size s) $ fromRefinement <$> joinR edecl pdecl 
+      r' <- withSize $ fromRefinement <$> joinR edecl pdecl 
               `Env.whenNothing` [DS "incompatible equality in subst"]
       -- TODO: defer all of these substitutions as refinements
       -- refine the scutrutinee
@@ -235,8 +233,7 @@ checkType tm ty ctx = do
       let 
         checkAlt :: Match n -> TcMonad n ()
         checkAlt (Branch bnd) = do
-          s <- scope @LocalName
-          withSNat (scope_size s) $ Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
+          withSize $ Pat.unbind bnd $ \ (pat :: Pattern p) body -> do
 
             -- add variables from pattern to context
             (ctx', tm', r1) <- declarePat pat (TyCon c args) ctx
@@ -246,7 +243,7 @@ checkType tm ty ctx = do
             let ty1 = applyE @Term (shiftNE (snat @p)) ty'
             
             -- compare scrutinee and pattern: fails if branch is inaccessible
-            defs <- push @LocalName pat $ Equal.unify scrut'' tm' 
+            defs <- push pat $ Equal.unify scrut'' tm' 
             
             r <- fromRefinement <$> joinR r1 defs 
                      `Env.whenNothing` [DS "cannot join refinements"]
@@ -254,11 +251,11 @@ checkType tm ty ctx = do
             let body' = applyE r body
             -- refine result type
             let ty'' = applyE r ty1
-            ty3 <- push @LocalName pat $ Equal.whnf ty''
+            ty3 <- push pat $ Equal.whnf ty''
             -- refine context
             let ctx'' = ctx' .>> r
             -- check the branch
-            push @LocalName pat $ checkType body' ty3 ctx''
+            push pat $ checkType body' ty3 ctx''
       mapM_ checkAlt alts
       exhaustivityCheck sty (map getSomePat alts) ctx
     
@@ -295,14 +292,13 @@ tcTypeTele (TCons (LocalDef x tm) (tele :: Telescope p2 n)) ctx = do
   ty1 <- inferType (Var x) ctx
   checkType tm ty1 ctx 
   let r = singletonR (x, tm)
-  s <- scope @LocalName
-  let r' = withSNat (scope_size s) $ fromRefinement r
+  r' <- withSize $ return (fromRefinement r)
   let ctx'' = ctx .>> r'
   tcTypeTele tele ctx''
 tcTypeTele (TCons  (LocalDecl x ty) 
   (tl :: Telescope p2 (S n))) ctx = do
   tcType ty ctx
-  push @LocalName x $ tcTypeTele tl (Env.extendTy ty ctx)
+  push x $ tcTypeTele tl (Env.extendTy ty ctx)
 
 {-
 G |- tm : A 
@@ -319,11 +315,10 @@ tcArgTele :: forall p n.
 tcArgTele [] TNil ctx = return (idE, emptyR)
 tcArgTele args (TCons (LocalDef x ty) (tele :: Telescope p2 n)) ctx = do
        -- ensure that the equality is provable at this point
-       s <- scope @LocalName
        Equal.equate (Var x) ty 
        (rho, ref) <- tcArgTele args tele ctx
        r1 <- 
-         withSNat (scope_size s) $
+         withSize $
          (singletonR (x, ty) `joinR` ref) `Env.whenNothing` [DS "BUG: cannot join refinements"]
        return (rho, r1)
           
@@ -384,7 +379,7 @@ substTele delta params theta =
   do let delta' = weakenTeleClosed delta 
      (ss :: Env Term (p1 + n) n) <- 
         mkSubst' params (Scoped.scopedSize delta')
-     s <- scope @LocalName
+     s <- scope
      let weaken :: Env Term p1 (p1 + n)
          weaken = withSNat (size delta) $ weakenER (scope_size s)
      let theta' :: Telescope p2 (p1 + n)
@@ -414,7 +409,7 @@ doSubstRec k r (TCons e (t :: Telescope p2 m)) = case e of
     LocalDecl nm (ty :: Term ((k + q) + n)) -> do
       let ty' :: Term (k + n)
           ty' = applyE r ty
-      t' <- push @LocalName nm $ doSubstRec @q @n (SNat.succ k) (up r) t
+      t' <- push nm $ doSubstRec @q @n (SNat.succ k) (up r) t
       return $ LocalDecl nm ty' <:> t'
 
 
@@ -460,16 +455,15 @@ declarePat p@(PatCon dc (pats :: PatList Pattern p)) ty ctx = do
 -- pt is the length of the pattern list
 -- n is the current scope
 declarePats :: forall p pt n. 
-  PatList Pattern p -> Telescope pt n -> Context n -> TcMonad n (Context (p + n), [Term (p + n)], Refinement Term (p + n))
+  PatList Pattern p -> Telescope pt n -> Context n -> 
+    TcMonad n (Context (p + n), [Term (p + n)], Refinement Term (p + n))
 declarePats pats (TCons  (LocalDef x ty) (tele :: Telescope p1 n)) ctx = do
   case axiomPlusZ @p1 of 
     Refl -> do
       (ctx', tms', rf)  <- declarePats pats tele ctx
       let r1 = shiftRefinement (size pats) (singletonR (x,ty))
-      s <- scope @LocalName
-      r' <- 
-         withSNat (sPlus (size pats) (scope_size s)) $
-           joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
+      r' <- push pats $ withSize $
+              joinR r1 rf `Env.whenNothing` [DS "Cannot create refinement"]
       pure (ctx', tms', r')
       -- TODO: substitute for x in tele'
       -- pure (ctx', tms')
@@ -482,7 +476,7 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2))
         (ctx1 :: Context (p1 + n), 
            tm :: Term (p1 + n), 
           rf1 :: Refinement Term (p1 + n)) <- declarePat @p1 p1 ty1 ctx
-        s <- scope @LocalName
+        s <- scope
         let ss :: Env Term (S n) (p1 + n)
             ss = Scoped.instantiateWeakenEnv (size p1) (scope_size s) tm
         let tele' :: Telescope p3 (p1 + n)
@@ -490,8 +484,8 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2))
         (ctx2  :: Context (p2 + (p1 + n)), 
            tms :: [Term (p2 + (p1 + n))], 
            rf2 :: Refinement Term (p2 + (p1 + n))) <- 
-              push @LocalName p1 $ declarePats @p2 @p3 @(p1 + n) p2 tele' ctx1
-        withSNat (sPlus (size p2) (sPlus (size p1) (scope_size s))) $
+              push p1 $ declarePats @p2 @p3 @(p1 + n) p2 tele' ctx1
+        push p1 $ push p2 $ withSize $
           case joinR (shiftRefinement (size p2) rf1) rf2 of 
             Just rf -> return (ctx2, applyE @Term (shiftNE (size p2)) tm : tms, rf)
             Nothing -> Env.err [DS "cannot create refinement"]
@@ -606,7 +600,7 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) = do
       let checkConstructorDef defn@(ConstructorDef d theta) = do 
             -- TODO: add source position
             -- Env.extendSourceLocation pos defn $
-              push @LocalName delta $ tcTypeTele theta ctx'
+              push delta $ tcTypeTele theta ctx'
               return ()
                 `Env.extendErr`[ DS "when checking the constructor declaration",
                                  DC defn ]
@@ -745,7 +739,7 @@ checkSubPats dc (TCons  (LocalDef _ _) (tele :: Telescope p2 n)) (patss :: [Some
 checkSubPats dc (TCons (LocalDecl x _) (tele :: Telescope p2 (S n))) 
                 (patss :: [Some (PatList Pattern)]) = do
       case allHeadVars patss of 
-        Just tls -> push @LocalName x $ checkSubPats @_ @(S n) dc tele tls
+        Just tls -> push x $ checkSubPats @_ @(S n) dc tele tls
         Nothing -> Env.err [DS "All subpatterns must be variables in this version."]
 
 -- check that the head of each list is a single pattern variable and return all of the 

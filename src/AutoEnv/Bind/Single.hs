@@ -78,13 +78,19 @@ unbindWith (Bind r t) f = f r t
 -- | apply an environment-parameterized function & environment
 -- underneath a binder
 applyUnder ::
-  (Subst v v, Subst v c) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
-  Bind v c n1 ->
-  Bind v c n2
+  Bind v c1 n1 ->
+  Bind v c2 n2
 applyUnder f r2 (Bind r1 t) =
   bind (f (up (r1 .>> r2)) t)
+
+
+-- apply a function to a saved environment
+--applyBind :: (v1 n -> v2 m) -> Bind v1 e n -> Bind v2 e m
+--applyBind f (Bind r t) = Bind (r .>> transform f idE) t
+
 
 -- TODO: this implementation of strengthening for binders is rather inefficient
 -- maybe there is a better way to do it???

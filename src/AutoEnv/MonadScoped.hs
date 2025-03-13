@@ -1,12 +1,14 @@
 -- Monads supporting named scopes
 
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module AutoEnv.MonadScoped(
   Sized(..),
   Named(..),LocalName(..),
   MonadScoped(..),
   Scope(..),emptyScope,extendScope,
-  ScopedReader(..), ScopedReaderT(..)
+  ScopedReader(..), ScopedReaderT(..),
+  withSize
  ) where
 
 import AutoEnv.Lib
@@ -28,31 +30,37 @@ instance Named LocalName (SNat p) where
   names = go where
     go :: forall p. SNat p -> Vec p LocalName
     go SZ = VNil
-    go (snat_ -> SS_ q) = LocalName ("_" <> show  (SNat.succ q)) ::: go q
+    go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.succ q)) ::: go q
 
 -- Scoped monads provide implicit access to the current scope 
 -- and a way to extend that scope with an arbitrary pattern
 -- containing local names
-class (forall n. Monad (m n)) => MonadScoped name m where
+class (forall n. Monad (m n)) => MonadScoped name m | m -> name where
   scope :: m n (Scope name n)
   push  :: Named name pat => pat -> m (Size pat + n) a -> m n a
 
+-- | Access the current size of the scope as an implicit argument
+withSize :: MonadScoped name m => (SNatI n => m n a) -> m n a
+withSize f = do 
+  s <- scope
+  withSNat (scope_size s) f
+
 -- Scopes know how big they are and remember local names for printing 
 data Scope name n = Scope { 
-  scope_size   :: SNat n,       -- number of names in scope
-  scope_locals :: Vec n name    -- stack of names currently in scope
+  scope_size  :: SNat n,       -- number of names in scope
+  scope_names :: Vec n name    -- stack of names currently in scope
 }
 
 emptyScope :: Scope name Z
 emptyScope = Scope { 
     scope_size = SZ , 
-    scope_locals = VNil 
+    scope_names = VNil 
   } 
 
 extendScope :: Named name pat => pat -> Scope name n -> Scope name (Size pat + n)
 extendScope pat s = 
    Scope { scope_size = sPlus (size pat) (scope_size s),
-           scope_locals = Vec.append (names pat) (scope_locals s) 
+           scope_names = Vec.append (names pat) (scope_names s) 
          }
 
 -- Trivial instance of a MonadScoped

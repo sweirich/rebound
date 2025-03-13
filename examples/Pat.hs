@@ -66,14 +66,6 @@ data ConApp (m :: Nat) where
   PCon :: String -> ConApp N0 -- binds zero variables
   PApp :: ConApp m1 -> Pat m2 -> ConApp (m1 + m2)
 
--- NOTE: The index `n` is the number of free variables that
--- appear in the pattern. Patterns here does not include any
--- expression terms, so this index is unconstrained here.
--- It is not clear whether we should include this support in
--- the pattern binding parts of the library, or regress to
--- closed patterns. But I'm leaving it here for now.
-
-
 ----------------------------------------------
 
 -- * Sized instance

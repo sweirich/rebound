@@ -6,9 +6,13 @@
 -- reifying syntactic terms to another model, evaluating in that model, and
 -- then reflecting
 
+-- TODO: This example is incomplete
+
 module NBE where
 
 import AutoEnv
+import AutoEnv.Env
+import Data.FinAux
 import AutoEnv.Bind.Single
 
 -- we use the lambda calculus implementation as is
@@ -22,7 +26,7 @@ import LC hiding (eval)
 -- levels count in the opposite direction from indices. This means that 
 -- the context can be weakened without changing terms.
 -- Note that there is no binding form for levels in this AST. The
--- closure case binds a de Bruijn index in the value.
+-- closure case binds a de Bruijn *index* in the value.
 data Val m
  = VVar (Fin m)          
  | VApp (Val m) (Val m)
@@ -32,27 +36,28 @@ data Val m
 -- indices by the delayed environment in the binder. The `Val`ues in the 
 -- co-domain of the environment have free levels, bounded by `m`.
 
--- we can make these instances, but we don't really need them
 instance SubstVar Val where var = VVar
 
 instance Subst Val Val where
   applyE r (VVar x) = applyEnv r x 
   applyE r (VApp a b) = VApp (applyE r a) (applyE r b)
-  applyE r (VLam b) = VLam (applyBind (applyE r) b)
+  applyE r (VLam b) = VLam (applyE r b)
+
+--- TODO apply a function to a saved environment
+applyBind :: (v1 n -> v2 m) -> Bind v1 e n -> Bind v2 e m
+applyBind f b = undefined
+-- applyBind f (Bind (Env r) t) = Bind (Env (f . r)) t
 
 -- weaken the levels in a `Val`. This only makes the scope larger, it does not 
 -- shift the index. It is an identity function.
 weaken1Val :: Val m -> Val (S m)
-weaken1Val (VVar f) = VVar (weaken1Fin f)
-weaken1Val (VApp v1 v2) = VApp (weaken1Val v1) (weaken1Val v2)
-weaken1Val (VLam b) = VLam (applyBind weaken1Val b)
-
--- apply a function to a saved environment
-applyBind :: (v1 n -> v2 m) -> Bind v1 e n -> Bind v2 e m
-applyBind f (Bind (Env r) t) = Bind (Env (f . r)) t
+weaken1Val = applyE @Val (weakenE' s1)
 
 -- A value environment replaces de Bruijn indices with leveled values
 type VEnv n m = Env Val n m
+
+--evalInEnv :: Env Val n m -> Bind Exp Exp n -> Bind Val Exp m
+-- evalInEnv r b = bind (applyE (up r) (unbind b))
 
 -- Convert an expression to a value
 eval :: forall n m. Env Val n m -> Exp n -> Val m
@@ -71,11 +76,11 @@ eval r = \case
 -- and for introducing the new bound variable. 
 quote :: forall l. SNat l -> Val l -> Exp l
 quote l = \case
-   VVar x   -> Var (invert l x)
+   VVar x   -> withSNat l $ Var (invert x)
    VApp t u -> App (quote l t) (quote l u)
    VLam b ->
-       Lam (bind (quote (SS l) 
-              (instantiateWith (applyBind weaken1Val b) (var (largest l)) eval)))
+       Lam (bind (quote (AutoEnv.succ l) 
+              (instantiateWith (applyBind weaken1Val b) (withSNat l $ var maxBound) eval)))
 
 vApp :: Bind Val Exp n -> Val n -> Val n
 vApp b v = instantiateWith b v eval

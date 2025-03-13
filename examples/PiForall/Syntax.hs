@@ -23,12 +23,6 @@ import Data.FinAux
 
 import Unsafe.Coerce (unsafeCoerce)
 
--- inScope :: Scope LocalName n -> (SNatI n => a) -> a 
--- inScope s = withSNat (scope_size s) 
-
--- getScope :: Pattern p -> Scope LocalName p
--- getScope p = Scope { scope_size = size p, scope_locals = names p }
-
 -- | names of top level declarations/definitions
 -- must be unique
 type GlobalName = String

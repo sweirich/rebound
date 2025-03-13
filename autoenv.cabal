@@ -75,6 +75,7 @@ library
       , PTS
       , Pat
       , DepMatch
+      , NBE
       , PiForall.Arbitrary
       , PiForall.Syntax
       , PiForall.ConcreteSyntax

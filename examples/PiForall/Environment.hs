@@ -276,7 +276,7 @@ instance Monoid Err where
 
 scopedDisplay :: Display a => a -> Scope LocalName n -> Doc ()
 scopedDisplay a s =
-  display a (namesDI (toList (scope_locals s)))
+  display a (namesDI (toList (scope_names s)))
 
 -- | display an error
 -- TODO: preserve passed in di for printing the term???
