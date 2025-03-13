@@ -62,8 +62,8 @@ data TcEnv n = TcEnv
 instance MonadScoped LocalName TcMonad where
   scope = asks env_scope
 
-  push :: Named LocalName pat => pat -> TcMonad (Size pat + n) a -> TcMonad n a
-  push pat (TcMonad m) =
+  pushVec :: SNatI p => Vec p LocalName -> TcMonad (p + n) a -> TcMonad n a
+  pushVec pat (TcMonad m) =
     TcMonad (ReaderT $ \env ->
       runReaderT m
         TcEnv { globals = globals env,
@@ -123,7 +123,7 @@ lookupTCon v = do
           DC v,
           DS "was not found.",
           DS "The current environment is",
-          DC currentEnv
+          DS (pp currentEnv)
         ]
     scanGamma ((ModuleData n d) : g) =
       if n == v
@@ -172,10 +172,6 @@ lookupDCon c tname = do
             ++ map (DC . fst) matches
         )
 
-
--- Join two refinements together, producing an error if 
-
-
 --------------------------------------------------------------------
 
 -- | A local context is an environment that binds n variables (and may also 
@@ -188,8 +184,6 @@ weakenDef m (x,y) = (Fin.weakenFin m x, applyE @Term (weakenE' m) y)
 emptyContext :: Context N0
 emptyContext = emptyC 
 
--- instance Display (Context n) where
---   display (Context { local_decls = decls}) di = pretty "TODO <display context>"
 
 {-
 getLocalCtx :: forall n. SNatI n => TcMonad (Ctx Term n)
@@ -247,10 +241,10 @@ extendLocal (LocalDef x u) k ctx = error "TODO: local definitions unsupported"
 
 -- | Marked locations in the source code
 data SourceLocation where
-  SourceLocation :: forall a n. Display a => SourcePos -> a -> Scope LocalName n -> SourceLocation
+  SourceLocation :: forall a n. Display n a => SourcePos -> a -> Scope LocalName n -> SourceLocation
 
 -- | Push a new source position on the location stack.
-extendSourceLocation :: (Display t) => SourcePos -> t -> TcMonad n a -> TcMonad n a
+extendSourceLocation :: (Display n t) => SourcePos -> t -> TcMonad n a -> TcMonad n a
 extendSourceLocation p t m = do
   s <- scope
   local (\e@TcEnv {sourceLocation = locs} ->
@@ -274,17 +268,15 @@ instance Monoid Err where
   mempty :: Err
   mempty = Err [] mempty
 
-scopedDisplay :: Display a => a -> Scope LocalName n -> Doc ()
-scopedDisplay a s =
-  display a (namesDI (toList (scope_names s)))
+--scopedDisplay :: Display n a => a -> Scope LocalName n -> Doc ()
+--scopedDisplay a s =
+--  display a (namesDI (toList (scope_names s)))
 
 -- | display an error
 -- TODO: preserve passed in di for printing the term???
-displayErr :: Err -> DispInfo -> Doc ()
-displayErr (Err [] msg) di = msg
-displayErr (Err ((SourceLocation p term s) : ss) msg) di =
-    display p di
-      <+> nest 2 msg
+displayErr :: Err -> Doc ()
+displayErr (Err [] msg) = msg
+displayErr (Err ((SourceLocation p term s) : ss) msg) = scopedDisplay p s <+> nest 2 msg
       <+> nest 2 (pretty "in the expression"
                  <+> nest 2 (scopedDisplay term s))
 

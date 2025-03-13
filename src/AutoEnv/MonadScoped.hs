@@ -2,13 +2,16 @@
 
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Avoid lambda" #-}
 module AutoEnv.MonadScoped(
   Sized(..),
   Named(..),LocalName(..),
   MonadScoped(..),
   Scope(..),emptyScope,extendScope,
   ScopedReader(..), ScopedReaderT(..),
-  withSize
+  withSize,
+  push
  ) where
 
 import AutoEnv.Lib
@@ -37,30 +40,34 @@ instance Named LocalName (SNat p) where
 -- containing local names
 class (forall n. Monad (m n)) => MonadScoped name m | m -> name where
   scope :: m n (Scope name n)
-  push  :: Named name pat => pat -> m (Size pat + n) a -> m n a
+  pushVec :: SNatI p => Vec p name -> m (p + n) a -> m n a
+
+-- Add new names to the current scope
+push :: (MonadScoped name m, Named name pat) => pat -> m (Size pat + n) a -> m n a
+push p = withSNat (size p) $ pushVec (names p)
 
 -- | Access the current size of the scope as an implicit argument
 withSize :: MonadScoped name m => (SNatI n => m n a) -> m n a
-withSize f = do 
+withSize f = do
   s <- scope
   withSNat (scope_size s) f
 
 -- Scopes know how big they are and remember local names for printing 
-data Scope name n = Scope { 
+data Scope name n = Scope {
   scope_size  :: SNat n,       -- number of names in scope
   scope_names :: Vec n name    -- stack of names currently in scope
 }
 
 emptyScope :: Scope name Z
-emptyScope = Scope { 
-    scope_size = SZ , 
-    scope_names = VNil 
-  } 
+emptyScope = Scope {
+    scope_size = SZ ,
+    scope_names = VNil
+  }
 
-extendScope :: Named name pat => pat -> Scope name n -> Scope name (Size pat + n)
-extendScope pat s = 
-   Scope { scope_size = sPlus (size pat) (scope_size s),
-           scope_names = Vec.append (names pat) (scope_names s) 
+extendScope :: forall p n name. SNatI p => Vec p name -> Scope name n -> Scope name (p + n)
+extendScope v s =
+   Scope { scope_size  = sPlus (snat @p) (scope_size s),
+           scope_names = Vec.append v (scope_names s)
          }
 
 -- Trivial instance of a MonadScoped
@@ -68,8 +75,13 @@ type ScopedReader name = ScopedReaderT name Identity
 
 -- Monad transformer that adds a scope environment to any existing monad
 -- This is the Reader monad containing a Scope
+-- However, we don't make it an instance of the MonadReader class so that 
+-- the underlying monad can already be a reader.
+-- We also cannot make it an instance of the MonadTrans class because 
+-- the scope size n needs to be the next-to-last argument instead of the 
+-- underlying monad
 
-newtype ScopedReaderT name m n a = 
+newtype ScopedReaderT name m n a =
     ScopedReaderT { runScopedReaderT :: Scope name n -> m a }
        deriving (Functor)
 
@@ -78,12 +90,23 @@ instance Applicative m => Applicative (ScopedReaderT name m n) where
     ScopedReaderT f <*> ScopedReaderT x = ScopedReaderT (\e -> f e <*> x e)
 
 instance Monad m => Monad (ScopedReaderT name m n) where
-    ScopedReaderT m >>= k = ScopedReaderT $ \e -> 
+    ScopedReaderT m >>= k = ScopedReaderT $ \e ->
         m e >>= (\v -> let x = k v in runScopedReaderT x e)
 
-instance Monad m => 
+-- >>> :info MonadTrans
+-- type MonadTrans :: ((* -> *) -> * -> *) -> Constraint
+-- class (forall (m :: * -> *). Monad m => Monad (t m)) =>
+--       MonadTrans t where
+--   lift :: Monad m => m a -> t m a
+
+instance MonadReader e m => MonadReader e (ScopedReaderT name m n) where
+  ask = ScopedReaderT (const ask)
+  local f m = ScopedReaderT (\s -> local f (runScopedReaderT m s)) 
+                                       
+
+instance Monad m =>
     MonadScoped name (ScopedReaderT name m) where
         scope = ScopedReaderT $ \s -> return s
-        push n m = ScopedReaderT $ \env -> runScopedReaderT m (extendScope n env)
-     
+        pushVec n m = ScopedReaderT $ \env -> runScopedReaderT m (extendScope n env)
+
 

@@ -116,7 +116,7 @@ go str = do
           putStrLn $ pp term'
           res <- runTcMonad (inferType term' emptyContext)
           case res of 
-            Left typeError -> putTypeError (displayErr typeError initDI)
+            Left typeError -> putTypeError (displayErr typeError)
             Right ty -> do
               putStrLn "typed with type"
               putStrLn $ pp ty
@@ -144,7 +144,7 @@ goFilename pathToMainFile = do
   val <- v `exitWith` putParseError
   putStrLn "type checking..."
   d <- runTcMonad (tcModules val)
-  defs <- d `exitWith` (putTypeError . flip displayErr initDI)
+  defs <- d `exitWith` (putTypeError . displayErr)
   putStrLn $ pp (last defs)
 
 

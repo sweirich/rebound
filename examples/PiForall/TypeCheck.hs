@@ -597,10 +597,10 @@ tcEntry decl@(ModuleData n (DataDef (delta :: Telescope n Z) s cs)) = do
       ctx' <- tcTypeTele delta Env.emptyContext
       ---- check that the telescope provided
       ---  for each data constructor is wellfomed, and elaborate them
-      let checkConstructorDef defn@(ConstructorDef d theta) = do 
+      let checkConstructorDef defn@(ConstructorDef d theta) = push delta $ do 
             -- TODO: add source position
             -- Env.extendSourceLocation pos defn $
-              push delta $ tcTypeTele theta ctx'
+              tcTypeTele theta ctx'
               return ()
                 `Env.extendErr`[ DS "when checking the constructor declaration",
                                  DC defn ]
