@@ -7,7 +7,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module AutoEnv.Env(Env, applyEnv, 
   SubstVar(..), Subst(..), 
-  GSubst(..), gapplyE,
+  GSubst(..), gapplyE, applyOpt,
   transform,
   zeroE,
   oneE,
@@ -72,13 +72,23 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 
 
 -- | smart constructor for composition
-comp :: forall a m n p. SubstVar a => Env a m n -> Env a n p -> Env a m p
+comp :: forall a m n p. SubstVar a => 
+         Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
 comp (Weak (k1 :: SNat m1)) (Weak (k2 :: SNat m2))  = 
   case axiomAssoc @m2 @m1 @m of
     Refl -> Weak (sPlus k2 k1)
 comp (Weak SZ) s = s
 comp s (Weak SZ) = s
+comp (WeakR (k1 :: SNat m1)) (WeakR (k2 :: SNat m2))  = 
+  case axiomAssoc @m @m1 @m2 of
+    Refl -> WeakR (sPlus k1 k2)
+comp (WeakR SZ) s =
+  case axiomPlusZ @m of 
+    Refl -> s
+comp s (WeakR SZ) = 
+  case axiomPlusZ @n of 
+    Refl -> s
 comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
   case axiomAssoc @m2 @m1 @m of
     Refl -> Inc (sPlus k2 k1)
@@ -121,7 +131,17 @@ class (SubstVar v) => Subst v c where
   {-# INLINE applyE #-}
 
 gapplyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) => Env v m n -> c m -> c n
-gapplyE s x = to1 $ gsubst s (from1 x)
+gapplyE = applyOpt (\s x -> to1 $ gsubst s (from1 x))
+{-# INLINEABLE gapplyE #-}
+
+-- check for identity substitution
+applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
+applyOpt f (Inc SZ) x = x
+applyOpt f (Weak SZ) x = x
+applyOpt f (WeakR SZ) (x :: c m) = 
+  case axiomPlusZ @m of Refl -> x
+applyOpt f r x = f r x
+{-# INLINEABLE applyOpt #-}
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -143,16 +163,12 @@ zeroE = Zero
 oneE :: v n -> Env v (S Z) n
 oneE v = Cons v zeroE
 
-singletonE :: (SubstVar v) => v n -> Env v (S n) n
-singletonE v = v .: idE
 
 -- | an environment that maps index 0 to v and leaves
--- all other indices alone. Unlike oneE above, the
--- domain of the environment must match the number of
--- variables in the range.
--- singleton :: (SubstVar v) => v n -> Env v n n
--- singleton v = v .: idE
-
+-- all other indices alone.
+singletonE :: (SubstVar v) => v n -> Env v (S n) n
+singletonE v = v .: idE
+ 
 -- | identity environment, any size
 idE :: (SubstVar v) => Env v n n
 idE = Inc s0
@@ -210,35 +226,25 @@ shift1E = Inc s1
 shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 
-{-
--- | increment all free variables by m, but in the middle
-shiftRE ::
-  forall v n1 n2 n.
-  (SubstVar v) =>
-  SNat n2 ->
-  Env v (Plus n1 n) (Plus (Plus n1 n2) n)
-shiftRE n2 = Env (var . shiftR @n1 @n2 @n n2)
-
--- | increment all free variables by m, but at the top
-shiftLE ::
-  forall v n1 n2 n.
-  (SubstVar v) =>
-  SNat n1 ->
-  Env v (Plus n2 n) (Plus (Plus n1 n2) n)
-shiftLE n1 = Env (var . shiftL @n1 @n2 @n n1)
--}
-
 -- make the bound bigger, but do not change any indices
+-- this is an identity function
 weakenE' :: forall m v n. SNat m -> Env v n (m + n)
 weakenE' = Weak
-  -- Env (var . weakenFin sm)
 
+-- make the bound bigger, on the right, but do not 
+-- change any indices. 
+-- this is an identity function
 weakenER :: forall m v n. SNat m -> Env v n (n + m)
 weakenER = WeakR 
 
+
+
+
+
 -- | modify an environment so that it can go under
 -- a binder
-up :: (Subst v v) => Env v m n -> Env v (S m) (S n)
+up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
+up (Inc SZ) = Inc SZ
 up e = var Fin.f0 .: comp e (Inc s1)
 
 -- | Shift an environment by size `p`
