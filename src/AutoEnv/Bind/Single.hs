@@ -7,10 +7,10 @@ module AutoEnv.Bind.Single
   unbind,
   getBody,
   instantiate, 
-  instantiateWith,
-  instantiateWeakenEnv,
-  instantiateShift,
+  -- instantiateWeakenEnv, -- just use definition instead
+  -- instantiateShift, -- just use definition instead
   unbindWith,
+  instantiateWith,
   applyUnder) where
 
 import AutoEnv
@@ -38,7 +38,6 @@ instance (Subst v v) => Subst v (Bind v c) where
 instance (Subst v v) => GSubst v (Bind v c) where
   gsubst = applyE
 
--- TODO: more effiencient implmentation that looks at the env??
 instance (Subst v v, Subst v c, FV c) => FV (Bind v c) where
   appearsFree n b = appearsFree (FS n) (unbind b)
 
@@ -86,15 +85,8 @@ applyUnder ::
 applyUnder f r2 (Bind r1 t) =
   bind (f (up (r1 .>> r2)) t)
 
-
--- apply a function to a saved environment
---applyBind :: (v1 n -> v2 m) -> Bind v1 e n -> Bind v2 e m
---applyBind f (Bind r t) = Bind (r .>> transform f idE) t
-
-
--- TODO: this implementation of strengthening for binders is rather inefficient
--- maybe there is a better way to do it???
-instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v c) where
+instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
+  Strengthen (Bind v c) where
 
   strengthenRec :: forall k m n v c. (SubstVar v, Subst v v, Subst v c, Strengthen c) => 
     SNat k -> SNat m -> SNat n -> Bind v c (k + (m + n)) -> Maybe (Bind v c (k + n))
@@ -110,25 +102,14 @@ instance (SubstVar v, Subst v v, Subst v c, Strengthen c) => Strengthen (Bind v 
 -- TODO: more efficient implementation?
 instantiateWeakenEnv ::
   forall p n v c.
-  (SubstVar v, Subst v v) =>
+  (SubstVar v) =>
   SNat p ->
   SNat n ->
   v (p + n) ->
   Env v (S n) (p + n)
 instantiateWeakenEnv p n a =
   a .: shiftNE p
-{-  
-  withSNat (sPlus p (SS n)) $
-  shiftNE @v p
-    .>> env
-      ( \(x :: Fin (Plus p (S n))) ->
-          case checkBound @p @(S n) p x of
-            Left pf -> var (weakenFinRight n pf)
-            Right pf -> case pf of
-              FZ -> a
-              FS (f :: Fin n) -> var (shiftN p f)
-      )
--}
+
 -- | instantiate a single binder with a term from a larger scope
 -- this simultaneously shifts the body of the bind to that scope
 -- TODO: add a version of instantiateShift for pattern binding
@@ -140,6 +121,4 @@ instantiateShift ::
   v (p + n) ->
   c (p + n)
 instantiateShift p b a =
-  let r :: Env v (S n) (p + n)
-      r = instantiateWeakenEnv p (snat @n) a
-   in applyE r (unbind b)
+  applyE (a .: shiftNE p) (unbind b)

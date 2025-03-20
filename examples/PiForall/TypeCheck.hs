@@ -476,9 +476,8 @@ declarePats (PCons (p1 :: Pattern p1) (p2 :: PatList Pattern p2))
         (ctx1 :: Context (p1 + n), 
            tm :: Term (p1 + n), 
           rf1 :: Refinement Term (p1 + n)) <- declarePat @p1 p1 ty1 ctx
-        s <- scope
         let ss :: Env Term (S n) (p1 + n)
-            ss = Scoped.instantiateWeakenEnv (size p1) (scope_size s) tm
+            ss = tm .: shiftNE (size p1)
         let tele' :: Telescope p3 (p1 + n)
             tele' = applyE ss tele2
         (ctx2  :: Context (p2 + (p1 + n)), 

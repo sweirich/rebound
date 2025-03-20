@@ -1,20 +1,23 @@
--- | A "Simple" pattern can bind variables but 
--- cannot contain references to free variables in scope 
--- (e.g. in a type annotation).
-
+-- | Patterns bind variables
+--
+-- In this (simple) version, patterns do not contain occurrences to 
+-- free variables in scope (e.g. in a telescope or type annotation).
 -- The pattern type must have kind `Type`
--- See Pat.LocalName for example
+-- For more expressivity, see AutoEnv.Bind.Scoped.
 module AutoEnv.Bind.Pat(
   module AutoEnv.Classes,
   type Bind,
   bind,
-  getPat,
-  getBody,
-  instantiate,
-  instantiateWith,
   unbind,
+  getPat,
+  getBody, 
+  instantiate,
+  -- * 
+  bindWith,
   unbindWith,
+  instantiateWith,
   applyUnder,
+
   type Rebind(..),
   type PatList(..),
   lengthPL
@@ -27,27 +30,22 @@ import qualified Data.FinAux as Fin
 import qualified Data.Vec as Vec
 
 ----------------------------------------------------------
--- Pattern binding (N-ary binding)
+-- Bind type
 ----------------------------------------------------------
 
 -- The `Bind` type binds `Size pat` variables.
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
-  Bind ::
-    pat ->
-    Env v m n ->
-    c (Size pat + m) ->
-    Bind v c pat n
+  Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
-bind ::
-  forall v c pat n.
-  (Sized pat, Subst v c) =>
-  pat ->
-  c (Size pat + n) ->
-  Bind v c pat n
+bind :: (Sized pat, Subst v c) =>
+  pat -> c (Size pat + n) -> Bind v c pat n
 bind pat = Bind pat idE
+
+bindWith :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+bindWith = Bind
 
 -- | Access the pattern of a pattern binding
 getPat :: Bind v c pat n -> pat
@@ -56,11 +54,8 @@ getPat (Bind pat env t) = pat
 -- | Access the body of a pattern binding.
 -- The pattern type determines the number of variables
 -- bound in the pattern
-getBody ::
-  forall v c pat n.
-  (Sized pat, Subst v c) =>
-  Bind v c pat n ->
-  c (Size pat + n)
+getBody :: forall v c pat n.
+  (Sized pat, Subst v c) => Bind v c pat n ->  c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
   applyE @v @c @(Size pat + m) (upN (size pat) env) t
 
@@ -85,15 +80,13 @@ instantiateWith ::
   c n
 instantiateWith b v f = unbindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
   
-
-  
 -- | unbind a binder and apply the function to the pattern and subterm  
 -- in a context where the extended size is available at runtime.
 unbind ::
   forall v c pat n d.
   (SNatI n, Sized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (forall m. (SNatI m, m ~ (Size pat) + n) => pat -> c m -> d) ->
+  (forall m. (SNatI m, m ~ Size pat + n) => pat -> c m -> d) ->
   d
 unbind bnd f =
   withSNat (sPlus (size (getPat bnd)) (snat @n)) $
@@ -104,7 +97,7 @@ unbind bnd f =
 unbindWith ::
   (Sized pat, SubstVar v) =>
   Bind v c pat n ->
-  (forall m. pat -> Env v m n -> c ((Size pat) + m )-> d) ->
+  (forall m. pat -> Env v m n -> c (Size pat + m) -> d) ->
   d
 unbindWith (Bind pat (r :: Env v m n) t) f = 
   f pat r t
@@ -112,16 +105,16 @@ unbindWith (Bind pat (r :: Env v m n) t) f =
 -- | apply an environment-parameterized function & environment
 -- underneath a binder
 applyUnder ::
-  (Sized pat, Subst v v, Subst v c) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (Sized pat, Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
-  Bind v c pat n1 ->
-  Bind v c pat n2
+  Bind v c1 pat n1 ->
+  Bind v c2 pat n2
 applyUnder f r2 (Bind p r1 t) =
   Bind p idE (f r' t)
   where
     r' = upN (size p) (r1 .>> r2)
-    
+
 
 -----------------------------------------------------------------
 -- instances for Bind (Subst, FV, Strengthen)
@@ -129,26 +122,18 @@ applyUnder f r2 (Bind p r1 t) =
 
 -- | The substitution operation composes the explicit
 -- substitution with the one stored at the binder
-instance (Subst v v) => Subst v (Bind v c p) where
+instance (SubstVar v) => Subst v (Bind v c p) where
+  applyE :: Env v n m -> Bind v c p n -> Bind v c p m
   applyE env1 (Bind p env2 m) = Bind p (env2 .>> env1) m
 
-instance
-  ( Subst v v,
-    Subst v c,
-    Sized p,
-    FV c
-  ) =>
-  FV (Bind v c p)
-  where
+instance ( Subst v c, Sized p, FV c ) => FV (Bind v c p) where
+  appearsFree :: Fin n -> Bind v c p n -> Bool
   appearsFree n b =
-    let pat = getPat b
-     in appearsFree (Fin.shiftN (size pat) n) (getBody b)
+    appearsFree (Fin.shiftN (size (getPat b)) n) (getBody b)
 
-instance
-  (Sized p, SubstVar v, Subst v v, Subst v c, Strengthen c) =>
-  Strengthen (Bind v c p)
-  where
-
+instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
+  strengthenRec :: SNat k -> SNat m -> SNat n 
+                -> Bind v c p (k + (m + n)) -> Maybe (Bind v c p (k + n))
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
       unbind bnd $ \(p :: p) t' ->
@@ -157,23 +142,18 @@ instance
           (Refl, Refl) ->
             bind p <$> strengthenRec (sPlus (size p) k) m n t'
 
-          
 -----------------------------------------------------------------
--- Rebind 
+-- Rebind type
 ---------------------------------------------------------------
 
-data Rebind p1 p2 n where
-  Rebind :: p1 -> p2 (Size p1 + n) -> Rebind p1 p2 n
+data Rebind pat p2 n where
+  Rebind :: pat -> p2 (Size pat + n) -> Rebind pat p2 n
 
 instance
   (Subst v v, Sized p1, Subst v p2) =>
   Subst v (Rebind p1 p2)
   where
-  applyE ::
-    (Subst v v, Sized p1, Subst v p2) =>
-    Env v n m ->
-    Rebind p1 p2 n ->
-    Rebind p1 p2 m
+  applyE :: Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
   applyE r (Rebind p1 p2) = Rebind p1 (applyE (upN (size p1) r) p2)
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
@@ -182,16 +162,14 @@ instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 
-    case (axiomAssoc @(Size p1) @k @(m + n), axiomAssoc @(Size p1) @k @n) of 
+    case (axiomAssoc @(Size p1) @k @(m + n), 
+          axiomAssoc @(Size p1) @k @n) of 
       (Refl, Refl) ->
        Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
 
 --------------------------------------------------------------
 -- Lists of patterns
 --------------------------------------------------------------
-
---class (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
---instance (Sized (pat p), Size (pat p) ~ p) => PatSize pat p
 
 -- | lists of patterns where variables at each position bind 
 -- later in the pattern
@@ -200,6 +178,8 @@ data PatList (pat :: Nat -> Type) p where
   PCons :: Size (pat p1) ~ p1 =>
     pat p1 -> PatList pat p2 -> PatList pat (p2 + p1)
 
+-- The length of a pattern list is the number of patterns, 
+-- not the number of variables that it binds
 lengthPL :: PatList pat p -> Int
 lengthPL PNil = 0
 lengthPL (PCons _ ps) = 1 + lengthPL ps
@@ -220,12 +200,10 @@ instance (forall p1 p2. PatEq (pat p1) (pat p2)) =>
     return Refl
   patEq _ _ = Nothing
   
-
 instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names :: PatList pat p -> Vec p name
   names PNil = VNil
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
-    let test :: Size (pat p1) :~: p1
-        test = Refl
-    in
-      Vec.append @ps @(Size (pat p1)) (names ps) (names p1)
+    Vec.append @ps @p1 (names ps) (names p1)
+
+    

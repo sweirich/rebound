@@ -10,7 +10,6 @@ import AutoEnv.Classes
 import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Env
 
-
 ----------------------------------------------------------------
 -- N-ary patterns
 ----------------------------------------------------------------
@@ -22,8 +21,6 @@ newtype PatN (p :: Nat) where
 instance (SNatI p) => Sized (PatN p) where
   type Size (PatN p) = p
   size (PatN sn) = sn
-
-
 
 type BindN v c m n = Pat.Bind v c (PatN m) n
 
@@ -52,41 +49,97 @@ instantiateNWith :: forall m v c n.
 instantiateNWith b v f =
   unbindNWith b (f . appendE (snat @m) (fromVec v))
 
+applyUnderN :: (Subst v c2, SNatI m) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  Env v n1 n2 ->
+  BindN v c1 m n1 ->
+  BindN v c2 m n2
+applyUnderN = Pat.applyUnder
+  
+----------------------------------------------------------------
+-- Single binder
+----------------------------------------------------------------
+
+-- A single binder is a pattern binding with
+-- "SNat 1" as the pattern
+
+type Bind1 v c n = Pat.Bind v c (PatN N1) n
+
+bind1 :: (Subst v c) => c (S n) -> Bind1 v c n
+bind1 = Pat.bind (PatN s1)
+
+getBody1 :: forall v c n. (Subst v c) => 
+  Bind1 v c n -> c (S n)
+getBody1 = Pat.getBody
+
+unbind1 :: forall v c n d. (Subst v c) => 
+  Bind1 v c n -> (c (S n) -> d) -> d
+unbind1 b f = f (Pat.getBody b)
+
+unbindWith1 ::
+  (SubstVar v) => Bind1 v c n ->
+  (forall m. Env v m n -> c (S m) -> d) -> d
+unbindWith1 b f = Pat.unbindWith b (const f)
+
+instantiate1 :: (Subst v c) => Bind1 v c n -> v n -> c n
+instantiate1 b v1 = Pat.instantiate b (v1 .: zeroE)
+
+instantiateWith1 ::
+  (SubstVar v, SNatI n) =>
+  Bind1 v c n -> v n ->
+  (forall m n. Env v m n -> c m -> c n) ->  c n
+instantiateWith1 b v1 f =
+  unbindWith1 b (\r e -> f (v1 .: r) e)
+
+applyUnder1 :: (Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  Env v n1 n2 ->
+  Bind1 v c1 n1 ->
+  Bind1 v c2 n2
+applyUnder1 = Pat.applyUnder
 
 ----------------------------------------------------------------
 -- Double binder
 ----------------------------------------------------------------
 
--- A double binder is just a pattern binding with
+-- A double binder is a pattern binding with
 -- "SNat 2" as the pattern
-
-s2' :: SNat Z
-s2' = snat
 
 type Bind2 v c n = Pat.Bind v c (PatN N2) n
 
 bind2 :: (Subst v c) => c (S (S n)) -> Bind2 v c n
 bind2 = Pat.bind (PatN s2)
 
-unbind2 :: forall v c n. (Subst v v, Subst v c) => Bind2 v c n -> c (S (S n))
-unbind2 = Pat.getBody
+getBody2 :: forall v c n. (Subst v c) => 
+  Bind2 v c n -> c (S (S n))
+getBody2 = Pat.getBody
 
-unbind2With ::
+unbind2 :: forall v c n d. (Subst v c) => 
+  Bind2 v c n -> (c (S (S n)) -> d) -> d
+unbind2 b f = f (getBody2 b)
+
+unbindWith2 ::
   (SubstVar v) =>
   Bind2 v c n ->
   (forall m. Env v m n -> c (S (S m)) -> d) ->
   d
-unbind2With b f = Pat.unbindWith b (const f)
+unbindWith2 b f = Pat.unbindWith b (const f)
 
 instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
 instantiate2 b v1 v2 = Pat.instantiate b (v1 .: (v2 .: zeroE))
 
-instantiate2With ::
+instantiateWith2 ::
   (SubstVar v, SNatI n) =>
   Bind2 v c n ->
-  v n ->
-  v n ->
+  v n -> v n ->
   (forall m n. Env v m n -> c m -> c n) ->
   c n
-instantiate2With b v1 v2 f =
-  unbind2With b (\r e -> f (v1 .: (v2 .: r)) e)
+instantiateWith2 b v1 v2 f =
+  unbindWith2 b (\r e -> f (v1 .: (v2 .: r)) e)
+
+applyUnder2 :: (Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  Env v n1 n2 ->
+  Bind2 v c1 n1 ->
+  Bind2 v c2 n2
+applyUnder2 = Pat.applyUnder

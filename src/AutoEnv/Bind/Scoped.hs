@@ -2,9 +2,8 @@
 -- can also include subterms that reference 
 -- free variables that are already in scope.
 -- This is useful for type annotations and telescopes.
-
 -- The pattern type must have kind `Nat -> Type`
-
+-- For a simpler interface, see AutoEnv.Bind.Pat
 module AutoEnv.Bind.Scoped where
 
 import qualified Data.Vec as Vec
@@ -14,53 +13,49 @@ import qualified Data.FinAux as Fin
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
 
-congPlusL :: forall m1 m2 n. m1 :~: m2 -> m1 + n :~: m2 + n
-congPlusL Refl = Refl
-
 ----------------------------------------------------------
 -- Sized type class for patterns
 ----------------------------------------------------------
 
 -- Scoped patterns have kinds :: Nat -> Nat -> Type where 
--- the first parameter is the number of variables that pattern
--- binds, and the second parameter is the scope of for any 
+-- the first parameter is `p`, the number of variables that pattern
+-- binds, and the second parameter is `n`, the scope of for any 
 -- terms that appear inside the pattern. 
 
 -- Crucially, the number of variables bound by the pattern
 -- shouldn't depend on the scope. We manifest that with the 
 -- associated type `ScopedSize :: Nat -> Type` and the constraint
--- that it must be the same as Size for any p.
+-- that it must be the same as Size for any number of bound variables.
 
 class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 instance (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
-class (forall n. EqSized pat n) => ScopedSized pat where
+-- this is equivalent to (Size (t p) ~ ScopedSize pat
+class (forall p. EqSized pat p) => ScopedSized pat where
   type ScopedSize (pat :: Nat -> Type) :: Nat
 
 -- For convenience, we give the `size` function a type that mentions
 -- `ScopedSize` instead of `Size`. 
-scopedSize :: forall p n. ScopedSized p => p n -> SNat (ScopedSize p)
+scopedSize :: forall pat p. ScopedSized pat => pat p -> SNat (ScopedSize pat)
 scopedSize = size
 
 -- And we give the `names` function a similar type
-scopedLocals :: (ScopedSized pat, Named name (pat n)) => 
-                pat n -> Vec (ScopedSize pat) name
-scopedLocals = names
+scopedNames :: (ScopedSized pat, Named name (pat p)) => 
+                pat p -> Vec (ScopedSize pat) name
+scopedNames = names
 
-scopedPatEq :: (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 n1) (pat2 n2)) =>
-    pat1 n1 -> pat2 n2 -> Maybe (ScopedSize pat1 :~: ScopedSize pat2)
+scopedPatEq :: (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
+    pat1 p1 -> pat2 p2 -> Maybe (ScopedSize pat1 :~: ScopedSize pat2)
 scopedPatEq = patEq
 
--- This file uses `ScopedSize` and `scopedSize` instead of `Size` and `size`
--- throughout.
-
+-- This file uses `ScopedSize`, `scopedSize`, and `scopedNames`, 
+-- instead of `Size`, `size`, and `names` throughout.
 
 ----------------------------------------------------------
 -- Scoped Pattern binding
 ----------------------------------------------------------
 
--- The `Bind` type generalizes the definitions above
--- to bind (Size p) variables.
+-- The `Bind` type binds (ScopedSize p) variables.
 -- Patterns can also include free occurrences of variables so
 -- they are also indexed by a scope level.
 -- As in `Bind` above, this data structure includes a delayed
@@ -161,19 +156,7 @@ instantiateWeakenEnv ::
   Env v (S n) (p + n)
 instantiateWeakenEnv p n a = 
   a .: shiftNE p
-{-
-instantiateWeakenEnv p n a = 
-  withSNat (sPlus p (SS n)) $
-  shiftNE @v p
-    .>> env
-      ( \(x :: Fin (p + (S n))) ->
-          case checkBound @p @(S n) p x of
-            Left pf -> var (weakenFinRight n pf)
-            Right pf -> case pf of
-              FZ -> a
-              FS (f :: Fin n) -> var (shiftN p f)
-      )
--}
+
 -----------------------------------------------------------------
 -- instances for Bind
 -----------------------------------------------------------------
@@ -237,8 +220,8 @@ class (forall p. ScopedSized (pat p),
 iscopedSize :: IScopedSized pat => pat p n -> SNat p
 iscopedSize = scopedSize
 
-iscopedLocals :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
-iscopedLocals = scopedLocals
+iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
+iscopedNames = scopedNames
 
 iscopedPatEq :: (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
     pat1 p1 n1 -> pat2 p2 n2 -> Maybe (p1 :~: p2)
@@ -284,7 +267,7 @@ instance (forall p1 n. Named name (pat p1 n),
           IScopedSized pat) => Named name (TeleList pat p n) where
   names TNil = VNil
   names (TCons p ps) = 
-        Vec.append (names ps) (iscopedLocals p)
+        Vec.append (names ps) (iscopedNames p)
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => 
   Subst v (TeleList pat p) where

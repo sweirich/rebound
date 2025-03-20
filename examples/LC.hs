@@ -271,7 +271,8 @@ evalEnv r (App e1 e2) =
 -- this pattern.
 nfEnv :: Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
-nfEnv r (Lam b) = Lam (applyUnder nfEnv r b)
+--nfEnv r2 (Lam b) = Lam $ unbindWith b $ \r1 e -> bind (nfEnv (up (r1 .>> r2)) e)
+nfEnv r (Lam b) = Lam $ applyUnder nfEnv r b
 nfEnv r (App e1 e2) =
   let n = nfEnv r e1
    in case nfEnv r e1 of

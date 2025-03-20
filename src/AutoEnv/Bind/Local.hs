@@ -21,11 +21,6 @@ import qualified AutoEnv.Bind.Pat as Pat
 
 type Bind v c n = Pat.Bind v c LocalName n
 
--- deriving instance (Eq (Bind v c n))
--- deriving instance (Subst v (Bind v c))
--- deriving instance (FV (Bind v c))
--- deriving instance (Strengthen (Bind v c))
-
 bind :: (SNatI n, Subst v c) => LocalName -> c (S n) -> Bind v c n
 bind = Pat.bind
 

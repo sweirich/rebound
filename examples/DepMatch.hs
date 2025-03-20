@@ -621,7 +621,7 @@ checkBranch g (Pi tyA tyB) (Branch bnd) =
 
     -- shift tyB to the scope of the pattern and instantiate it with 'a'
     -- must be done simultaneously because 'a' is from a larger scope
-    let tyB' = B.instantiateShift p tyB a
+    let tyB' = applyE (a .: shiftNE p) (B.unbind tyB)
 
     -- check the body of the branch in the scope of the pattern
     checkType g' body tyB'

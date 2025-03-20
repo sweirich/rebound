@@ -80,11 +80,11 @@ scopedDebug x s = runScopedReaderT (display x) s debugDI
 data DispInfo = DI
   { -- | should we show type annotations?
     showAnnots :: Bool,
-    -- | names that have been used
+    -- | names that have been used (currently unused)
     dispAvoid :: S.Set GlobalName,
-    -- | names currently in the local scope
+    -- | precedence level
     prec :: Int,
-    -- | should we print internally-generated names, or user-friendly versions
+    -- | should we print internally-generated names, or user-friendly versions (currently unused)
     showLongNames :: Bool
   }
 

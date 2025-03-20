@@ -30,6 +30,9 @@ import Data.Vec qualified as Vec
 
 ----------------------------------------------
 
+type Bind1 = Pat.Bind Exp Exp (SNat N1)
+
+
 -- The untyped lambda calculus extended with 
 -- symbols ("con"stants) and pattern matching 
 -- expression (case) 
@@ -37,7 +40,7 @@ import Data.Vec qualified as Vec
 -- is a value
 data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
-  Lam :: B.Bind Exp Exp n -> Exp n
+  Lam :: Bind1 n -> Exp n
   App :: Exp n -> Exp n -> Exp n
   Con :: String -> Exp n
   -- ^ constant (or symbol) like 'cons or 'nil
@@ -159,12 +162,12 @@ t2 =
         ( Case
             (Var f0)
             [ Branch
-                ( Pat.bind @_ @_ @(Pat N0)
+                ( Pat.bind @(Pat N0)
                     (PHead (PCon "Nil"))
                     (Var f0)
                 ),
               Branch
-                ( Pat.bind @_ @_ @(Pat N2)
+                ( Pat.bind @(Pat N2)
                     (PHead (PCon "Cons" `PApp` PVar `PApp` PVar))
                     (Var f0)
                 )
