@@ -6,7 +6,6 @@ module PiForall.Syntax where
 
 import AutoEnv
 
-import qualified AutoEnv.Bind.Single as B
 import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Bind.Scoped (TeleList(..),(<:>))
 import qualified AutoEnv.Bind.Scoped as Scoped
@@ -339,9 +338,6 @@ instance FV (Local p) where
 
 weaken' :: SNat m -> Term n -> Term (m + n)
 weaken' m = applyE @Term (weakenE' m)
-
-weakenBind' :: SNat m -> B.Bind Term Term n -> B.Bind Term Term (m + n)
-weakenBind' m = applyE @Term (weakenE' m)
 
 -- AXIOM: no need to do anything with terms that are already closed
 weakenClosed :: Term Z -> Term m 

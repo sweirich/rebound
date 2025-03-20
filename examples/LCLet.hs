@@ -112,12 +112,12 @@ t4 =
 -- (Alpha-)Equivalence
 ----------------------------------------------
 
--- | To compare binders, we need to `unbind` them
--- The `unbind` operation has type
+-- | To compare binders, we need to `getBody` them
+-- The `getBody` operation has type
 -- `Bind Exp Exp n -> Exp (S n)`
 -- as the body of the binder has one more free variable
 instance (Subst Exp t, Eq (t (S n))) => Eq (Bind Exp t n) where
-  b1 == b2 = unbind b1 == unbind b2
+  b1 == b2 = getBody b1 == getBody b2
 
 -- | The derivable equality instance
 -- is alpha-equivalence
@@ -170,7 +170,7 @@ instance Subst Exp Tele where
 ----------------------------------------------
 
 -- | To show lambda terms, we use a simple recursive instance of
--- Haskell's `Show` type class. In the case of a binder, we use the `unbind`
+-- Haskell's `Show` type class. In the case of a binder, we use the `getBody`
 -- operation to access the body of the lambda expression.
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
@@ -183,19 +183,19 @@ instance Show (Exp n) where
   showsPrec d (Lam b) =
     showParen True $
       showString "λ. "
-        . shows (unbind b)
+        . shows (getBody b)
   showsPrec d (Let e1 e2) =
     showParen True $
       showString "let "
         . showsPrec 10 e1
         . showString " in "
-        . shows (unbind e2)
+        . shows (getBody e2)
   showsPrec d (LetRec e1 e2) =
     showParen True $
       showString "let rec "
-        . shows (unbind e1)
+        . shows (getBody e1)
         . showString " in "
-        . shows (unbind e2)
+        . shows (getBody e2)
   showsPrec d (LetTele e) = showString "<let-tele>"
 
 -----------------------------------------------

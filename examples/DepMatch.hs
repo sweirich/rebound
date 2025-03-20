@@ -9,10 +9,10 @@ module DepMatch where
 import AutoEnv
 import AutoEnv.Context
 
-import qualified AutoEnv.Bind.Single as B
+
 import qualified AutoEnv.Bind.Pat as Pat
 import qualified AutoEnv.Bind.Scoped as Scoped
-import qualified AutoEnv.Bind.PatN as PN
+import AutoEnv.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
@@ -34,11 +34,11 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 -- generality, we pretend that more are possible.
 data Exp (n :: Nat)
   = Star
-  | Pi (Exp n) (B.Bind Exp Exp n)
+  | Pi (Exp n) (Bind1 Exp Exp n)
   | Var (Fin n)
   | Match [Branch n]  -- case lambda
   | App (Exp n) (Exp n)
-  | Sigma (Exp n) (B.Bind Exp Exp n)
+  | Sigma (Exp n) (Bind1 Exp Exp n)
   | Pair (Exp n) (Exp n)
   | Annot (Exp n) (Exp n)
 
@@ -72,7 +72,7 @@ pat0 = PPair PVar (PAnnot PVar (Var f0))
 -- The type of this pattern is
 --     Sigma x:Star.x
 ty0 :: Exp Z
-ty0 = Sigma Star (B.bind (Var f0))
+ty0 = Sigma Star (bind1 (Var f0))
 
 -------------------------------------------------------
 -- definitions for pattern matching
@@ -170,9 +170,9 @@ t01 = App (Var f0) (Var f1)
 instance FV Exp where
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
-  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
+  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (B.unbind b)
+  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
   appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
   appearsFree n (Match b) = any (appearsFree n) b
   appearsFree n (Annot a t) = appearsFree n a || appearsFree n t
@@ -198,7 +198,7 @@ instance FV (Pat p) where
 weaken' :: SNat m -> Exp n -> Exp (m + n)
 weaken' m = applyE @Exp (weakenE' m)
 
-weakenBind' :: SNat m -> B.Bind Exp Exp n -> B.Bind Exp Exp (m + n)
+weakenBind' :: SNat m -> Bind1 Exp Exp n -> Bind1 Exp Exp (m + n)
 weakenBind' m = applyE @Exp (weakenE' m)
 
 ----------------------------------------------
@@ -277,7 +277,7 @@ t1 =
 
 -- Polymorphic identity function and its type
 
-tyid = Pi star (B.bind (Pi (Var f0) (B.bind (Var f1))))
+tyid = Pi star (bind1 (Pi (Var f0) (bind1 (Var f1))))
 
 tmid = lam (lam (Var f0))
 
@@ -298,29 +298,29 @@ instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
-    | appearsFree FZ (B.unbind b) =
+    | appearsFree FZ (getBody1 b) =
         showParen (d > 10) $
           showString "Pi "
             . shows a
             . showString ". "
-            . shows (B.unbind b)
+            . shows (getBody1 b)
     | otherwise =
         showParen (d > 10) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (B.unbind b)
+            . showsPrec 10 (getBody1 b)
   showsPrec d (Sigma a b)
-    | appearsFree FZ (B.unbind b) =
+    | appearsFree FZ (getBody1 b) =
         showParen (d > 10) $
           showString "Sigma "
             . shows a
             . showString ". "
-            . shows (B.unbind b)
+            . shows (getBody1 b)
     | otherwise =
         showParen (d > 10) $
           showsPrec 11 a
             . showString " * "
-            . showsPrec 10 (B.unbind b)
+            . showsPrec 10 (getBody1 b)
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
@@ -403,11 +403,11 @@ instance (Eq (Exp n)) => Eq (Scoped.Bind Exp Exp (Pat m) n) where
       && Scoped.getBody b1 == Scoped.getBody b2
 
 -- To compare binders, we only need to `unbind` them
-instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
-  b1 == b2 = B.unbind b1 == B.unbind b2
+instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
+  b1 == b2 = getBody1 b1 == getBody1 b2
 
 instance (Eq (Exp n)) => Eq (PN.Bind2 Exp Exp n) where
-  b1 == b2 = PN.unbind2 b1 == PN.unbind2 b2
+  b1 == b2 = getBody2 b1 == getBody2 b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
@@ -542,10 +542,10 @@ equateWHNF n1 n2 =
       equate a2 b2
     (Pi tyA1 b1, Pi tyA2 b2) -> do
       equate tyA1 tyA2
-      equate (B.unbind b1) (B.unbind b2)
+      equate (getBody1 b1) (getBody1 b2)
     (Sigma tyA1 b1, Sigma tyA2 b2) -> do
       equate tyA1 tyA2
-      equate (B.unbind b1) (B.unbind b2)
+      equate (getBody1 b1) (getBody1 b2)
     (_, _) -> throwError (NotEqual n1 n2)
 
 ----------------------------------------------------------------
@@ -588,7 +588,7 @@ checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) 
   Refl -> do
     (g', e1) <- checkPattern g p1 tyA
     let tyB' = weakenBind' (Scoped.scopedSize p1) tyB
-    let tyB'' = whnf (B.instantiate tyB' e1)
+    let tyB'' = whnf (instantiate1 tyB' e1)
     (g'', e2) <- checkPattern g' p2 tyB''
     let e1' = weaken' (Scoped.scopedSize p2) e1
     return (g'', Pair e1' e2)
@@ -621,7 +621,7 @@ checkBranch g (Pi tyA tyB) (Branch bnd) =
 
     -- shift tyB to the scope of the pattern and instantiate it with 'a'
     -- must be done simultaneously because 'a' is from a larger scope
-    let tyB' = applyE (a .: shiftNE p) (B.unbind tyB)
+    let tyB' = applyE (a .: shiftNE p) (getBody1 tyB)
 
     -- check the body of the branch in the scope of the pattern
     checkType g' body tyB'
@@ -641,7 +641,7 @@ checkType g (Pair a b) ty = do
   case ty of
     (Sigma tyA tyB) -> do
       checkType g a tyA
-      checkType g b (B.instantiate tyB a)
+      checkType g b (instantiate1 tyB a)
     _ -> throwError (SigmaExpected ty)
 checkType g (Match bs) ty = do
   mapM_ (checkBranch g ty) bs
@@ -661,18 +661,18 @@ inferType g (Var x) = pure (applyEnv g x)
 inferType g Star = pure star
 inferType g (Pi a b) = do
   checkType g a star
-  checkType (g +++ a) (B.unbind b) star
+  checkType (g +++ a) (getBody1 b) star
   pure star
 inferType g (App a b) = do
   tyA <- inferType g a
   case whnf tyA of
     Pi tyA1 tyB1 -> do
       checkType g b tyA1
-      pure $ B.instantiate tyB1 b
+      pure $ instantiate1 tyB1 b
     t -> throwError (PiExpected t)
 inferType g (Sigma a b) = do
   checkType g a star
-  checkType (g +++ a) (B.unbind b) star
+  checkType (g +++ a) (getBody1 b) star
   pure star
 inferType g a =
   throwError (AnnotationNeeded a)

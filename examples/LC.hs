@@ -67,12 +67,12 @@ t1 =
 -- (Alpha-)Equivalence
 ----------------------------------------------
 
--- | To compare binders, we need to `unbind` them
--- The `unbind` operation has type
+-- | To compare binders, we need to `getBody` them
+-- The `getBody` operation has type
 -- `Bind Exp Exp n -> Exp (S n)`
 -- as the body of the binder has one more free variable
 instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
-  b1 == b2 = unbind b1 == unbind b2
+  b1 == b2 = getBody b1 == getBody b2
 
 deriving instance Eq (Exp n)
 
@@ -120,7 +120,7 @@ deriving instance (Generic1 Exp)
 ----------------------------------------------
 
 -- | To show lambda terms, we use a simple recursive instance of
--- Haskell's `Show` type class. In the case of a binder, we use the `unbind`
+-- Haskell's `Show` type class. In the case of a binder, we use the `getBody`
 -- operation to access the body of the lambda expression.
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
@@ -133,7 +133,7 @@ instance Show (Exp n) where
   showsPrec d (Lam b) =
     showParen True $
       showString "λ. "
-        . shows (unbind b)
+        . shows (getBody b)
 
 -----------------------------------------------
 -- (big-step) evaluation
@@ -193,11 +193,11 @@ eval' e
 
 -- | Calculate the normal form of a lambda expression. This
 -- is like evaluation except that it also reduces in the bodies
--- of `Lam` expressions. In this case, we must first `unbind`
+-- of `Lam` expressions. In this case, we must first `getBody`
 -- the binder and then rebind when finished
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
-nf (Lam b) = Lam (bind (nf (unbind b)))
+nf (Lam b) = Lam (bind (nf (getBody b)))
 nf (App e1 e2) =
   case nf e1 of
     Lam b -> nf (instantiate b (nf e2))
@@ -240,8 +240,8 @@ nf (App e1 e2) =
 -- Because `evalEnv` takes the body of the lambda term directly,
 -- without substitution, it doesn't do any repeat work.
 
--- >>> :t unbind
--- unbind :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
+-- >>> :t getBody
+-- getBody :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
 
 
 evalEnv :: Env Exp m n -> Exp m -> Exp n

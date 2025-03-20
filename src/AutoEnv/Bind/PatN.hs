@@ -1,4 +1,34 @@
-module AutoEnv.Bind.PatN where
+-- | N-ary binding 
+-- This file does not need to be qualified when imported. Instead, it postfixes 
+-- all operations with 1/2/N to distinguish them.
+module AutoEnv.Bind.PatN (module AutoEnv.Classes,
+  -- * single binder --
+  Bind1(..),
+  bind1,
+  unbind1,
+  getBody1,
+  instantiate1, 
+  unbindWith1,
+  instantiateWith1,
+  applyUnder1,
+  -- * double binder --
+  Bind2(..),
+  bind2,
+  unbind2,
+  getBody2,
+  instantiate2, 
+  unbindWith2,
+  instantiateWith2,
+  applyUnder2,
+  -- * N-ary binder ---
+  BindN(..),
+  bindN,
+  unbindN,
+  getBodyN,
+  instantiateN, 
+  unbindWithN,
+  instantiateWithN,
+  applyUnderN) where
 
 import Data.Nat
 import Data.SNat
@@ -27,27 +57,30 @@ type BindN v c m n = Pat.Bind v c (PatN m) n
 bindN :: forall m v c n. (Subst v c, SNatI m) => c (m + n) -> BindN v c m n
 bindN = Pat.bind (PatN (snat @m))
 
-unbindN :: forall m v c n. (Subst v v, Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+unbindN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
 unbindN = Pat.getBody
 
-unbindNWith ::
+getBodyN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+getBodyN = Pat.getBody
+
+unbindWithN ::
   (SubstVar v, SNatI m) =>
   BindN v c m n ->
   (forall m1. Env v m1 n -> c (m + m1) -> d) ->
   d
-unbindNWith b f = Pat.unbindWith b (const f)
+unbindWithN b f = Pat.unbindWith b (const f)
 
 instantiateN :: (Subst v c, SNatI m) => BindN v c m n -> Vec m (v n) -> c n
 instantiateN b v = Pat.instantiate b (fromVec v)
 
-instantiateNWith :: forall m v c n.
+instantiateWithN :: forall m v c d n.
   (SubstVar v, SNatI n, SNatI m) =>
   BindN v c m n ->
   Vec m (v n) ->
-  (forall m n. Env v m n -> c m -> c n) ->
-  c n
-instantiateNWith b v f =
-  unbindNWith b (f . appendE (snat @m) (fromVec v))
+  (forall m n. Env v m n -> c m -> d n) ->
+  d n
+instantiateWithN b v f =
+  unbindWithN b (f . appendE (snat @m) (fromVec v))
 
 applyUnderN :: (Subst v c2, SNatI m) =>
   (forall m n. Env v m n -> c1 m -> c2 n) ->
@@ -85,9 +118,9 @@ instantiate1 :: (Subst v c) => Bind1 v c n -> v n -> c n
 instantiate1 b v1 = Pat.instantiate b (v1 .: zeroE)
 
 instantiateWith1 ::
-  (SubstVar v, SNatI n) =>
+  (SubstVar v) =>
   Bind1 v c n -> v n ->
-  (forall m n. Env v m n -> c m -> c n) ->  c n
+  (forall m n. Env v m n -> c m -> d n) ->  d n
 instantiateWith1 b v1 f =
   unbindWith1 b (\r e -> f (v1 .: r) e)
 
@@ -132,8 +165,8 @@ instantiateWith2 ::
   (SubstVar v, SNatI n) =>
   Bind2 v c n ->
   v n -> v n ->
-  (forall m n. Env v m n -> c m -> c n) ->
-  c n
+  (forall m n. Env v m n -> c m -> d n) ->
+  d n
 instantiateWith2 b v1 v2 f =
   unbindWith2 b (\r e -> f (v1 .: (v2 .: r)) e)
 

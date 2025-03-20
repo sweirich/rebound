@@ -7,8 +7,6 @@
 
 module PiForall.ScopeCheck where
 
-
-import qualified AutoEnv.Bind.Single as B
 import AutoEnv.Bind.Pat (PatList(..))
 import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Bind.Scoped ((<:>))

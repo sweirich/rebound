@@ -16,7 +16,8 @@
 module Pat where
 
 import AutoEnv
-import qualified AutoEnv.Bind.Single as B
+
+import AutoEnv.Bind.PatN
 import qualified AutoEnv.Bind.Pat as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
@@ -30,9 +31,6 @@ import Data.Vec qualified as Vec
 
 ----------------------------------------------
 
-type Bind1 = Pat.Bind Exp Exp (SNat N1)
-
-
 -- The untyped lambda calculus extended with 
 -- symbols ("con"stants) and pattern matching 
 -- expression (case) 
@@ -40,7 +38,7 @@ type Bind1 = Pat.Bind Exp Exp (SNat N1)
 -- is a value
 data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
-  Lam :: Bind1 n -> Exp n
+  Lam :: Bind1 Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
   Con :: String -> Exp n
   -- ^ constant (or symbol) like 'cons or 'nil
@@ -136,18 +134,18 @@ instance Subst Exp Branch where
 -- The identity function "λ x. x". With de Bruijn indices
 -- we write it as "λ. 0"
 t0 :: Exp Z
-t0 = Lam (B.bind (Var f0))
+t0 = Lam (bind1 (Var f0))
 
 -- A larger term "λ x. λy. x (λ z. z z)"
 -- λ. λ. 1 (λ. 0 0)
 t1 :: Exp Z
 t1 =
   Lam
-    ( B.bind
+    ( bind1
         ( Lam
-            ( B.bind
+            ( bind1
                 ( Var f1
-                    `App` (Lam (B.bind (Var f0)) `App` Var f0)
+                    `App` (Lam (bind1 (Var f0)) `App` Var f0)
                 )
             )
         )
@@ -158,7 +156,7 @@ t1 =
 t2 :: Exp Z
 t2 =
   Lam
-    ( B.bind
+    ( bind1
         ( Case
             (Var f0)
             [ Branch
@@ -210,7 +208,7 @@ instance Show (Exp n) where
   showsPrec d (Lam b) =
     showParen (d > 10) $
       showString "λ. "
-        . shows (B.unbind b)
+        . shows (getBody1 b)
   showsPrec d (Con s) = showString s
   showsPrec d (Case e brs) =
     showParen (d > 10) $
@@ -303,8 +301,8 @@ instance Eq (Branch n) where
         Nothing -> False
 
 -- To compare simple binders, we need to `unbind` them
-instance (Eq (Exp n)) => Eq (B.Bind Exp Exp n) where
-  b1 == b2 = B.unbind b1 == B.unbind b2
+instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
+  b1 == b2 = getBody1 b1 == getBody1 b2
 
 -- To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
@@ -394,7 +392,7 @@ eval (Lam b) = Lam b
 eval (App e1 e2) =
   let v = eval e2
    in case eval e1 of
-        Lam b -> eval (B.instantiate b v)
+        Lam b -> eval (instantiate1 b v)
         t -> App t v -- if cannot reduce, return neutral term
 eval (Con s) = Con s
 eval (Case e brs) =
@@ -409,7 +407,7 @@ eval (Case e brs) =
 step :: Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
 step (Lam b) = Nothing
-step (App (Lam b) e2) = Just (B.instantiate b e2)
+step (App (Lam b) e2) = Just (instantiate1 b e2)
 step (App e1 e2)
   | Just e1' <- step e1 = Just (App e1' e2)
   | Just e2' <- step e2 = Just (App e1 e2')
@@ -435,10 +433,10 @@ eval' e
 -- λ. λ. 0 0
 nf :: Exp n -> Exp n
 nf (Var x) = Var x
-nf (Lam b) = Lam (B.bind (nf (B.unbind b)))
+nf (Lam b) = Lam (bind1 (nf (getBody1 b)))
 nf (App e1 e2) =
   case nf e1 of
-    Lam b -> B.instantiate b (nf e2)
+    Lam b -> instantiate1 b (nf e2)
     t -> App t (nf e2)
 nf (Con s) = Con s
 nf (Case e brs) =
