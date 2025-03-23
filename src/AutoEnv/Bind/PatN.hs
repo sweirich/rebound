@@ -1,13 +1,14 @@
--- | N-ary binding 
--- This file does not need to be qualified when imported. Instead, it postfixes 
+-- | N-ary binding
+-- This file does not need to be qualified when imported. Instead, it postfixes
 -- all operations with 1/2/N to distinguish them.
 module AutoEnv.Bind.PatN (module AutoEnv.Classes,
   -- * single binder --
   Bind1(..),
   bind1,
   unbind1,
+  unbindl1,
   getBody1,
-  instantiate1, 
+  instantiate1,
   unbindWith1,
   instantiateWith1,
   applyUnder1,
@@ -16,7 +17,7 @@ module AutoEnv.Bind.PatN (module AutoEnv.Classes,
   bind2,
   unbind2,
   getBody2,
-  instantiate2, 
+  instantiate2,
   unbindWith2,
   instantiateWith2,
   applyUnder2,
@@ -24,8 +25,9 @@ module AutoEnv.Bind.PatN (module AutoEnv.Classes,
   BindN(..),
   bindN,
   unbindN,
+  unbindlN,
   getBodyN,
-  instantiateN, 
+  instantiateN,
   unbindWithN,
   instantiateWithN,
   applyUnderN) where
@@ -57,10 +59,13 @@ type BindN v c m n = Pat.Bind v c (PatN m) n
 bindN :: forall m v c n. (Subst v c, SNatI m) => c (m + n) -> BindN v c m n
 bindN = Pat.bind (PatN (snat @m))
 
-unbindN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
-unbindN = Pat.getBody
+unbindN :: forall m v c n d. (Subst v c, SNatI n, SNatI m) => BindN v c m n -> (SNatI (m + n) => c (m + n) -> d) -> d
+unbindN bnd f = Pat.unbind bnd (const f)
 
-getBodyN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+unbindlN :: forall m v c n. (Subst v c, SNatI m) => BindN v c m n -> c (m + n)
+unbindlN = Pat.getBody
+
+getBodyN :: forall m v c n. (Subst v c, SNatI m) => BindN v c m n -> c (m + n)
 getBodyN = Pat.getBody
 
 unbindWithN ::
@@ -88,7 +93,7 @@ applyUnderN :: (Subst v c2, SNatI m) =>
   BindN v c1 m n1 ->
   BindN v c2 m n2
 applyUnderN = Pat.applyUnder
-  
+
 ----------------------------------------------------------------
 -- Single binder
 ----------------------------------------------------------------
@@ -101,13 +106,16 @@ type Bind1 v c n = Pat.Bind v c (PatN N1) n
 bind1 :: (Subst v c) => c (S n) -> Bind1 v c n
 bind1 = Pat.bind (PatN s1)
 
-getBody1 :: forall v c n. (Subst v c) => 
+getBody1 :: forall v c n. (Subst v c) =>
   Bind1 v c n -> c (S n)
 getBody1 = Pat.getBody
 
-unbind1 :: forall v c n d. (Subst v c) => 
-  Bind1 v c n -> (c (S n) -> d) -> d
+unbind1 :: forall v c n d. (SNatI n, Subst v c) =>
+  Bind1 v c n -> (SNatI (S n) => c (S n) -> d) -> d
 unbind1 b f = f (Pat.getBody b)
+
+unbindl1 :: forall v c n. (Subst v c) => Bind1 v c n -> c (S n)
+unbindl1 = Pat.getBody
 
 unbindWith1 ::
   (SubstVar v) => Bind1 v c n ->
@@ -143,11 +151,11 @@ type Bind2 v c n = Pat.Bind v c (PatN N2) n
 bind2 :: (Subst v c) => c (S (S n)) -> Bind2 v c n
 bind2 = Pat.bind (PatN s2)
 
-getBody2 :: forall v c n. (Subst v c) => 
+getBody2 :: forall v c n. (Subst v c) =>
   Bind2 v c n -> c (S (S n))
 getBody2 = Pat.getBody
 
-unbind2 :: forall v c n d. (Subst v c) => 
+unbind2 :: forall v c n d. (Subst v c) =>
   Bind2 v c n -> (c (S (S n)) -> d) -> d
 unbind2 b f = f (getBody2 b)
 

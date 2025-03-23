@@ -8,6 +8,7 @@ module AutoEnv.Bind.Local
     internalBind,
     getBody,
     unbind,
+    unbindl,
     instantiate,
     applyUnder
     ) where
@@ -37,6 +38,9 @@ getBody = Pat.getBody
 -- unbind, but also provide access to the local name
 unbind :: (Subst v c) => Bind v c n -> ((LocalName, c (S n)) -> d) -> d
 unbind b f = f (getLocalName b, getBody b)
+
+unbindl :: Subst v c => Bind v c n -> (LocalName, c (S n))
+unbindl b = (getLocalName b, getBody b)
 
 instantiate :: (Subst v c) => Bind v c n -> v n -> c n
 instantiate b e = Pat.instantiate b (oneE e)
