@@ -8,10 +8,12 @@ module AutoEnv.MonadScoped
     extendScope,
     ScopedReader (..),
     ScopedReaderT (..),
+    scopeSize,
     withSize,
     withSizeP,
     LocalName (..),
     push,
+    runScopedReader
   )
 where
 
@@ -97,6 +99,9 @@ withSize = withSizeP s0
 
 -- Trivial instance of MonadScoped
 type ScopedReader name = ScopedReaderT name Identity
+
+runScopedReader :: forall n d a. SNatI n => Vec n d -> ScopedReader d n a -> a
+runScopedReader d m = runIdentity $ runScopedReaderT m (Scope (snat @n) d)
 
 -----------------------------------------------------------------------
 
