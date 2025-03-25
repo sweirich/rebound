@@ -1,7 +1,7 @@
 -- | single binder, but includes a name for pretty printing
 -- type synonym for Pat.Bind with an opaque name as the pattern
 module AutoEnv.Bind.Local
-   (module AutoEnv.Classes,
+  ( module AutoEnv.Classes,
     type Bind,
     bind,
     getLocalName,
@@ -10,13 +10,14 @@ module AutoEnv.Bind.Local
     unbind,
     unbindl,
     instantiate,
-    applyUnder
-    ) where
+    applyUnder,
+  )
+where
 
 import AutoEnv
+import AutoEnv.Bind.Pat qualified as Pat
 import AutoEnv.Classes
 import AutoEnv.Env
-import qualified AutoEnv.Bind.Pat as Pat
 
 ---------------------------------------------------------------
 -- LocalBind operations (convenience wrappers)
@@ -39,7 +40,7 @@ getBody = Pat.getBody
 unbind :: (Subst v c) => Bind v c n -> ((LocalName, c (S n)) -> d) -> d
 unbind b f = f (getLocalName b, getBody b)
 
-unbindl :: Subst v c => Bind v c n -> (LocalName, c (S n))
+unbindl :: (Subst v c) => Bind v c n -> (LocalName, c (S n))
 unbindl b = (getLocalName b, getBody b)
 
 instantiate :: (Subst v c) => Bind v c n -> v n -> c n

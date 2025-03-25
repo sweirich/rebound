@@ -6,12 +6,11 @@
 -- For a simpler interface, see AutoEnv.Bind.Pat
 module AutoEnv.Bind.Scoped where
 
-import qualified Data.Vec as Vec
-import Data.FinAux(Fin(..))
-import qualified Data.FinAux as Fin
-
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
+import Data.FinAux (Fin (..))
+import Data.FinAux qualified as Fin
+import Data.Vec qualified as Vec
 
 ----------------------------------------------------------
 -- Sized type class for patterns
@@ -28,6 +27,7 @@ import AutoEnv.Bind.Pat qualified as Pat
 -- that it must be the same as Size for any number of bound variables.
 
 class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
+
 instance (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
 -- this is equivalent to (Size (t p) ~ ScopedSize pat
@@ -36,16 +36,21 @@ class (forall p. EqSized pat p) => ScopedSized pat where
 
 -- For convenience, we give the `size` function a type that mentions
 -- `ScopedSize` instead of `Size`.
-scopedSize :: forall pat p. ScopedSized pat => pat p -> SNat (ScopedSize pat)
+scopedSize :: forall pat p. (ScopedSized pat) => pat p -> SNat (ScopedSize pat)
 scopedSize = size
 
 -- And we give the `names` function a similar type
-scopedNames :: (ScopedSized pat, Named name (pat p)) =>
-                pat p -> Vec (ScopedSize pat) name
+scopedNames ::
+  (ScopedSized pat, Named name (pat p)) =>
+  pat p ->
+  Vec (ScopedSize pat) name
 scopedNames = names
 
-scopedPatEq :: (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
-    pat1 p1 -> pat2 p2 -> Maybe (ScopedSize pat1 :~: ScopedSize pat2)
+scopedPatEq ::
+  (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
+  pat1 p1 ->
+  pat2 p2 ->
+  Maybe (ScopedSize pat1 :~: ScopedSize pat2)
 scopedPatEq = patEq
 
 -- This file uses `ScopedSize`, `scopedSize`, and `scopedNames`,
@@ -98,7 +103,7 @@ instantiate ::
   Env v (ScopedSize pat) n ->
   c n
 instantiate b e =
-    unBindWith
+  unBindWith
     b
     (\p r t -> withSNat (scopedSize p) $ applyE (e .++ r) t)
 
@@ -115,7 +120,7 @@ unbind ::
   forall v c pat n d.
   (SNatI n, forall n. ScopedSized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (SNatI (ScopedSize pat + n) => pat n -> c (ScopedSize pat + n) -> d) ->
+  ((SNatI (ScopedSize pat + n)) => pat n -> c (ScopedSize pat + n) -> d) ->
   d
 unbind bnd f =
   withSNat (sPlus (scopedSize (getPat bnd)) (snat @n)) $
@@ -133,14 +138,15 @@ unBindWith ::
   d
 unBindWith (Bind pat r t) f = f pat r t
 
-applyUnder :: forall pat v c n1 n2.
+applyUnder ::
+  forall pat v c n1 n2.
   (ScopedSized pat, Subst v v, Subst v c, Subst v pat) =>
   (forall m n. Env v m n -> c m -> c n) ->
   Env v n1 n2 ->
   Bind v c pat n1 ->
   Bind v c pat n2
 applyUnder f r2 (Bind p r1 t) =
-     Bind p' idE (f r' t)
+  Bind p' idE (f r' t)
   where
     r' = upN sp' (r1 .>> r2)
     sp' :: SNat (ScopedSize pat)
@@ -164,13 +170,17 @@ instantiateWeakenEnv p n a =
 -- instances for Bind
 -----------------------------------------------------------------
 
-instance (ScopedSized pat,
-          Subst v pat,
-          Subst v v) => Subst v (Bind v c pat) where
-  applyE (env1 :: Env v n m)
-         (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
-       Bind (applyE env1 pat) (env2 .>> env1) m
-
+instance
+  ( ScopedSized pat,
+    Subst v pat,
+    Subst v v
+  ) =>
+  Subst v (Bind v c pat)
+  where
+  applyE
+    (env1 :: Env v n m)
+    (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
+      Bind (applyE env1 pat) (env2 .>> env1) m
 
 instance
   ( Subst v v,
@@ -186,23 +196,24 @@ instance
      in appearsFree n pat
           || appearsFree (Fin.shiftN (scopedSize pat) n) (getBody b)
 
-
-instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
+instance
+  (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
   Strengthen (Bind v c p)
   where
-
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd =
     withSNat (sPlus k (sPlus m n)) $
       unbind bnd $ \(p :: p (k + (m + n))) t' ->
-        case (axiomAssoc @(ScopedSize p) @k @(m + n),
-              axiomAssoc @(ScopedSize p) @k @n)  of
+        case ( axiomAssoc @(ScopedSize p) @k @(m + n),
+               axiomAssoc @(ScopedSize p) @k @n
+             ) of
           (Refl, Refl) ->
             let p' :: Maybe (p (k + n))
                 p' = strengthenRec k m n p
 
-                r  :: Maybe (c (ScopedSize p + (k + n)))
-                r  = strengthenRec (sPlus (scopedSize p) k) m n t'
-            in bind <$> p' <*> r
+                r :: Maybe (c (ScopedSize p + (k + n)))
+                r = strengthenRec (sPlus (scopedSize p) k) m n t'
+             in bind <$> p' <*> r
+
 -----------------------------------------------------------------
 -- Telescopes
 ---------------------------------------------------------------
@@ -214,20 +225,28 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
 -- to make this constraint.
 
 class (ScopedSize (t p) ~ p) => EqScopedSized t p
+
 instance (ScopedSize (t p) ~ p) => EqScopedSized t p
-class (forall p. ScopedSized (pat p),
-       forall p. EqScopedSized pat p) => IScopedSized pat where
+
+class
+  ( forall p. ScopedSized (pat p),
+    forall p. EqScopedSized pat p
+  ) =>
+  IScopedSized pat
 
 -- with this type class, we wrap the size function yet again
 -- to give it an easier to use type
-iscopedSize :: IScopedSized pat => pat p n -> SNat p
+iscopedSize :: (IScopedSized pat) => pat p n -> SNat p
 iscopedSize = scopedSize
 
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
-iscopedPatEq :: (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
-    pat1 p1 n1 -> pat2 p2 n2 -> Maybe (p1 :~: p2)
+iscopedPatEq ::
+  (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
+  pat1 p1 n1 ->
+  pat2 p2 n2 ->
+  Maybe (p1 :~: p2)
 iscopedPatEq = scopedPatEq
 
 -- | Telescopes: lists of local assumptions
@@ -242,21 +261,28 @@ data TeleList (pat :: Nat -> Nat -> Type) p n where
   TNil :: TeleList pat N0 n
   TCons ::
     ( IScopedSized pat,
-      p2 + (p1 + n) ~ (p2 + p1) + n) =>
-    pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
+      p2 + (p1 + n) ~ (p2 + p1) + n
+    ) =>
+    pat p1 n ->
+    TeleList pat p2 (p1 + n) ->
+    TeleList pat (p2 + p1) n
 
 lengthTele :: TeleList pat p n -> Int
 lengthTele TNil = 0
 lengthTele (TCons _ ps) = 1 + lengthTele ps
 
 -- Smart constructor
-(<:>) :: forall p1 p2 pat n.
-         (IScopedSized pat) =>
-         pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
+(<:>) ::
+  forall p1 p2 pat n.
+  (IScopedSized pat) =>
+  pat p1 n ->
+  TeleList pat p2 (p1 + n) ->
+  TeleList pat (p2 + p1) n
 e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
-infixr <:>
 
-instance IScopedSized (TeleList pat) where
+infixr 9 <:>
+
+instance IScopedSized (TeleList pat)
 
 instance ScopedSized (TeleList pat p) where
   type ScopedSize (TeleList pat p) = p
@@ -266,40 +292,54 @@ instance Sized (TeleList pat p n) where
   size TNil = s0
   size (TCons p1 p2) = sPlus (size p2) (iscopedSize p1)
 
-instance (forall p1 n. Named name (pat p1 n),
-          IScopedSized pat) => Named name (TeleList pat p n) where
+instance
+  ( forall p1 n. Named name (pat p1 n),
+    IScopedSized pat
+  ) =>
+  Named name (TeleList pat p n)
+  where
   names TNil = VNil
   names (TCons p ps) =
-        Vec.append (names ps) (iscopedNames p)
+    Vec.append (names ps) (iscopedNames p)
 
-instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) =>
-  Subst v (TeleList pat p) where
-    applyE r TNil = TNil
-    applyE r (TCons p1 p2) =
-      applyE r p1 <:> applyE (upN (iscopedSize p1) r) p2
+instance
+  (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) =>
+  Subst v (TeleList pat p)
+  where
+  applyE r TNil = TNil
+  applyE r (TCons p1 p2) =
+    applyE r p1 <:> applyE (upN (iscopedSize p1) r) p2
 
 instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
-  appearsFree :: forall n. (IScopedSized pat, forall p1. FV (pat p1)) =>
-      Fin n -> TeleList pat p n -> Bool
+  appearsFree ::
+    forall n.
+    (IScopedSized pat, forall p1. FV (pat p1)) =>
+    Fin n ->
+    TeleList pat p n ->
+    Bool
   appearsFree n TNil = False
   appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (Fin.shiftN (iscopedSize p1) n) p2
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
   strengthenRec k m n TNil = Just TNil
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (k + (m + n))) p2) =
-     case (axiomAssoc @p1 @k @(m + n),
-              axiomAssoc @p1 @k @n)  of
-          (Refl, Refl) ->
-             (<:>) <$> strengthenRec k m n p1
-                   <*> strengthenRec (sPlus (iscopedSize p1) k) m n p2
+    case ( axiomAssoc @p1 @k @(m + n),
+           axiomAssoc @p1 @k @n
+         ) of
+      (Refl, Refl) ->
+        (<:>)
+          <$> strengthenRec k m n p1
+          <*> strengthenRec (sPlus (iscopedSize p1) k) m n p2
+
 instance
   (forall p1 p2 n1 n2. PatEq (pat p1 n1) (pat p2 n2), IScopedSized pat) =>
-  PatEq (TeleList pat p1 n1) (TeleList pat p2 n2) where
+  PatEq (TeleList pat p1 n1) (TeleList pat p2 n2)
+  where
   patEq TNil TNil = Just Refl
   patEq (TCons p1 p2) (TCons p1' p2')
-    | Just Refl <- iscopedPatEq p1 p1'
-    , Just Refl <- iscopedPatEq p2 p2'
-    = Just Refl
+    | Just Refl <- iscopedPatEq p1 p1',
+      Just Refl <- iscopedPatEq p2 p2' =
+        Just Refl
   patEq _ _ = Nothing
 
 -----------------------------------------------------------------
@@ -339,11 +379,9 @@ instance
   applyE r (Rebind p1 p2) =
     rebind (applyE r p1) (applyE (upN (size p1) r) p2)
 
-
 instance (forall n. ScopedSized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: (ScopedSized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = appearsFree (shiftN (size p1) n) p2
-
 
 unRebind ::
   forall p1 p2 n c.

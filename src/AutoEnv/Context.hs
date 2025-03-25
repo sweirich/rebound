@@ -1,8 +1,8 @@
 module AutoEnv.Context where
 
-import AutoEnv.Lib
-import AutoEnv.Env
 import AutoEnv.Classes
+import AutoEnv.Env
+import AutoEnv.Lib
 
 ----------------------------------------------------------------
 -- For dependently-typed languages

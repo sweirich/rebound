@@ -4,16 +4,19 @@ module AutoEnv.Lib
     module Data.SNat,
     type Type,
     module Data.Type.Equality,
-    SNat(..), Nat(..), Fin(..), Vec (..),
-    ToInt(..),
+    SNat (..),
+    Nat (..),
+    Fin (..),
+    Vec (..),
+    ToInt (..),
     module Data.LocalName,
   )
 where
 
+import Data.FinAux (Fin (..))
 import Data.Kind (Type)
-import Data.Type.Equality
+import Data.LocalName
 import Data.Nat
 import Data.SNat
-import Data.Vec ( Vec(..) )
-import Data.FinAux( Fin(..))
-import Data.LocalName
+import Data.Type.Equality
+import Data.Vec (Vec (..))
