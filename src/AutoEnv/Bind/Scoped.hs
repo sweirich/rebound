@@ -8,6 +8,8 @@ module AutoEnv.Bind.Scoped where
 
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
+import AutoEnv.DependentScope (WithData (..))
+import AutoEnv.DependentScope qualified as DS
 import Data.FinAux (Fin (..))
 import Data.FinAux qualified as Fin
 import Data.Vec qualified as Vec
@@ -45,6 +47,12 @@ scopedNames ::
   pat p ->
   Vec (ScopedSize pat) name
 scopedNames = names
+
+scopedData ::
+  (ScopedSized pat, WithData (pat p) u s n) =>
+  pat p ->
+  DS.Telescope u s (ScopedSize pat) n
+scopedData = getData
 
 scopedPatEq ::
   (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
@@ -170,17 +178,12 @@ instantiateWeakenEnv p n a =
 -- instances for Bind
 -----------------------------------------------------------------
 
-instance
-  ( ScopedSized pat,
-    Subst v pat,
-    Subst v v
-  ) =>
-  Subst v (Bind v c pat)
-  where
-  applyE
-    (env1 :: Env v n m)
-    (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
-      Bind (applyE env1 pat) (env2 .>> env1) m
+instance (ScopedSized pat, Subst v pat, Subst v v) => Shiftable (Bind v c pat) where
+  shift = shiftFromApplyE @v
+
+instance (ScopedSized pat, Subst v pat, Subst v v) => Subst v (Bind v c pat) where
+  applyE (env1 :: Env v n m) (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
+    Bind (applyE env1 pat) (env2 .>> env1) m
 
 instance
   ( Subst v v,
@@ -242,6 +245,9 @@ iscopedSize = scopedSize
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
+iscopedData :: (IScopedSized pat, WithData (pat p n) u s n) => pat p n -> DS.Telescope u s p n
+iscopedData = scopedData
+
 iscopedPatEq ::
   (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
   pat1 p1 n1 ->
@@ -301,6 +307,16 @@ instance
   names TNil = VNil
   names (TCons p ps) =
     Vec.append (names ps) (iscopedNames p)
+
+instance
+  (forall p1 n. WithData (pat p1 n) u s n, IScopedSized pat) =>
+  WithData (TeleList pat p n) u s n
+  where
+  getData TNil = DS.TNil
+  getData (TCons p ps) = snd $ DS.append (getData ps) (iscopedData p)
+
+instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
+  shift = shiftFromApplyE @v
 
 instance
   (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) =>

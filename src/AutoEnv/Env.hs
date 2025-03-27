@@ -12,6 +12,7 @@ module AutoEnv.Env
     SubstVar (..),
     Subst (..),
     GSubst (..),
+    Shiftable (..),
     gapplyE,
     applyOpt,
     transform,
@@ -36,12 +37,14 @@ module AutoEnv.Env
     singletonR,
     fromRefinement,
     toRefinement,
-    shiftRefinement,
     refine,
     tabulate,
     fromTable,
     weakenE',
     weakenER,
+    refines,
+    domain,
+    shiftFromApplyE,
   )
 where
 
@@ -67,7 +70,6 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Cons :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
   (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
---  Value of the index x in the substitution s
 applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
 applyEnv Zero x = case x of {}
 applyEnv (Inc m) x = var (Fin.shiftN m x)
@@ -130,6 +132,14 @@ transform f (r1 :<> r2) = transform f r1 :<> transform f r2
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
+
+class Shiftable t where
+  shift :: SNat k -> t n -> t (k + n)
+  default shift :: forall v k n. (SubstVar v, Subst v t) => SNat k -> t n -> t (k + n)
+  shift = shiftFromApplyE @v
+
+shiftFromApplyE :: forall v c k n. (SubstVar v, Subst v c) => SNat k -> c n -> c (k + n)
+shiftFromApplyE k = applyE @v (shiftNE k)
 
 -- | Apply the environment throughout a term of
 -- type `c n`, replacing variables with values
@@ -317,11 +327,12 @@ singletonR (x, t) =
   if t == var x then emptyR else Refinement (Map.singleton x t)
 
 -- Move a refinement to a new scope
-shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (p + n)
-shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g'
-  where
-    f' = Map.mapKeysMonotonic (Fin.shiftN @p @n p) r
-    g' = Map.map (applyE @v (shiftNE p)) f'
+instance (Shiftable v) => Shiftable (Refinement v) where
+  shift :: forall k n. SNat k -> Refinement v n -> Refinement v (k + n)
+  shift k (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g'
+    where
+      f' = Map.mapKeysMonotonic (Fin.shiftN @k @n k) r
+      g' = Map.map (shift k) f'
 
 fromRefinement :: (SNatI n, SubstVar v) => Refinement v n -> Env v n n
 fromRefinement (Refinement x) = fromTable (Map.toList x)
@@ -329,8 +340,14 @@ fromRefinement (Refinement x) = fromTable (Map.toList x)
 toRefinement :: (SNatI n, SubstVar v) => Env v n n -> Refinement v n
 toRefinement r = Refinement (Map.fromList (tabulate r))
 
+refines :: forall n v. (SNatI n, Subst v v, Eq (v n)) => Refinement v n -> Fin n -> Bool
+refines r i = applyE (fromRefinement r) (var @v i) /= var @v i
+
 refine :: (SNatI n, Subst v c) => Refinement v n -> c n -> c n
 refine r = applyE (fromRefinement r)
+
+domain :: Refinement v n -> [Fin n]
+domain (Refinement m) = Map.keys m
 
 ----------------------------------------------------------------
 -- show for environments
@@ -389,6 +406,9 @@ instance (GSubst b f, GSubst b g) => GSubst b (f :+: g) where
 
 instance (Subst b g) => GSubst b (Rec1 g) where
   gsubst s (Rec1 f) = Rec1 (applyE s f)
+
+instance Shiftable Fin where
+  shift = Fin.shiftN
 
 instance (SubstVar v) => Subst v Fin where
   applyE r e = error "BUG: must use Fin type only for indices in syntax"

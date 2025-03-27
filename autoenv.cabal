@@ -15,12 +15,12 @@ extra-source-files:
     ChangeLog.md
 
 common common-stanza
-  ghc-options:         
-     -Wno-type-defaults 
+  ghc-options:
+     -Wno-type-defaults
      -fwarn-incomplete-patterns
   build-depends:
       base >=4.15
-    , HUnit 
+    , HUnit
     , QuickCheck
     , containers
     , filepath
@@ -48,7 +48,7 @@ common common-stanza
     , UndecidableInstances
     , FunctionalDependencies
     , ViewPatterns
-    
+
 
 library
   import:
@@ -60,6 +60,7 @@ library
       , AutoEnv.Lib
       , AutoEnv.Env
       , AutoEnv.MonadScoped
+      , AutoEnv.DependentScope
       , AutoEnv.Bind.Single
       , AutoEnv.Bind.Local
       , AutoEnv.Bind.PatN
@@ -68,8 +69,10 @@ library
       , Data.SNat
       , Data.FinAux
       , Data.Vec
-      , Data.LocalName    
-      , Data.Scoped.List  
+      , Data.LocalName
+      , Data.Scoped.Const
+      , Data.Scoped.List
+      , Data.Scoped.Maybe
       , LC
       , LCLet
       , PTS

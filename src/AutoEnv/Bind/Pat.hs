@@ -28,6 +28,7 @@ import AutoEnv.Classes
 import Data.FinAux (Fin)
 import Data.FinAux qualified as Fin
 import Data.Vec qualified as Vec
+import AutoEnv.DependentScope (WithData (..), Telescope (..), append)
 
 ----------------------------------------------------------
 -- Bind type
@@ -130,6 +131,9 @@ applyUnder f r2 (Bind p r1 t) =
 
 -- | The substitution operation composes the explicit
 -- substitution with the one stored at the binder
+instance (SubstVar v) => Shiftable (Bind v c p) where
+  shift = shiftFromApplyE @v
+
 instance (SubstVar v) => Subst v (Bind v c p) where
   applyE :: Env v n m -> Bind v c p n -> Bind v c p m
   applyE env1 (Bind p env2 m) = Bind p (env2 .>> env1) m
@@ -162,10 +166,10 @@ instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
 data Rebind pat p2 n where
   Rebind :: pat -> p2 (Size pat + n) -> Rebind pat p2 n
 
-instance
-  (Subst v v, Sized p1, Subst v p2) =>
-  Subst v (Rebind p1 p2)
-  where
+instance (SubstVar v, Sized p1, Subst v p2) => Shiftable (Rebind p1 p2) where
+  shift = shiftFromApplyE @v
+
+instance (SubstVar v, Sized p1, Subst v p2) => Subst v (Rebind p1 p2) where
   applyE :: Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
   applyE r (Rebind p1 p2) = Rebind p1 (applyE (upN (size p1) r) p2)
 
@@ -224,3 +228,8 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names PNil = VNil
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
     Vec.append @ps @p1 (names ps) (names p1)
+
+instance (forall p n. WithData (pat p) u s n) => WithData (PatList pat p) u s n where
+  getData PNil = TNil
+  getData (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
+    snd$ append (getData ps) (getData p1)

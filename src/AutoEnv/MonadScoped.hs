@@ -23,6 +23,8 @@ import Control.Monad.Identity
 import Control.Monad.Reader
 import Data.SNat as SNat
 import Data.Vec as Vec
+import Control.Monad.Error.Class (MonadError (..))
+import Control.Monad.Writer (MonadWriter (..))
 
 -----------------------------------------------------------------------
 
@@ -129,7 +131,16 @@ instance (Monad m) => Monad (ScopedReaderT name m n) where
 
 instance (MonadReader e m) => MonadReader e (ScopedReaderT name m n) where
   ask = ScopedReaderT (const ask)
-  local f m = ScopedReaderT (\s -> local f (runScopedReaderT m s))
+  local f m = ScopedReaderT (local f . runScopedReaderT m)
+
+instance (MonadError e m) => MonadError e (ScopedReaderT name m n) where
+  throwError e = ScopedReaderT $ const (throwError e)
+  catchError m k = ScopedReaderT $ \s -> runScopedReaderT m s `catchError` (\err -> runScopedReaderT (k err) s)
+
+instance (MonadWriter w m) => MonadWriter w (ScopedReaderT name m n) where
+  writer w = ScopedReaderT $ const (writer w)
+  listen m = ScopedReaderT $ \s -> listen $ runScopedReaderT m s
+  pass m = ScopedReaderT $ \s -> pass $ runScopedReaderT m s
 
 instance
   (Monad m) =>
