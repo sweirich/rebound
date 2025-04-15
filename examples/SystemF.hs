@@ -51,11 +51,11 @@ instance Subst Ty (TyExp n) where
     applyE :: forall m1 m2 n. Env Ty m1 m2 -> TyExp n m1 -> TyExp n m2
     applyE r (TyExp (EVar x)) = TyExp (EVar x)
     applyE r (TyExp (ELam ty b)) = 
-        let q = substTy r (unbind b)
+        let q = substTy r (getBody b)
         in TyExp (ELam (applyE r ty) (bind q))
     applyE r (TyExp (EApp e1 e2)) = TyExp (EApp (substTy r e1) (substTy r e2))
     applyE r (TyExp (ETLam b)) = 
-        let q = applyE (up r) (unbind b)
+        let q = applyE (up r) (getBody b)
         in TyExp (ETLam (bind q))
     applyE r (TyExp (ETApp e1 t2)) = 
         TyExp (ETApp (substTy r e1) (applyE r t2))
@@ -70,7 +70,7 @@ instance Subst (Exp m) (Exp m) where
     applyE r (ELam ty b) = ELam ty (applyE r b)
     applyE r (EApp t1 t2) = EApp (applyE r t1) (applyE r t2)
     applyE r (ETLam b) =
-        let (TyExp te) = unbind b 
+        let (TyExp te) = getBody b 
         in ETLam (bind (TyExp (applyE (upTyScope r) te)))
     applyE r (ETApp e t) = ETApp (applyE r e) t    
 

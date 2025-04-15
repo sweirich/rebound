@@ -115,6 +115,9 @@ instance Subst Exp Exp where
   applyE r e = gapplyE r e
 deriving instance (Generic1 Exp)
 
+-- >>> :info Rep1 Exp
+
+
 ----------------------------------------------
 -- Display (Show)
 ----------------------------------------------
