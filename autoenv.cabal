@@ -60,6 +60,7 @@ library
       , AutoEnv.Lib
       , AutoEnv.Env
       , AutoEnv.Env.Internal
+      , AutoEnv.Env.Vector
       , AutoEnv.MonadScoped
       , AutoEnv.Bind.Single
       , AutoEnv.Bind.Local

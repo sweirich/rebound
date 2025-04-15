@@ -5,7 +5,6 @@ module AutoEnv.Env.Internal where
 -- This is a lazy environment: values stored are not forced
 -- Includes Wadler's optimizations for the empty environment
 
-
 import AutoEnv.Lib
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
@@ -55,6 +54,7 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
 -- | The empty environment (zero domain)
 zeroE :: Env v Z n
 zeroE = Zero
+{-# INLINEABLE zeroE #-}
 
 -- make the bound bigger, on the right, but do not change any indices. 
 -- this is an identity function
@@ -70,15 +70,24 @@ weakenE' = Weak
 shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 
+
+
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: v m -> Env v n m -> Env v (S n) m
-v .: f = Cons v f
+(.:) = Cons 
+{-# INLINEABLE (.:) #-}
+
+
+-- | inverse of `cons` -- remove the first mapping
+tail :: (SubstVar v) => Env v (S n) m -> Env v n m
+tail x = shiftNE s1 .>> x
+{-# INLINEABLE tail #-}
 
 -- | composition: do f then g
 (.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
-f .>> g = comp f g
-
+(.>>) = comp
+{-# INLINEABLE (.>>) #-}
 
 --  Value of the index x in the substitution s
 applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m

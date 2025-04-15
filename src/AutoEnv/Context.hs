@@ -21,7 +21,7 @@ shiftCtx g = g .>> shift1E
 emptyC :: Ctx v N0
 emptyC = zeroE
 
-shift :: forall v n. SubstVar v => v n -> v (S n)
+shift :: forall v n. (SubstVar v) => v n -> v (S n)
 shift = applyE @v shift1E
 
 -- | Append a new definition to the context

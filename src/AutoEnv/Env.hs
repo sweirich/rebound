@@ -49,7 +49,7 @@ import qualified Data.Fin as Fin
 import qualified Data.FinAux as Fin
 
 import AutoEnv.Env.Internal
-
+-- import AutoEnv.Env.Vector
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -105,10 +105,6 @@ newtype AppendE v m n p =
        Env v m n ->
        Env v (p + m) n }
 
--- | inverse of `cons` -- remove the first mapping
-tail :: (SubstVar v) => Env v (S n) m -> Env v n m
-tail = comp (shiftNE s1)
-
 -- | access value at index 0
 head :: (SubstVar v) => Env v (S n) m -> v m
 head f = applyEnv f FZ
@@ -127,7 +123,8 @@ upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) where
    base :: UpN v m n Z
    base = MkUpN id
    step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
-   step (MkUpN r) = MkUpN $ \e -> var FZ .: comp (r e) shift1E
+   step (MkUpN r) = MkUpN 
+    $ \e -> var Fin.f0 .: (r e .>> shiftNE s1)
 
 newtype UpN v m n p = 
     MkUpN { getUpN :: Env v m n -> Env v (p + m) (p + n) }
