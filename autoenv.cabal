@@ -73,6 +73,7 @@ library
       , Data.Scoped.Const
       , Data.Scoped.List
       , Data.Scoped.Maybe
+      , Data.Scoped.Telescope
   hs-source-dirs: src
 
 library autoenv-examples

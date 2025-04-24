@@ -25,10 +25,10 @@ where
 
 import AutoEnv
 import AutoEnv.Classes
+import AutoEnv.DependentScope (WithData (..))
 import Data.FinAux (Fin)
 import Data.FinAux qualified as Fin
 import Data.Vec qualified as Vec
-import AutoEnv.DependentScope (WithData (..), Telescope (..), append)
 
 ----------------------------------------------------------
 -- Bind type
@@ -229,7 +229,11 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
     Vec.append @ps @p1 (names ps) (names p1)
 
-instance (forall p n. WithData (pat p) u s n) => WithData (PatList pat p) u s n where
-  getData PNil = TNil
-  getData (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
-    snd$ append (getData ps) (getData p1)
+instance forall (s :: Nat -> Type) (p:: Nat) (pat :: Nat -> Type) (n:: Nat).
+  (SubstVar s, forall p n. WithData (pat p) s n) => WithData (PatList pat p) s n where
+  getData PNil = zeroE
+  getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
+    case axiomAssoc @ps' @p1' @n of
+      Refl ->
+        let (ps', r) = getSizeData @_ @_ @(p1' + n) ps
+        in withSNat ps' $ getData @_ @_ @n p1 ++++ r

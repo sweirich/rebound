@@ -25,3 +25,8 @@ emptyC = zeroE
 -- All existing types in the context need to be shifted (lazily)
 (+++) :: forall v n. (Subst v v) => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = shiftC @v @v a .: shiftCtx g
+
+(++++) :: forall v n n' m. (SNatI n', SubstVar v) => Env v n m -> Env v n' (n' + m) -> Env v (n' + n) (n' + m)
+l ++++ r =
+  let p = snat @n'
+   in r .++ (l .>> shiftNE p)
