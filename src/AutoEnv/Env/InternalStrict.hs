@@ -1,9 +1,9 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module AutoEnv.Env.Internal where
+module AutoEnv.Env.InternalStrict where
 
 -- "Defunctionalized" representation of environment
--- stored values are lazy
+-- stored values are strict
 -- *rest* of the environment is strict
 -- Includes optimized composition (Inc and Cons cancel)
 -- Includes Wadler's optimizations for the empty environment
@@ -48,7 +48,7 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   WeakR :: !(SNat m) -> Env a n (n + m) --  weaken values in range by m
   Weak  :: !(SNat m) -> Env a n (m + n) --  weaken values in range by m
   Inc   :: !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
-  Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
+  Cons  :: !(a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
   (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------

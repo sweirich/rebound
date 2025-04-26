@@ -60,6 +60,11 @@ library
       , AutoEnv.Lib
       , AutoEnv.Env
       , AutoEnv.Env.Internal
+      , AutoEnv.Env.InternalStrict
+      , AutoEnv.Env.InternalLazy
+      , AutoEnv.Env.InternalA
+      , AutoEnv.Env.InternalB
+      , AutoEnv.Env.Functional
       , AutoEnv.Env.Vector
       , AutoEnv.MonadScoped
       , AutoEnv.Bind.Single

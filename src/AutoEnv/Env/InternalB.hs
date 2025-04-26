@@ -1,12 +1,12 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module AutoEnv.Env.Internal where
+module AutoEnv.Env.InternalB where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
 -- *rest* of the environment is strict
--- Includes optimized composition (Inc and Cons cancel)
--- Includes Wadler's optimizations for the empty environment
+-- No optimized composition (Inc and Cons cancel)
+-- No Wadler's optimizations for the empty environment
 
 import AutoEnv.Lib
 import Data.Fin (Fin(..))
@@ -69,10 +69,10 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 -- | Build an optimized version of applyE. 
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-applyOpt f (Inc SZ) x = x
+{- applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
 applyOpt f (WeakR SZ) (x :: c m) = 
-  case axiomPlusZ @m of Refl -> x
+  case axiomPlusZ @m of Refl -> x -}
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 
@@ -116,44 +116,15 @@ tail x = shiftNE s1 .>> x
 
 -- | composition: do f then g
 (.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
-(.>>) = comp
+(.>>) = (:<>)
 {-# INLINEABLE (.>>) #-}
-
--- | smart constructor for composition
-comp :: forall a m n p. SubstVar a => 
-         Env a m n -> Env a n p -> Env a m p
-comp Zero s = Zero
-comp (Weak (k1 :: SNat m1)) (Weak (k2 :: SNat m2))  = 
-  case axiomAssoc @m2 @m1 @m of
-    Refl -> Weak (sPlus k2 k1)
-comp (Weak SZ) s = s
-comp s (Weak SZ) = s
-comp (WeakR (k1 :: SNat m1)) (WeakR (k2 :: SNat m2))  = 
-  case axiomAssoc @m @m1 @m2 of
-    Refl -> WeakR (sPlus k1 k2)
-comp (WeakR SZ) s =
-  case axiomPlusZ @m of 
-    Refl -> s
-comp s (WeakR SZ) = 
-  case axiomPlusZ @n of 
-    Refl -> s
-comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
-  case axiomAssoc @m2 @m1 @m of
-    Refl -> Inc (sPlus k2 k1)
-comp s (Inc SZ) = s
-comp (Inc SZ) s = s
-comp (Inc (snat_ -> SS_ p1)) (Cons _t p) = comp (Inc p1) p
-comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
-comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
-comp s1 s2 = s1 :<> s2
-{-# INLINEABLE comp #-}
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
-up (Inc SZ) = Inc SZ
+{- up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
-up (WeakR SZ) = WeakR SZ 
-up e = var Fin.f0 .: comp e (Inc s1)
+up (WeakR SZ) = WeakR SZ  -}
+up e = var Fin.f0 .: (e :<> Inc s1)
 {-# INLINEABLE up #-}
 
 -- | mapping operation for range of the environment

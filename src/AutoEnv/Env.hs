@@ -38,7 +38,6 @@ module AutoEnv.Env(Env, applyEnv,
   ) where
 
 import AutoEnv.Lib
---import AutoEnv.Classes
 import Prelude hiding (head,tail)   
 import qualified Data.Vec as Vec
 import qualified Data.Map as Map
@@ -49,14 +48,13 @@ import qualified Data.Fin as Fin
 import qualified Data.FinAux as Fin
 
 import AutoEnv.Env.Internal
--- import AutoEnv.Env.Vector
 
 ----------------------------------------------
 -- operations on environments/substitutions
 ----------------------------------------------
 
 -- TODO: do we want to replace uses of this operation with something else?
-env :: forall m v n. SNatI m => (Fin m -> v n) -> Env v m n
+env :: forall m v n. (SubstVar v, SNatI m) => (Fin m -> v n) -> Env v m n
 env f = fromVec v where
         v :: Vec m (v n)
         v = Vec.tabulate f
@@ -64,7 +62,7 @@ env f = fromVec v where
 
 -- | A singleton environment (single index domain)
 -- maps that single variable to `v n`
-oneE :: v n -> Env v (S Z) n
+oneE :: SubstVar v => v n -> Env v (S Z) n
 oneE v = v .: zeroE
 
 -- | an environment that maps index 0 to v and leaves
@@ -133,7 +131,7 @@ newtype UpN v m n p =
 -- Create an environment from a length-indexed 
 -- vector of scoped values
 
-fromVec :: Vec m (v n) -> Env v m n
+fromVec :: SubstVar v => Vec m (v n) -> Env v m n
 fromVec VNil = zeroE
 fromVec (x ::: vs) = x .: fromVec vs
 

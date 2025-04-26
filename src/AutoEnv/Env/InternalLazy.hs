@@ -1,10 +1,10 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module AutoEnv.Env.Internal where
+module AutoEnv.Env.InternalLazy where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
--- *rest* of the environment is strict
+-- of the environment is also lazy
 -- Includes optimized composition (Inc and Cons cancel)
 -- Includes Wadler's optimizations for the empty environment
 
@@ -45,11 +45,11 @@ gapplyE = applyOpt (\s x -> to1 $ gsubst s (from1 x))
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: !(SNat m) -> Env a n (n + m) --  weaken values in range by m
-  Weak  :: !(SNat m) -> Env a n (m + n) --  weaken values in range by m
-  Inc   :: !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
-  Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
-  (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
+  WeakR :: (SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: (SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
+  Cons  :: (a m) -> (Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
+  (:<>) :: (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------
 -- Application

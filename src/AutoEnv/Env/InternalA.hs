@@ -1,12 +1,12 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module AutoEnv.Env.Internal where
+module AutoEnv.Env.InternalA where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
 -- *rest* of the environment is strict
 -- Includes optimized composition (Inc and Cons cancel)
--- Includes Wadler's optimizations for the empty environment
+-- does not include Wadler's optimizations for the empty environment
 
 import AutoEnv.Lib
 import Data.Fin (Fin(..))
@@ -69,10 +69,10 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 -- | Build an optimized version of applyE. 
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-applyOpt f (Inc SZ) x = x
+{- applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
 applyOpt f (WeakR SZ) (x :: c m) = 
-  case axiomPlusZ @m of Refl -> x
+  case axiomPlusZ @m of Refl -> x -}
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 
@@ -150,9 +150,9 @@ comp s1 s2 = s1 :<> s2
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
-up (Inc SZ) = Inc SZ
+{- up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
-up (WeakR SZ) = WeakR SZ 
+up (WeakR SZ) = WeakR SZ  -}
 up e = var Fin.f0 .: comp e (Inc s1)
 {-# INLINEABLE up #-}
 
