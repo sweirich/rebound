@@ -31,6 +31,7 @@ module AutoEnv.Env
     shift1E,
     shiftNE,
     fromVec,
+    toVec,
     Refinement (..),
     emptyR,
     joinR,
@@ -45,6 +46,7 @@ module AutoEnv.Env
     refines,
     domain,
     shiftFromApplyE,
+    env,
   )
 where
 
@@ -287,9 +289,9 @@ fromVec :: Vec m (v n) -> Env v m n
 fromVec VNil = zeroE
 fromVec (x ::: vs) = x .: fromVec vs
 
--- toVec :: SNat m -> Env v m n -> Vec m (v n)
--- toVec SZ r = VNil
--- toVec (SS x) r = r x ::: toVec x (tail r)
+toVec :: (SubstVar v) => SNat m -> Env v m n -> Vec m (v n)
+toVec SZ r = VNil
+toVec m@(snat_ -> SS_ m') r = head r ::: toVec m' (tail r)
 
 ----------------------------------------------------------------
 -- Refinements

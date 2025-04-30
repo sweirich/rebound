@@ -26,6 +26,7 @@ where
 import AutoEnv
 import AutoEnv.Classes
 import AutoEnv.DependentScope (WithData (..))
+import AutoEnv.DependentScope as DS
 import Data.FinAux (Fin)
 import Data.FinAux qualified as Fin
 import Data.Vec qualified as Vec
@@ -229,11 +230,10 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
     Vec.append @ps @p1 (names ps) (names p1)
 
-instance forall (s :: Nat -> Type) (p:: Nat) (pat :: Nat -> Type) (n:: Nat).
-  (SubstVar s, forall p n. WithData (pat p) s n) => WithData (PatList pat p) s n where
-  getData PNil = zeroE
+instance forall (u:: Type) (s :: Nat -> Type) (p:: Nat) (pat :: Nat -> Type) (n:: Nat).
+  (SubstVar s, forall p n. WithData (pat p) u s n) => WithData (PatList pat p) u s n where
+  getData PNil = DS.empty
   getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
-    case axiomAssoc @ps' @p1' @n of
-      Refl ->
-        let (ps', r) = getSizeData @_ @_ @(p1' + n) ps
-        in withSNat ps' $ getData @_ @_ @n p1 ++++ r
+    let (ps', r) = getSizeData @_ @_ @_ @(p1' + n) ps
+    -- TODO: Removing any of the @n breaks tc...
+    in withSNat ps' $ DS.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r
