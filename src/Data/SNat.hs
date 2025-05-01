@@ -1,6 +1,9 @@
 module Data.SNat(
-  module Data.Type.Nat,
-  type (+),
+  -- module Data.Type.Nat,
+  Nat(..), toNatural, fromNatural,
+  SNat(..),  snatToNat,
+  SNatI(..), snat, withSNat, reify, reflect,
+  type (+), 
   N0, N1, N2, N3,
   s0, s1, s2, s3, 
   sPlus,

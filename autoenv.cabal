@@ -73,7 +73,7 @@ library
       , AutoEnv.Bind.Pat
       , AutoEnv.Bind.Scoped
       , Data.SNat
-      , Data.FinAux
+      , Data.Fin
       , Data.Vec
       , Data.LocalName    
       , Data.Scoped.List  

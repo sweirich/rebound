@@ -25,8 +25,8 @@ module AutoEnv.Bind.Pat(
 
 import AutoEnv
 import AutoEnv.Classes
-import Data.FinAux (Fin)
-import qualified Data.FinAux as Fin
+import Data.Fin (Fin)
+import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
 
 ----------------------------------------------------------

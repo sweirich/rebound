@@ -1,29 +1,38 @@
 -- |
--- Module      : Data.FinAux
+-- Module      : Data.Fin
 -- Description : Bounded natural numbers
 -- Stability   : experimental
 --
--- This file re-exports definitions from Data.Fin, while adding a few more
+-- This file re-exports definitions from fin's Data.Fin, while adding a few more
 -- that are relevant to this context. Like Data.Fin, is meant to be used qualified.
---       import FinAux (Fin (..))
---       import qualified FinAux as Fin
+--       import Fin (Fin (..))
+--       import qualified Fin as Fin
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PackageImports #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
-module Data.FinAux(
-  SNat(..),Nat(..),
-  module Data.Fin,
+module Data.Fin(
+  Nat(..), SNat(..),
+  Fin(..),
+  toNat, fromNat, toInteger, 
+  mirror, 
+  absurd,
+  universe,
   f0,f1,f2,
   invert,
   shiftN,
+  shift1,
   weakenFin,
   weakenFinRight,
+  weaken1Fin,
+  weaken1FinRight,
+  strengthen1Fin,
   strengthenRecFin
  ) where
 
 import Data.Nat 
 import Data.SNat 
-import Data.Fin hiding (cata)
+import "fin" Data.Fin hiding (cata)
 import Data.Proxy (Proxy (..))
 
 -- for efficient rescoping
@@ -88,6 +97,9 @@ invert f = case snat @n of
 shiftN :: forall n m . SNat n -> Fin m -> Fin (n + m)
 shiftN p f = withSNat p $ weakenRight (Proxy :: Proxy n) f
 
+shift1 :: Fin m -> Fin (S m)
+shift1 = shiftN s1
+
 -- We could also include a dual function, which increments on the right
 -- but we haven't needed that operation anywhere.
 
@@ -123,7 +135,7 @@ shiftN p f = withSNat p $ weakenRight (Proxy :: Proxy n) f
 weakenFin :: proxy m -> Fin n -> Fin (m + n)
 weakenFin _ f = unsafeCoerce f
 
--- | weaken th ebound of a Fin by 1.
+-- | weaken the bound of a Fin by 1.
 weaken1Fin :: Fin n -> Fin (S n)
 weaken1Fin = weakenFin s1
 
@@ -133,6 +145,10 @@ weaken1Fin = weakenFin s1
 -- 1
 weakenFinRight :: proxy m -> Fin n -> Fin (n + m)
 weakenFinRight m f = unsafeCoerce f
+
+-- | weaken th ebound of a Fin by 1.
+weaken1FinRight :: Fin n -> Fin (n + N1)
+weaken1FinRight = weakenFinRight s1
 
 -------------------------------------------------------------------------------
 -- Aliases

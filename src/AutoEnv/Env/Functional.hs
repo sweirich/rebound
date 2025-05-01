@@ -10,7 +10,7 @@ module AutoEnv.Env.Functional where
 import AutoEnv.Lib
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
-import qualified Data.FinAux as Fin
+import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
 ------------------------------------------------------------------------------

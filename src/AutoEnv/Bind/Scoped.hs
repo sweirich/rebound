@@ -7,8 +7,8 @@
 module AutoEnv.Bind.Scoped where
 
 import qualified Data.Vec as Vec
-import Data.FinAux(Fin(..))
-import qualified Data.FinAux as Fin
+import Data.Fin(Fin(..))
+import qualified Data.Fin as Fin
 
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat

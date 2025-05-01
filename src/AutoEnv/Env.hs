@@ -45,7 +45,7 @@ import Control.Monad
 import GHC.Generics hiding (S)
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
-import qualified Data.FinAux as Fin
+import qualified Data.Fin as Fin
 
 import AutoEnv.Env.Internal
 

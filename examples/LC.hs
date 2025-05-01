@@ -14,7 +14,7 @@ module LC where
 
 import AutoEnv
 import AutoEnv.Bind.Single
-import Data.FinAux 
+import Data.Fin 
 import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions

@@ -32,8 +32,8 @@ module AutoEnv.Bind.PatN (module AutoEnv.Classes,
 
 import Data.Nat
 import Data.SNat
-import Data.FinAux (Fin)
-import qualified Data.FinAux as Fin
+import Data.Fin (Fin)
+import qualified Data.Fin as Fin
 import Data.Vec (Vec)
 import qualified Data.Vec as Vec
 import AutoEnv.Classes

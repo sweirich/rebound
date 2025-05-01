@@ -10,7 +10,7 @@ module AutoEnv.Env.Vector where
 import AutoEnv.Lib as Lib
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
-import qualified Data.FinAux as Fin
+import qualified Data.Fin as Fin
 import Data.Vec (Vec(..))
 import qualified Data.Vec as Vec
 import GHC.Generics hiding (S)

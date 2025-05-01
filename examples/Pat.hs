@@ -21,8 +21,8 @@ import AutoEnv.Bind.PatN
 import qualified AutoEnv.Bind.Pat as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
-import Data.FinAux ( Fin, f0, f1 )
-import Data.FinAux qualified as Fin
+import Data.Fin ( Fin, f0, f1 )
+import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 
 ----------------------------------------------

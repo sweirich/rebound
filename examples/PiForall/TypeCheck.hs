@@ -11,7 +11,7 @@ import Data.Foldable
 import Data.Maybe ( catMaybes )
 import qualified Data.Map as Map
 import qualified Data.SNat as SNat
-import qualified Data.FinAux as Fin
+import qualified Data.Fin as Fin
 
 import PiForall.Environment (TcMonad, Context)
 import PiForall.Environment qualified as Env

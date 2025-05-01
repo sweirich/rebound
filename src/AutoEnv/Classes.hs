@@ -8,7 +8,7 @@ import AutoEnv.Lib
 import Data.Fin
 import Data.Foldable
 import Data.Vec qualified as Vec
-import Data.FinAux
+import Data.Fin
 
 -- | An environment (or explicit substitution) that map
 -- indices bounded by `m`, to values of type `v n`
