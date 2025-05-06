@@ -11,7 +11,7 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, s
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
-import qualified Data.FinAux as Fin
+import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
 import AutoEnv.Lib
 import AutoEnv.Classes

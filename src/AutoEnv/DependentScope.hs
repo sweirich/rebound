@@ -23,7 +23,7 @@ module AutoEnv.DependentScope
     push1,
     WithData (..),
     pushu,
-    push1u
+    push1u,
   )
 where
 
@@ -35,15 +35,18 @@ import AutoEnv.Env
     Subst (..),
     SubstVar,
     applyEnv,
+    env,
     fromVec,
+    idE,
     oneE,
     shift1E,
     shiftNE,
     singletonE,
+    transform,
     weakenE',
     zeroE,
     (.++),
-    (.>>), idE, env, transform,
+    (.>>),
   )
 import AutoEnv.Lib
 import AutoEnv.MonadScoped qualified as SimpleScope
@@ -52,9 +55,9 @@ import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (MonadReader (ask, local))
 import Control.Monad.Writer (MonadWriter (..))
 import Data.SNat qualified as SNat
+import Data.Scoped.Const (Const (..))
 import Data.Vec qualified as Vec
 import Prelude hiding (map)
-import Data.Scoped.Const (Const (..))
 
 -----------------------------------------------------------------------
 -- MonadScoped class
@@ -219,11 +222,11 @@ push1 = push1' @s
 
 -- pushu :: forall t p u s b n m a. (MonadScoped U1 b m, WithData p u s n) => p -> m (Size p + n) a -> m n a
 -- pushu p = pushTelescope (map (\u _ -> (u, U1)) $ getData @_ @u @s p)
-pushu :: (MonadScoped u Const b m, SNatI p) => Vec p u -> m (Plus p n) a -> m n a
+pushu :: (MonadScoped u Const b m, SNatI p) => Vec p u -> m (p + n) a -> m n a
 -- TODO: remove usage of `env`?
 pushu u = pushEnv (Scope u (env $ const Const))
 
-push1u :: MonadScoped u Const b m => u -> m (S n) a -> m n a
+push1u :: (MonadScoped u Const b m) => u -> m (S n) a -> m n a
 push1u u = pushEnv (Scope (Vec.singleton u) (env $ const Const))
 
 -- push1u :: (MonadScoped U1 b m) => u -> m (S n) a -> m n a

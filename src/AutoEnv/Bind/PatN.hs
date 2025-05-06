@@ -41,8 +41,8 @@ where
 import AutoEnv.Bind.Pat qualified as Pat
 import AutoEnv.Classes
 import AutoEnv.Env
-import Data.FinAux (Fin)
-import Data.FinAux qualified as Fin
+import Data.Fin (Fin)
+import Data.Fin qualified as Fin
 import Data.Nat
 import Data.SNat
 import Data.Vec (Vec)

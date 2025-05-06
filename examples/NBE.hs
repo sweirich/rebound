@@ -12,7 +12,7 @@ module NBE where
 
 import AutoEnv
 import AutoEnv.Env
-import Data.FinAux
+import Data.Fin
 import AutoEnv.Bind.Single
 
 -- we use the lambda calculus implementation as is

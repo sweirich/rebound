@@ -27,8 +27,8 @@ import AutoEnv
 import AutoEnv.Classes
 import AutoEnv.DependentScope (WithData (..))
 import AutoEnv.DependentScope as DS
-import Data.FinAux (Fin)
-import Data.FinAux qualified as Fin
+import Data.Fin (Fin)
+import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 
 ----------------------------------------------------------
@@ -100,7 +100,7 @@ unbind bnd f =
   withSNat (sPlus (size (getPat bnd)) (snat @n)) $
     f (getPat bnd) (getBody bnd)
 
-unbindl :: (Sized pat, Subst v c) => Bind v c pat n -> (pat, c (Plus (Size pat) n))
+unbindl :: (Sized pat, Subst v c) => Bind v c pat n -> (pat, c (Size pat + n))
 unbindl bnd = (getPat bnd, getBody bnd)
 
 -- | Apply a function to the pattern, suspended environment, and body
@@ -230,10 +230,13 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
     Vec.append @ps @p1 (names ps) (names p1)
 
-instance forall (u:: Type) (s :: Nat -> Type) (p:: Nat) (pat :: Nat -> Type) (n:: Nat).
-  (SubstVar s, forall p n. WithData (pat p) u s n) => WithData (PatList pat p) u s n where
+instance
+  forall (u :: Type) (s :: Nat -> Type) (p :: Nat) (pat :: Nat -> Type) (n :: Nat).
+  (SubstVar s, forall p n. WithData (pat p) u s n) =>
+  WithData (PatList pat p) u s n
+  where
   getData PNil = DS.empty
   getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
     let (ps', r) = getSizeData @_ @_ @_ @(p1' + n) ps
-    -- TODO: Removing any of the @n breaks tc...
-    in withSNat ps' $ DS.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r
+     in -- TODO: Removing any of the @n breaks tc...
+        withSNat ps' $ DS.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r

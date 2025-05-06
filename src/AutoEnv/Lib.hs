@@ -13,7 +13,7 @@ module AutoEnv.Lib
   )
 where
 
-import Data.FinAux (Fin (..))
+import Data.Fin (Fin (..))
 import Data.Kind (Type)
 import Data.LocalName
 import Data.Nat

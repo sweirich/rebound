@@ -13,7 +13,7 @@ module AutoEnv
 where
   
 import Data.SNat (Nat(..))
-import Data.FinAux
+import Data.Fin
 import Data.Vec (Vec(..))
 
 import AutoEnv.Classes

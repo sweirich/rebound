@@ -8,8 +8,8 @@ import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Bind.PatN as PatN
 import AutoEnv.Context
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
-import Data.FinAux(Fin(..), f0,f1,f2)
-import Data.FinAux qualified as Fin
+import Data.Fin(Fin(..), f0,f1,f2)
+import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 
 -- In a pure type system, terms and types are combined

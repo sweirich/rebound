@@ -59,6 +59,13 @@ library
       , AutoEnv.Context
       , AutoEnv.Lib
       , AutoEnv.Env
+      , AutoEnv.Env.Internal
+      , AutoEnv.Env.InternalStrict
+      , AutoEnv.Env.InternalLazy
+      , AutoEnv.Env.InternalA
+      , AutoEnv.Env.InternalB
+      , AutoEnv.Env.Functional
+      , AutoEnv.Env.Vector
       , AutoEnv.MonadScoped
       , AutoEnv.DependentScope
       , AutoEnv.Bind.Single
@@ -67,7 +74,7 @@ library
       , AutoEnv.Bind.Pat
       , AutoEnv.Bind.Scoped
       , Data.SNat
-      , Data.FinAux
+      , Data.Fin
       , Data.Vec
       , Data.LocalName
       , Data.Scoped.Const

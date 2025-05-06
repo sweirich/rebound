@@ -14,7 +14,7 @@ module LC where
 
 import AutoEnv
 import AutoEnv.Bind.Single
-import Data.FinAux
+import Data.Fin
 import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
@@ -116,6 +116,9 @@ instance Subst Exp Exp where
   applyE r (Var x) = applyEnv r x
   applyE r e = gapplyE r e
 deriving instance (Generic1 Exp)
+
+-- >>> :info Rep1 Exp
+
 
 ----------------------------------------------
 -- Display (Show)

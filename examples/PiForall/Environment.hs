@@ -1,6 +1,6 @@
 module PiForall.Environment where
 
-import Data.FinAux qualified as Fin
+import Data.Fin qualified as Fin
 import Data.List
 import Data.Foldable (toList)
 import Data.Maybe ( listToMaybe )

@@ -10,8 +10,7 @@ import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
 import AutoEnv.DependentScope (WithData (..))
 import AutoEnv.DependentScope qualified as DS
-import Data.FinAux (Fin (..))
-import Data.FinAux qualified as Fin
+import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 
 ----------------------------------------------------------
@@ -49,7 +48,7 @@ scopedNames ::
 scopedNames = names
 
 scopedData ::
-  forall (pat :: Nat -> Type) (p :: Nat) (u:: Type) (s :: Nat -> Type) (n :: Nat).
+  forall (pat :: Nat -> Type) (p :: Nat) (u :: Type) (s :: Nat -> Type) (n :: Nat).
   (ScopedSized pat, WithData (pat p) u s n) =>
   pat p ->
   DS.Scope u s (ScopedSize pat) n

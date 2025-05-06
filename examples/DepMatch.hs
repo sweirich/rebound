@@ -16,7 +16,7 @@ import AutoEnv.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
-import Data.FinAux
+import Data.Fin
 import Data.List qualified as List
 import Data.Maybe qualified as Maybe
 import Data.Vec qualified

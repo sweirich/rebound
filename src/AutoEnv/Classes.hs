@@ -6,7 +6,6 @@ module AutoEnv.Classes where
 
 import AutoEnv.Lib
 import Data.Fin
-import Data.FinAux
 import Data.Foldable
 import Data.Vec qualified as Vec
 
@@ -33,6 +32,11 @@ import Data.Vec qualified as Vec
 -- of type `v m`
 -- class (SubstVar v) => Subst v c where
 --  applyE :: Env v n m -> c n -> c m
+
+class Shiftable t where
+  shift :: SNat k -> t n -> t (k + n)
+  -- default shift :: forall v k n. (SubstVar v, Subst v t) => SNat k -> t n -> t (k + n)
+  -- shift = shiftFromApplyE @v
 
 -- | Does a variable appear free?
 class FV (t :: Nat -> Type) where
