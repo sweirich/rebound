@@ -222,7 +222,7 @@ checkType tm ty ctx = do
                 DS "arguments."
               ]
           newTele <- substTele delta params theta
-          (r', ref) <- tcArgTele args newTele ctx
+          _ <- tcArgTele args newTele ctx
           return ()
         _ ->
           Env.err [DS "Unexpected type", DD ty', DS "for data constructor", DD tm]
@@ -307,6 +307,31 @@ G |- tms : Theta {tm/x} ==> sigma
 G |- tm, tms : (x:A, Theta) ==> {tm/x},sigma 
 -}
 
+-- | type check a list of data constructor arguments against a telescope,
+-- returning a substitution for each of the variables bound in the
+-- telescope, plus a refinement for variables currently in scope
+tcArgTele ::
+  forall p n.
+  [Term n] ->
+  Telescope p n ->
+  Context n ->
+  TcMonad n ()
+tcArgTele [] TNil _ = return ()
+tcArgTele [] _ _ = Env.err [DS "Too few arguments provided."]
+tcArgTele _ TNil _ = Env.err [DS "Too many arguments provided."]
+tcArgTele args (TCons (LocalDef x ty) (tele :: Telescope p2 n)) ctx = do
+  -- ensure that the equality is provable at this point
+  Equal.equate (Var x) ty
+  tcArgTele args tele ctx
+tcArgTele (tm : terms) (TCons (LocalDecl ln ty) (tele :: Telescope p2 (S n))) ctx = do
+  checkType tm ty ctx
+  -- Using best-effort would be unsound, as constructors could be
+  -- instantiated without proving that the equality they require are
+  -- satisfied.
+  tele' <- doSubst @N1 (tm .: idE) tele
+  tcArgTele terms tele' ctx
+
+{-
 -- | type check a list of data constructor arguments against a telescope, 
 -- returning a substitution for each of the variables bound in the 
 -- telescope, plus a refinement for variables currently in scope
@@ -333,6 +358,7 @@ tcArgTele [] _ _ =
   Env.err [DS "Too few arguments provided."]
 tcArgTele _ TNil _ =
   Env.err [DS "Too many arguments provided."]
+-}
 
 -- | Make a substitution from a list of arguments. 
 -- Checks that the length is as specified, and fails
