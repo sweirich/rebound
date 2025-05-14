@@ -72,7 +72,7 @@ env f = fromVec v
 
 -- | A singleton environment (single index domain)
 -- maps that single variable to `v n`
-oneE :: v n -> Env v (S Z) n
+oneE :: (SubstVar v) => v n -> Env v (S Z) n
 oneE v = v .: zeroE
 
 -- | an environment that maps index 0 to v and leaves

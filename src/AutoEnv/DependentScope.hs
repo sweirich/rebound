@@ -8,7 +8,6 @@ module AutoEnv.DependentScope
     ScopedReaderT (..),
     LocalName (..),
     empty,
-    singleton',
     singleton,
     append',
     append,
@@ -19,7 +18,6 @@ module AutoEnv.DependentScope
     withScopeSize,
     mapScope,
     push,
-    push1',
     push1,
     WithData (..),
     pushu,
@@ -72,11 +70,11 @@ data Scope u s p n = Scope {uscope :: Vec p u, sscope :: Env s p (p + n)}
 empty :: Scope u s Z n
 empty = Scope Vec.empty zeroE
 
-singleton' :: forall v u s n. (Subst v s) => u -> s n -> Scope u s N1 n
-singleton' u v = let v' = applyE (shift1E @v) v in Scope (Vec.singleton u) (oneE @s @(S n) v')
-
 singleton :: forall u s n. (SubstVar s) => u -> s n -> Scope u s N1 n
 singleton = singleton' @s
+  where
+    singleton' :: forall v u s n. (Subst s s) => u -> s n -> Scope u s N1 n
+    singleton' u v = let v' = applyE (shift1E @s) v in Scope (Vec.singleton u) (oneE @s @(S n) v')
 
 append' :: forall u s pl pr n. (SubstVar s, SNatI pr) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
 append' (Scope ul sl) (Scope ur sr) = case axiomAssoc @pr @pl @n of Refl -> Scope (Vec.append ur ul) (sl ++++ sr)
@@ -214,14 +212,12 @@ instance WithData (Scope u s p n) u s n where
 push :: forall u s b m n p a. (MonadScoped u s b m, WithData p u s n) => p -> m (Size p + n) a -> m n a
 push p = withSNat (size p) $ pushEnv (getData @p @u @s @n p)
 
-push1' :: forall v u s b m n a. (MonadScoped u s b m, Subst v s) => u -> s n -> m (S n) a -> m n a
-push1' u s = pushEnv (singleton' @v u s)
+-- push1' :: forall v u s b m n a. (MonadScoped u s b m, Subst v s) => u -> s n -> m (S n) a -> m n a
+-- push1' u s = pushEnv (singleton' @v u s)
 
 push1 :: forall u s b m n a. (MonadScoped u s b m, SubstVar s) => u -> s n -> m (S n) a -> m n a
-push1 = push1' @s
+push1 u s = pushEnv (singleton u s)
 
--- pushu :: forall t p u s b n m a. (MonadScoped U1 b m, WithData p u s n) => p -> m (Size p + n) a -> m n a
--- pushu p = pushTelescope (map (\u _ -> (u, U1)) $ getData @_ @u @s p)
 pushu :: (MonadScoped u Const b m, SNatI p) => Vec p u -> m (p + n) a -> m n a
 -- TODO: remove usage of `env`?
 pushu u = pushEnv (Scope u (env $ const Const))
