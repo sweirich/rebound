@@ -9,7 +9,7 @@ module AutoEnv.Bind.Scoped where
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
 import AutoEnv.MonadScoped (WithData (..))
-import AutoEnv.MonadScoped qualified as Scoped
+import AutoEnv.Scope qualified as Scope
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 
@@ -51,11 +51,11 @@ scopedData ::
   forall (pat :: Nat -> Type) (p :: Nat) (u :: Type) (s :: Nat -> Type) (n :: Nat).
   (ScopedSized pat, WithData (pat p) u s n) =>
   pat p ->
-  Scoped.Scope u s (ScopedSize pat) n
+  Scope.Scope u s (ScopedSize pat) n
 scopedData p = get
   where
     -- The typechecker needs help...
-    get :: (Size (pat p) ~ ScopedSize pat) => Scoped.Scope u s (ScopedSize pat) n
+    get :: (Size (pat p) ~ ScopedSize pat) => Scope.Scope u s (ScopedSize pat) n
     get = getData @(pat p) @u @s @n p
 
 scopedPatEq ::
@@ -249,10 +249,10 @@ iscopedSize = scopedSize
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
-iscopedData :: forall pat p n u s. (IScopedSized pat, WithData (pat p n) u s n) => pat p n -> Scoped.Scope u s p n
+iscopedData :: forall pat p n u s. (IScopedSized pat, WithData (pat p n) u s n) => pat p n -> Scope.Scope u s p n
 iscopedData p = get
   where
-    get :: (ScopedSize (pat p) ~ p) => Scoped.Scope u s p n
+    get :: (ScopedSize (pat p) ~ p) => Scope.Scope u s p n
     get = scopedData @_ @_ @_ @_ @n p
 
 iscopedPatEq ::
@@ -319,10 +319,10 @@ instance
   (SubstVar s, forall p1 n. WithData (pat p1 n) u s n, IScopedSized pat) =>
   WithData (TeleList pat p n) u s n
   where
-  getData TNil = Scoped.empty
+  getData TNil = Scope.empty
   getData (TCons (p :: pat p1 n) (ps :: TeleList pat p2 (p1 + n))) =
-    let (p2, ps') = getSizeData @_ @_ @_ @(p1 + n) ps
-     in withSNat p2 $ Scoped.append @_ @_ @_ @_ @n (iscopedData p) ps'
+    let (p2, ps') = getSizedData @_ @_ @_ @(p1 + n) ps
+     in withSNat p2 $ Scope.append @_ @_ @_ @_ @n (iscopedData p) ps'
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
   shift = shiftFromApplyE @v

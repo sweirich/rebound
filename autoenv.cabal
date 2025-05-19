@@ -57,6 +57,7 @@ library
     , AutoEnv.Env.InternalB
     , AutoEnv.Env.Functional
     , AutoEnv.Env.Vector
+    , AutoEnv.Scope
     , AutoEnv.MonadNamed
     , AutoEnv.MonadScoped
     , AutoEnv.Bind.Single
