@@ -22,7 +22,7 @@ import Debug.Trace
 
 import AutoEnv.Lib
 import AutoEnv
-import AutoEnv.MonadScoped
+import AutoEnv.MonadNamed
 
 import AutoEnv.Bind.Pat (PatList(..))
 import qualified AutoEnv.Bind.Pat as Pat

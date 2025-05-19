@@ -11,7 +11,7 @@ import AutoEnv.Bind.Scoped (TeleList(..),(<:>))
 import qualified AutoEnv.Bind.Scoped as Scoped
 import qualified AutoEnv.Bind.Local as Local
 
-import AutoEnv.MonadScoped
+import AutoEnv.MonadNamed
 
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe

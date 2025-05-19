@@ -1,186 +1,228 @@
--- | Monads supporting scopes of names
+{-# LANGUAGE UndecidableSuperClasses #-}
+
 module AutoEnv.MonadScoped
   ( Sized (..),
-    Named (..),
     MonadScoped (..),
     Scope (..),
-    emptyScope,
-    extendScope,
     ScopedReader (..),
     ScopedReaderT (..),
-    scopeSize,
-    withSize,
-    withSizeP,
     LocalName (..),
-    push,
+    empty,
+    singleton,
+    append',
+    append,
     runScopedReader,
+    scope,
+    scopeSize,
+    fromScope,
+    withScopeSize,
+    mapScope,
+    push,
+    push1,
+    WithData (..),
+    pushu,
+    push1u,
   )
 where
 
-import AutoEnv.Classes
+import AutoEnv.Classes (Sized (..))
+import AutoEnv.Context
+import AutoEnv.Env
+  ( Env,
+    Shiftable (..),
+    Subst (..),
+    SubstVar,
+    applyEnv,
+    env,
+    fromVec,
+    idE,
+    oneE,
+    shift1E,
+    shiftNE,
+    singletonE,
+    transform,
+    weakenE',
+    zeroE,
+    (.++),
+    (.>>),
+  )
 import AutoEnv.Lib
-import Control.Monad.Identity
-import Control.Monad.Reader
-import Data.SNat as SNat
-import Data.Vec as Vec
 import Control.Monad.Error.Class (MonadError (..))
+import Control.Monad.Identity (Identity (runIdentity))
+import Control.Monad.Reader (MonadReader (ask, local))
 import Control.Monad.Writer (MonadWriter (..))
+import Data.SNat qualified as SNat
+import Data.Scoped.Const (Const (..))
+import Data.Vec qualified as Vec
+import Prelude hiding (map)
 
 -----------------------------------------------------------------------
-
--- * Scopes
-
+-- MonadScoped class
 -----------------------------------------------------------------------
 
--- | Scopes know how big they are and remember names for printing
-data Scope name n = Scope
-  { scope_size :: SNat n, -- number of names in scope
-    scope_names :: Vec n name -- stack of names currently in scope
-  }
-  deriving (Eq, Show)
+-- Note that we could parametrize all subsequent definitions by an initial
+-- scope. We instead make the choice of fixing the outer scope to Z. This
+-- simplifies all subsequent definition, and working in a latent undefined scope
+-- seems exotic and can be emulated fairly easily.
+data Scope u s p n = Scope {uscope :: Vec p u, sscope :: Env s p (p + n)}
 
--- TODO: should we represent the sequence of names in scope using
--- a more efficient data structure than a vector? Maybe a size-indexed
--- Data.Sequence?
+empty :: Scope u s Z n
+empty = Scope Vec.empty zeroE
 
-emptyScope :: Scope name Z
-emptyScope =
-  Scope
-    { scope_size = SZ,
-      scope_names = VNil
-    }
+singleton :: forall u s n. (SubstVar s) => u -> s n -> Scope u s N1 n
+singleton = singleton' @s
+  where
+    singleton' :: forall v u s n. (Subst s s) => u -> s n -> Scope u s N1 n
+    singleton' u v = let v' = applyE (shift1E @s) v in Scope (Vec.singleton u) (oneE @s @(S n) v')
 
-extendScope ::
-  forall p n name.
-  (SNatI p) =>
-  Vec p name ->
-  Scope name n ->
-  Scope name (p + n)
-extendScope v s =
-  Scope
-    { scope_size = sPlus (snat @p) (scope_size s),
-      scope_names = Vec.append v (scope_names s)
-    }
+append' :: forall u s pl pr n. (SubstVar s, SNatI pr) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
+append' (Scope ul sl) (Scope ur sr) = case axiomAssoc @pr @pl @n of Refl -> Scope (Vec.append ur ul) (sl ++++ sr)
 
-instance Sized (Scope name n) where
-  type Size (Scope name n) = n
-  size :: Scope name n -> SNat n
-  size = scope_size
+append :: forall u s pl pr n. (SubstVar s) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
+append l r@(Scope ur _) = withSNat (Vec.vlength ur) $ append' @u @s @pl @pr @n l r
 
-instance Named name (Scope name n) where
-  names :: Scope name n -> Vec n name
-  names = scope_names
+nth :: (SubstVar s) => Fin p -> Scope u s p n -> (u, s (p + n))
+nth i (Scope u s) = (u Vec.! i, s `applyEnv` i)
+
+map :: (u -> u') -> (forall m. s m -> s' m) -> Scope u s p n -> Scope u' s' p n
+map f g (Scope u s) = Scope (Vec.map f u) (transform g s)
+
+-- | Scoped monads provide implicit access to the current scope and a way to
+-- extend that scope with a new scope.
+class (forall n. Monad (m n), SubstVar s, Shiftable b) => MonadScoped u s b m | m -> u, m -> s, m -> b where
+  scope' :: m n (SNat n, Scope u s n Z)
+  pushEnv :: (SNatI p) => Scope u s p n -> m (p + n) a -> m n a
+  blob :: m n (b n)
+  local :: (b n -> b n) -> m n a -> m n a
+
+scope :: forall u s b m n. (MonadScoped u s b m) => m n (Scope u s n Z)
+scope = case axiomPlusZ @n of Refl -> snd <$> scope'
+
+scopeSize :: (MonadScoped u s b m) => m n (SNat n)
+scopeSize = fst <$> scope'
+
+fromScope :: forall t u s b m n. (MonadScoped u s b m, SubstVar s) => Fin n -> m n (u, s n)
+fromScope i = case axiomPlusZ @n of Refl -> nth i <$> scope
+
+withScopeSize :: forall t n u s b m a. (MonadScoped u s b m) => ((SNatI n) => m n a) -> m n a
+withScopeSize k = do
+  size <- scopeSize
+  withSNat size k
+
+-- projectScope :: Scope u s n -> SimpleScope.Scope u n
+-- projectScope s = let (k, v) = iter SZ s in SimpleScope.Scope k v
+--   where
+--     iter :: forall k u s n. SNat k -> Scope u s n -> (SNat (k + n), Vec n u)
+--     iter k TNil = case axiomPlusZ @k of Refl -> (k, Vec.empty)
+--     iter k (TCons @_ @_ @n' @_ (u, _) xs) =
+--       case axiomSus @k @n' of
+--         Refl -> let (k', xs') = withSNat k $ iter @(S k) SS xs in (k', u Vec.::: xs')
+
+-- projectScope :: Scope u s n -> Vec n u
+-- projectScope TNil = Vec.empty
+-- projectScope (TCons @_ @_ @n' @_ (u, _) xs) = u Vec.::: projectScope xs
 
 -----------------------------------------------------------------------
-
--- * MonadScoped class
-
------------------------------------------------------------------------
-
--- | Scoped monads provide implicit access to the current scope
--- and a way to extend that scope with a vector containing new names
-class (forall n. Monad (m n)) => MonadScoped name m | m -> name where
-  scope :: m n (Scope name n)
-  pushVec :: (SNatI p) => Vec p name -> m (p + n) a -> m n a
-
-scopeSize :: forall n name m. (MonadScoped name m) => m n (SNat n)
-scopeSize = scope_size <$> scope
-
-withSizeP :: forall n' n name m a. (MonadScoped name m) => SNat n' -> ((SNatI (n' + n)) => m n a) -> m n a
-withSizeP n' f = scopeSize >>= (\n -> withSNat (sPlus n' n) f)
-
--- | Access the current size of the scope as an implicit argument
-withSize :: forall n name m a. (MonadScoped name m) => ((SNatI n) => m n a) -> m n a
-withSize = withSizeP s0
-
------------------------------------------------------------------------
-
--- * ScopedReader monad
-
+-- ScopedReader monad
 -----------------------------------------------------------------------
 
 -- Trivial instance of MonadScoped
-type ScopedReader name = ScopedReaderT name Identity
+type ScopedReader u s b n = ScopedReaderT u s b Identity n
 
-runScopedReader :: forall n d a. (SNatI n) => Vec n d -> ScopedReader d n a -> a
-runScopedReader d m = runIdentity $ runScopedReaderT m (Scope (snat @n) d)
+runScopedReader :: forall t n u s b a. (SubstVar s, SNatI n) => SNat n -> Vec n u -> Ctx s n -> b n -> ScopedReader u s b n a -> a
+runScopedReader n u s b m = case axiomPlusZ @n of Refl -> runIdentity $ runScopedReaderT m (n, Scope u s, b)
 
 -----------------------------------------------------------------------
-
--- * ScopedReaderT monad transformer
-
+-- ScopedReaderT monad transformer
 -----------------------------------------------------------------------
 
 -- | A monad transformer that adds a scope environment to any existing monad
--- This is the Reader monad containing a Scope
--- However, we don't make it an instance of the MonadReader class so that
--- the underlying monad can already be a reader.
 -- We also cannot make it an instance of the MonadTrans class because
 -- the scope size n needs to be the next-to-last argument instead of the
 -- underlying monad
-newtype ScopedReaderT name m n a = ScopedReaderT {runScopedReaderT :: Scope name n -> m a}
+newtype ScopedReaderT u s b m n a = ScopedReaderT {runScopedReaderT :: (SNat n, Scope u s n Z, b n) -> m a}
   deriving (Functor)
 
-instance (Applicative m) => Applicative (ScopedReaderT name m n) where
+-- TODO: should this be moved to MonadScoped's API?
+mapScope :: (Monad m) => (u -> u') -> (forall m. s m -> s' m) -> ScopedReaderT u' s' b m n a -> ScopedReaderT u s b m n a
+mapScope f g m = ScopedReaderT $ \(k, s, b) ->
+  let s' = map f g s
+   in runScopedReaderT m (k, s', b)
+
+instance (Applicative m) => Applicative (ScopedReaderT u s b m n) where
   pure f = ScopedReaderT $ \x -> pure f
   ScopedReaderT f <*> ScopedReaderT x = ScopedReaderT (\e -> f e <*> x e)
 
-instance (Monad m) => Monad (ScopedReaderT name m n) where
+instance (Monad m) => Monad (ScopedReaderT u s b m n) where
   ScopedReaderT m >>= k = ScopedReaderT $ \e ->
     m e >>= (\v -> let x = k v in runScopedReaderT x e)
 
-instance (MonadReader e m) => MonadReader e (ScopedReaderT name m n) where
-  ask = ScopedReaderT (const ask)
-  local f m = ScopedReaderT (local f . runScopedReaderT m)
+-- TODO: Disabled due to name clash...
+-- instance (MonadReader e m) => MonadReader e (ScopedReaderT t u s b m n) where
+--   ask = ScopedReaderT $ const ask
+--   local f m = ScopedReaderT (local f . runScopedReaderT m)
 
-instance (MonadError e m) => MonadError e (ScopedReaderT name m n) where
+instance (MonadError e m) => MonadError e (ScopedReaderT u s b m n) where
   throwError e = ScopedReaderT $ const (throwError e)
   catchError m k = ScopedReaderT $ \s -> runScopedReaderT m s `catchError` (\err -> runScopedReaderT (k err) s)
 
-instance (MonadWriter w m) => MonadWriter w (ScopedReaderT name m n) where
+instance (MonadWriter w m) => MonadWriter w (ScopedReaderT u s b m n) where
   writer w = ScopedReaderT $ const (writer w)
   listen m = ScopedReaderT $ \s -> listen $ runScopedReaderT m s
   pass m = ScopedReaderT $ \s -> pass $ runScopedReaderT m s
 
-instance
-  (Monad m) =>
-  MonadScoped name (ScopedReaderT name m)
-  where
-  scope = ScopedReaderT $ \s -> return s
-  pushVec n m = ScopedReaderT $ \env -> runScopedReaderT m (extendScope n env)
+instance (Monad m, SubstVar s, Shiftable b) => MonadScoped u s b (ScopedReaderT u s b m) where
+  scope' = ScopedReaderT $ \(k, s, _) -> return (k, s)
+
+  -- TODO: what is going when this signature is removed?!?
+  pushEnv :: forall m s b p n a. (Monad m, SubstVar s, Shiftable b, SNatI p) => Scope u s p n -> ScopedReaderT u s b m (p + n) a -> ScopedReaderT u s b m n a
+  pushEnv (ext :: Scope u s p n) m =
+    ScopedReaderT $ \(sn, ss, sb) ->
+      let p = snat @p
+          sn' = sPlus p sn
+          ss' = case axiomPlusZ @n of Refl -> append @_ @_ @_ @_ @Z ss ext
+          sb' = shift p sb
+       in runScopedReaderT m (sn', ss', sb')
+  blob = ScopedReaderT $ \(_, _, b) -> return b
+  local f m = ScopedReaderT $ \(k, s, b) -> runScopedReaderT m (k, s, f b)
 
 -----------------------------------------------------------------------
-
--- * Named patterns
-
+-- Extracting data from binders/patterns
 -----------------------------------------------------------------------
 
--- | Patterns that know the names of their binding variables
-class (Sized pat) => Named name pat where
-  names :: pat -> Vec (Size pat) name
+-- | Extract data from the pattern. This typeclass should be used when the
+-- binders are dependent, i.e. the data associated to a binder can refer to
+-- previous binders. If you don't need scoped data, use
+-- 'MonadScoped.MonadScoped' instead.
+class (Sized p) => WithData (p :: Type) (u :: Type) (s :: Nat -> Type) (n :: Nat) where
+  getData :: p -> Scope u s (Size p) n
+  getData p = snd $ getSizeData @_ @_ @_ @n p
+  getSizeData :: p -> (SNat (Size p), Scope u s (Size p) n)
+  getSizeData p = (size p, getData @_ @_ @_ @n p)
 
--- Add new names to the current scope
-push ::
-  (MonadScoped name m, Named name pat) =>
-  pat ->
-  m (Size pat + n) a ->
-  m n a
-push p = withSNat (size p) $ pushVec (names p)
+instance Sized (Scope u s p n) where
+  type Size (Scope u s p n) = p
+  size (Scope v _) = Vec.vlength v
 
-instance Named LocalName LocalName where
-  names :: LocalName -> Vec N1 LocalName
-  names ln = ln ::: VNil
+instance WithData (Scope u s p n) u s n where
+  getData = id
+  getSizeData s = (size s, s)
 
-instance Named name (Vec p name) where
-  names :: Vec p name -> Vec p name
-  names x = x
+push :: forall u s b m n p a. (MonadScoped u s b m, WithData p u s n) => p -> m (Size p + n) a -> m n a
+push p = withSNat (size p) $ pushEnv (getData @p @u @s @n p)
 
--- TODO: this isn't isn't very good... it doesn't try to
--- "freshen" the names in any way
-instance Named LocalName (SNat p) where
-  names :: SNat p -> Vec p LocalName
-  names = go
-    where
-      go :: forall p. SNat p -> Vec p LocalName
-      go SZ = VNil
-      go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.succ q)) ::: go q
+-- push1' :: forall v u s b m n a. (MonadScoped u s b m, Subst v s) => u -> s n -> m (S n) a -> m n a
+-- push1' u s = pushEnv (singleton' @v u s)
+
+push1 :: forall u s b m n a. (MonadScoped u s b m, SubstVar s) => u -> s n -> m (S n) a -> m n a
+push1 u s = pushEnv (singleton u s)
+
+pushu :: (MonadScoped u Const b m, SNatI p) => Vec p u -> m (p + n) a -> m n a
+-- TODO: remove usage of `env`?
+pushu u = pushEnv (Scope u (env $ const Const))
+
+push1u :: (MonadScoped u Const b m) => u -> m (S n) a -> m n a
+push1u u = pushEnv (Scope (Vec.singleton u) (env $ const Const))
+
+-- push1u :: (MonadScoped U1 b m) => u -> m (S n) a -> m n a
+-- push1u u = pushTelescope (TCons (u, U1) TNil)

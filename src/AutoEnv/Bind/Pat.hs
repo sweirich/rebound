@@ -25,8 +25,8 @@ where
 
 import AutoEnv
 import AutoEnv.Classes
-import AutoEnv.DependentScope (WithData (..))
-import AutoEnv.DependentScope as DS
+import AutoEnv.MonadScoped (WithData (..))
+import AutoEnv.MonadScoped qualified as Scoped
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
@@ -235,8 +235,8 @@ instance
   (SubstVar s, forall p n. WithData (pat p) u s n) =>
   WithData (PatList pat p) u s n
   where
-  getData PNil = DS.empty
+  getData PNil = Scoped.empty
   getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
     let (ps', r) = getSizeData @_ @_ @_ @(p1' + n) ps
      in -- TODO: Removing any of the @n breaks tc...
-        withSNat ps' $ DS.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r
+        withSNat ps' $ Scoped.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r

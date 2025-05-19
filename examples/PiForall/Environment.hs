@@ -17,7 +17,7 @@ import AutoEnv.Context
 import AutoEnv
 import AutoEnv.Env
 import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.MonadScoped
+import AutoEnv.MonadNamed
 import qualified AutoEnv.Bind.Local as Local
 import PiForall.Syntax
 import PiForall.PrettyPrint
