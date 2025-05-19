@@ -232,11 +232,11 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
 
 instance
   forall (u :: Type) (s :: Nat -> Type) (p :: Nat) (pat :: Nat -> Type) (n :: Nat).
-  (SubstVar s, forall p n. WithData (pat p) u s n) =>
-  WithData (PatList pat p) u s n
+  (SubstVar s, forall p n. WithData n (pat p) u s) =>
+  WithData n (PatList pat p) u s
   where
   getData PNil = Scope.empty
   getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
-    let (ps', r) = getSizedData @_ @_ @_ @(p1' + n) ps
+    let (ps', r) = getSizedData @(p1' + n) ps
      in -- TODO: Removing any of the @n breaks tc...
-        withSNat ps' $ Scope.append' @_ @_ @_ @_ @n (getData @_ @_ @_ @n p1) r
+        withSNat ps' $ Scope.append' @n (getData @n p1) r

@@ -28,7 +28,6 @@ import AutoEnv.Env
     Subst (..),
     SubstVar,
     applyEnv,
-    env,
     fromVec,
     idE,
     oneE,
@@ -38,6 +37,7 @@ import AutoEnv.Env
     weakenE',
     zeroE,
     (.++),
+    (.:),
     (.>>),
   )
 import AutoEnv.Lib
@@ -150,7 +150,7 @@ instance (Monad m, SubstVar s, Shiftable b) => MonadScoped u s b (ScopedReaderT 
     ScopedReaderT $ \(sn, ss, sb) ->
       let p = snat @p
           sn' = sPlus p sn
-          ss' = case axiomPlusZ @n of Refl -> Scope.append @_ @_ @_ @_ @Z ss ext
+          ss' = case axiomPlusZ @n of Refl -> Scope.append @Z ss ext
           sb' = shift p sb
        in runScopedReaderT m (sn', ss', sb')
   flatData = ScopedReaderT $ \(_, _, b) -> return b
@@ -161,29 +161,36 @@ instance (Monad m, SubstVar s, Shiftable b) => MonadScoped u s b (ScopedReaderT 
 -----------------------------------------------------------------------
 
 -- | Extract data from the pattern.
-class (Sized p) => WithData (p :: Type) (u :: Type) (s :: Nat -> Type) (n :: Nat) where
+class (Sized p) => WithData (n :: Nat) (p :: Type) (u :: Type) (s :: Nat -> Type) where
+  -- The scope size (n) being the first parameter is odd, since it is usually
+  -- the last, but since it is the type parameter one usually needs to provide
+  -- manually, it has to be first for this to be practical.
   getData :: p -> Scope u s (Size p) n
-  getData p = snd $ getSizedData @_ @_ @_ @n p
+  getData p = snd $ getSizedData @n p
   getSizedData :: p -> (SNat (Size p), Scope u s (Size p) n)
-  getSizedData p = (size p, getData @_ @_ @_ @n p)
+  getSizedData p = (size p, getData @n p)
 
 instance Sized (Scope u s p n) where
   type Size (Scope u s p n) = p
   size (Scope v _) = Vec.vlength v
 
-instance WithData (Scope u s p n) u s n where
+instance WithData n (Scope u s p n) u s where
   getData = id
   getSizedData s = (size s, s)
 
-push :: forall u s b m n p a. (MonadScoped u s b m, WithData p u s n) => p -> m (Size p + n) a -> m n a
-push p = withSNat (size p) $ pushScope (getData @p @u @s @n p)
+push :: forall u s b m n p a. (MonadScoped u s b m, WithData n p u s) => p -> m (Size p + n) a -> m n a
+push p = withSNat (size p) $ pushScope (getData @n p)
 
 push1 :: forall u s b m n a. (MonadScoped u s b m, SubstVar s) => u -> s n -> m (S n) a -> m n a
 push1 u s = pushScope (Scope.singleton u s)
 
-pushu :: (MonadScoped u Const b m, SNatI p) => Vec p u -> m (p + n) a -> m n a
--- TODO: remove usage of `env`?
-pushu u = pushScope (Scope u (env $ const Const))
+pushu :: forall u b m n p a. (MonadScoped u Const b m, SNatI p) => Vec p u -> m (p + n) a -> m n a
+pushu u = pushScope (Scope u mkEnv)
+  where
+    mkEnv :: forall p. (SNatI p) => Env Const p (p + n)
+    mkEnv = case snat @p of
+      SZ -> zeroE
+      SS -> Const .: (shift1E .>> mkEnv)
 
 push1u :: (MonadScoped u Const b m) => u -> m (S n) a -> m n a
-push1u u = pushScope (Scope (Vec.singleton u) (env $ const Const))
+push1u u = pushu $ Vec.singleton u

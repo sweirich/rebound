@@ -49,14 +49,14 @@ scopedNames = names
 
 scopedData ::
   forall (pat :: Nat -> Type) (p :: Nat) (u :: Type) (s :: Nat -> Type) (n :: Nat).
-  (ScopedSized pat, WithData (pat p) u s n) =>
+  (ScopedSized pat, WithData n (pat p) u s) =>
   pat p ->
   Scope.Scope u s (ScopedSize pat) n
 scopedData p = get
   where
     -- The typechecker needs help...
     get :: (Size (pat p) ~ ScopedSize pat) => Scope.Scope u s (ScopedSize pat) n
-    get = getData @(pat p) @u @s @n p
+    get = getData @n p
 
 scopedPatEq ::
   (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
@@ -249,11 +249,11 @@ iscopedSize = scopedSize
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
-iscopedData :: forall pat p n u s. (IScopedSized pat, WithData (pat p n) u s n) => pat p n -> Scope.Scope u s p n
+iscopedData :: forall pat p n u s. (IScopedSized pat, WithData n (pat p n) u s) => pat p n -> Scope.Scope u s p n
 iscopedData p = get
   where
     get :: (ScopedSize (pat p) ~ p) => Scope.Scope u s p n
-    get = scopedData @_ @_ @_ @_ @n p
+    get = scopedData p
 
 iscopedPatEq ::
   (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
@@ -316,13 +316,13 @@ instance
     Vec.append (names ps) (iscopedNames p)
 
 instance
-  (SubstVar s, forall p1 n. WithData (pat p1 n) u s n, IScopedSized pat) =>
-  WithData (TeleList pat p n) u s n
+  (SubstVar s, forall p1 n. WithData n (pat p1 n) u s, IScopedSized pat) =>
+  WithData n (TeleList pat p n) u s
   where
   getData TNil = Scope.empty
   getData (TCons (p :: pat p1 n) (ps :: TeleList pat p2 (p1 + n))) =
-    let (p2, ps') = getSizedData @_ @_ @_ @(p1 + n) ps
-     in withSNat p2 $ Scope.append @_ @_ @_ @_ @n (iscopedData p) ps'
+    let (p2, ps') = getSizedData @(p1 + n) ps
+     in withSNat p2 $ Scope.append @n (iscopedData p) ps'
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
   shift = shiftFromApplyE @v

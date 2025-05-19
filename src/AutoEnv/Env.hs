@@ -43,7 +43,6 @@ module AutoEnv.Env
     fromTable,
     weakenE',
     weakenER,
-    env,
     shiftFromApplyE,
   )
 where

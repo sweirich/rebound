@@ -33,11 +33,11 @@ singleton = singleton' @s
     singleton' :: forall v u s n. (Subst s s) => u -> s n -> Scope u s N1 n
     singleton' u v = let v' = applyE (shift1E @s) v in Scope (Vec.singleton u) (oneE @s @(S n) v')
 
-append' :: forall u s pl pr n. (SubstVar s, SNatI pr) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
+append' :: forall n u s pl pr. (SubstVar s, SNatI pr) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
 append' (Scope ul sl) (Scope ur sr) = case axiomAssoc @pr @pl @n of Refl -> Scope (Vec.append ur ul) (sl ++++ sr)
 
-append :: forall u s pl pr n. (SubstVar s) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
-append l r@(Scope ur _) = withSNat (Vec.vlength ur) $ append' @u @s @pl @pr @n l r
+append :: forall n u s pl pr. (SubstVar s) => Scope u s pl n -> Scope u s pr (pl + n) -> Scope u s (pr + pl) n
+append l r@(Scope ur _) = withSNat (Vec.vlength ur) $ append' @n @u @s @pl @pr l r
 
 nth :: (SubstVar s) => Fin p -> Scope u s p n -> (u, s (p + n))
 nth i (Scope u s) = (u Vec.! i, s `applyEnv` i)
