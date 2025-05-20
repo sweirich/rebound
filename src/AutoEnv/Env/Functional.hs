@@ -8,8 +8,7 @@ module AutoEnv.Env.Functional where
 
 
 import AutoEnv.Lib
-import Data.Fin (Fin(..))
-import qualified Data.Fin as Fin
+import Data.Fin
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
@@ -66,7 +65,7 @@ applyOpt f = f
 
 -- | The empty environment (zero domain)
 zeroE :: Env v Z n
-zeroE = Env $ \ x -> case x of {}
+zeroE = Env Fin.absurd
 {-# INLINEABLE zeroE #-}
 
 -- make the bound bigger, on the right, but do not change any indices. 

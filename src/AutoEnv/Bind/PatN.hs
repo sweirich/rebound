@@ -30,7 +30,7 @@ module AutoEnv.Bind.PatN (module AutoEnv.Classes,
   instantiateWithN,
   applyUnderN) where
 
-import Data.Nat
+
 import Data.SNat
 import Data.Fin (Fin)
 import qualified Data.Fin as Fin

@@ -105,12 +105,17 @@ up e =
      var Fin.f0 .: (e .>> shiftNE s1)
 {-# INLINEABLE up #-}
 
-
-
 -- | mapping operation for range of the environment
+transform :: forall a b n m. (forall m. a m -> b m) -> Env a n m -> Env b n m
+transform f e = Env { vec = fmap f (vec e) , size = (size e)} where
+
+
+
+
+{-
 transform :: forall a b n m. (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f e = Env (go (vec e)) (size e) where
    go :: forall n. Vec n (a m) -> Vec n (b m)
    go VNil = VNil
    go (a ::: r) = f a ::: go r
-
+-}

@@ -139,9 +139,11 @@ instance Named name (Vec p name) where
 -- "freshen" the names in any way
 instance Named LocalName (SNat p) where
   names :: SNat p -> Vec p LocalName
-  names = go where
-    go :: forall p. SNat p -> Vec p LocalName
-    go SZ = VNil
-    go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.succ q)) ::: go q
+  names p = fmap toLocalName vec where
+    vec :: Vec p Int
+    vec = Vec.iterateN p Prelude.succ 0
+    toLocalName :: Int -> LocalName 
+    toLocalName i = LocalName ("_" <> show i)
+   
 
 

@@ -9,8 +9,7 @@ module AutoEnv.Env.Internal where
 -- Includes Wadler's optimizations for the empty environment
 
 import AutoEnv.Lib
-import Data.Fin (Fin(..))
-import qualified Data.Fin as Fin
+import Data.Fin
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
@@ -57,12 +56,14 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
 
 -- | Value of the index x in the substitution s
 applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
-applyEnv Zero x = case x of {}
+applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
-applyEnv (Cons ty _s) FZ = ty
-applyEnv (Cons _ty s) (FS x) = applyEnv s x
+applyEnv (Cons ty s) f = 
+  case Fin.pred f of
+     Nothing -> ty
+     Just x -> applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
 

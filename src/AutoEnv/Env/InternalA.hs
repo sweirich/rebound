@@ -57,7 +57,7 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
 
 -- | Value of the index x in the substitution s
 applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
-applyEnv Zero x = case x of {}
+applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
@@ -69,10 +69,6 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 -- | Build an optimized version of applyE. 
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-{- applyOpt f (Inc SZ) x = x
-applyOpt f (Weak SZ) x = x
-applyOpt f (WeakR SZ) (x :: c m) = 
-  case axiomPlusZ @m of Refl -> x -}
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 

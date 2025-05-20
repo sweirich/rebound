@@ -14,7 +14,7 @@ module LC where
 
 import AutoEnv
 import AutoEnv.Bind.Single
-import Data.Fin 
+import Data.Fin  
 import Data.Vec qualified
 
 -- | Datatype of well-scoped lambda-calculus expressions
@@ -158,7 +158,7 @@ instance Show (Exp n) where
 -- a lazy language, so that result won't be evaluated unless the
 -- function actually uses its argument.
 eval :: Exp Z -> Exp Z
-eval (Var x) = case x of {}
+eval (Var x) = absurd x
 eval (Lam b) = Lam b
 eval (App e1 e2) =
   let v = eval e2

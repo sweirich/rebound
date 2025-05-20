@@ -93,9 +93,10 @@ appendE ::
   Env v p n ->
   Env v m n ->
   Env v (p + m) n
-appendE SZ e1 e2 = e2
-appendE (snat_ -> SS_ p1) e1 e2 = 
-  head e1 .: appendE p1 (tail e1) e2
+appendE p = getAppendE (withSNat p (induction base step)) where
+  base = MkAppendE $ \e1 e2 -> e2
+  step (MkAppendE r) = MkAppendE $ \e1 e2 -> 
+    head e1 .: r (tail e1) e2
 
 newtype AppendE v m n p =
      MkAppendE { getAppendE :: 
@@ -132,8 +133,15 @@ newtype UpN v m n p =
 -- vector of scoped values
 
 fromVec :: SubstVar v => Vec m (v n) -> Env v m n
-fromVec VNil = zeroE
-fromVec (x ::: vs) = x .: fromVec vs
+fromVec v = getEnv (Vec.induction v base step) where
+  base :: EnvN v n Z
+  base = EnvN zeroE
+  step :: v n -> EnvN v n m -> EnvN v n (S m)
+  step x (EnvN r) = EnvN (x .: r)
+
+
+newtype EnvN v n m = EnvN { getEnv :: Env v m n } 
+
 
 ----------------------------------------------------------------
 -- Refinements

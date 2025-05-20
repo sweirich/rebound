@@ -8,13 +8,16 @@
 --       import Fin (Fin (..))
 --       import qualified Fin as Fin
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
 module Data.Fin(
-  Nat(..), SNat(..),
-  Fin(..),
-  toNat, fromNat, toInteger, 
+  Nat(..), 
+  SNat(SZ,SS),
+  Fin(FZ,FS),   
+  toNatural, toInteger, 
   mirror, 
   absurd,
   universe,
@@ -27,20 +30,97 @@ module Data.Fin(
   weaken1Fin,
   weaken1FinRight,
   strengthen1Fin,
-  strengthenRecFin
+  strengthenRecFin,
+  Data.Fin.pred,
  ) where
 
-import Data.Nat 
-import Data.SNat 
-import "fin" Data.Fin hiding (cata)
-import Data.Proxy (Proxy (..))
 
--- for efficient rescoping
+import Data.SNat hiding (succ)
+import Data.Proxy (Proxy (..))
+import GHC.Num.Natural (Natural)
+import Test.QuickCheck
+
+-- for efficiency
 import Unsafe.Coerce(unsafeCoerce)
 
 -------------------------------------------------------------------------------
--- toInt 
+-- Fin type
 -------------------------------------------------------------------------------
+
+newtype Fin (n :: Nat) = UnsafeFin_ Natural
+type role Fin nominal
+
+
+toNatural :: Fin n -> Natural
+toNatural (UnsafeFin x) = x
+
+absurd :: Fin N0 -> a
+absurd x = error "impossible"
+
+-- | A pattern that can be used to manipulate the
+-- 'Natural' that a @Fin n@ contains under the hood.
+--
+-- When using this pattern to construct an @Fin n@, the actual
+-- @Natural@ being stored in the @Fin n@ /must/ be less than @n@.
+-- The compiler will not help you verify this, hence the \'unsafe\' name.
+pattern UnsafeFin :: forall n. Natural -> Fin n
+pattern UnsafeFin guts = UnsafeFin_ guts
+{-# COMPLETE UnsafeFin #-}
+
+instance Eq (Fin n) where
+  UnsafeFin x == UnsafeFin y = x == y
+instance Ord (Fin n) where
+  compare (UnsafeFin x) (UnsafeFin y) = compare x y
+instance Show (Fin n) where
+  show (UnsafeFin x) = show x
+
+f0 :: Fin (S n)
+f0 = UnsafeFin 0
+
+-- FZ represents the "zero" element of Fin (S k)
+pattern FZ :: forall (k :: Nat) . Fin (S k)
+pattern FZ <- (UnsafeFin_ 0)  -- Matcher: succeeds if the wrapped Natural is 0
+  where
+    FZ = UnsafeFin_ 0      -- Constructor: creates UnsafeFin_ 0
+
+-- Helper view function for the FS matcher
+-- Takes the Natural value from a Fin (S k) and tries to find its predecessor's Natural value
+viewFS :: Natural -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
+viewFS currentNat
+  | currentNat > 0 = Just (UnsafeFin_ (currentNat - 1)) -- This will be wrapped as Fin k
+  | otherwise      = Nothing -- Zero has no predecessor in this Fin model
+
+-- FS m represents the "successor" of m.
+-- If m :: Fin k, then FS m :: Fin (S k).
+pattern FS :: forall (k :: Nat) (n :: Nat). Fin k -> Fin (S k)
+pattern FS prevFin <- UnsafeFin_ (viewFS -> Just prevFin) -- Matcher
+  where
+    FS (UnsafeFin_ prevNat) = UnsafeFin_ (prevNat + 1)    -- Constructor
+
+{-# COMPLETE FZ, FS :: Fin #-}
+
+pred :: Fin (S k) -> Maybe (Fin k)
+pred (UnsafeFin_ 0) = Nothing
+pred (UnsafeFin_ x) = Just (UnsafeFin_ (x-1))
+
+-------------------------------------------------------------------------------
+-- Enum, Bounded, Num instances
+-------------------------------------------------------------------------------
+
+bound :: forall n. SNatI n => Natural
+bound = snatToNatural (snat @n)
+
+-- >>> [minBound .. maxBound] :: [Fin N3]
+-- [0,1,2]
+
+-- list all numbers up to some size
+-- >>> universe :: [Fin N3]
+-- [0,1,2]
+
+-- in reverse order
+-- >>> map mirror universe :: [Fin N3]
+-- [2,1,0]
+
 
 -- >>> :t toInteger
 -- toInteger :: Integral a => a -> Integer
@@ -50,23 +130,55 @@ import Unsafe.Coerce(unsafeCoerce)
 -- also include this class for simple conversion.
 instance ToInt (Fin n) where
   toInt :: Fin n -> Int
-  toInt FZ = 0
-  toInt (FS x) = 1 + toInt x
-
--- >>> [minBound .. maxBound] :: [Fin N3]
--- [0,1,2]
-
--- list all numbers up to some size
--- >>> universe :: [Fin N3]
--- [0,1,2]
+  toInt (UnsafeFin x) = fromInteger (toInteger x)
 
 -- >>> :info Fin
 
+instance SNatI n => Bounded (Fin n) where
+  minBound = UnsafeFin 0
+  maxBound = UnsafeFin (bound @n - 1)
+
+-- These definitions are partial: they call error if they 
+-- would produce a result not in the range 0 <= k < n
+instance SNatI n => Enum (Fin n) where
+  succ (UnsafeFin k) | k+1 <= bound @n
+     = UnsafeFin (1 + k)
+                     | otherwise = error $ "Cannot succ " ++ show k
+  pred (UnsafeFin k) | k == 0 = UnsafeFin 0
+                     | otherwise = UnsafeFin (k - 1)
+  toEnum i = fromInteger (toInteger i)
+
+  fromEnum = toInt 
+
+
+instance SNatI n => Num (Fin n) where
+  UnsafeFin k1 + UnsafeFin k2 
+    | k1 + k2 < bound @n = UnsafeFin (k1 + k2)
+    | otherwise = error "addition out of range"
+  UnsafeFin k1 - UnsafeFin k2 
+    = UnsafeFin (k1 - k2)
+  UnsafeFin k1 * UnsafeFin k2 
+    | k1 * k2 < bound @n = UnsafeFin (k1 * k2)
+    | otherwise = error "multiplication out of range"
+  abs x = x
+  signum (UnsafeFin x) = if x == 0 then 0 else 1
+  fromInteger i | i < 0 = error "fromInteger: negative number"
+  fromInteger i = 
+    let k :: Natural 
+        k = fromInteger i 
+    in
+    if k < bound @n then UnsafeFin k 
+    else error $ "fromInteger: out of range" ++ show (snat @n)
+
 -- | Convert an "index" Fin to a "level" Fin and vice versa
 invert :: forall n. SNatI n => Fin n -> Fin n
-invert f = case snat @n of 
-  SZ -> case f of {}
-  SS -> maxBound - f
+invert f = maxBound - f
+
+mirror :: forall n. SNatI n => Fin n -> Fin n
+mirror = invert
+
+universe :: SNatI n => [Fin n]
+universe = [minBound .. maxBound]
   
 -------------------------------------------------------------------------------
 -- Shifting and weakening
@@ -80,22 +192,15 @@ invert f = case snat @n of
 -- Shifting functions add some specified amount to the given 
 -- `Fin` value, also incrementing its type.
 
--- Shifting is implemented in the Data.Fin libary using the `weakenRight`
--- function, which changes the value of a Fin and its type. 
--- >>> :t weakenRight
--- weakenRight :: SNatI n => Proxy n -> Fin m -> Fin (Plus n m)
-
--- >>> weakenRight (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
--- 2
-
 -- In this module, we call the same operation `shiftN` and give 
 -- it a slightly more convenient interface.
 -- >>> shiftN s1 (f1 :: Fin N2)
 -- 2
 
+
 -- increment by a fixed amount (on the left)
 shiftN :: forall n m . SNat n -> Fin m -> Fin (n + m)
-shiftN p f = withSNat p $ weakenRight (Proxy :: Proxy n) f
+shiftN p (UnsafeFin f) = UnsafeFin (snatToNatural p + f)
 
 shift1 :: Fin m -> Fin (S m)
 shift1 = shiftN s1
@@ -111,29 +216,13 @@ shift1 = shiftN s1
 -- its value.
 -- These operations can either be defined for the n-ary case (as in Fin below)
 -- or be defined in terms of a single-step operation.
--- However, as both of these operations are identity functions, 
--- it is justified to use unsafeCoerce.
+-- However, both of these operations are identity functions
 
--- The corresponding function in the Data.Fin library is `weakenLeft`.
--- >>> :t weakenLeft
--- weakenLeft :: SNatI n => Proxy m -> Fin n -> Fin (Plus n m)
--- This function does not change the value, it only changes its type.
--- >>> weakenLeft (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
--- 1
-
-
--- We could use the following definition:
---
--- weakenFin m f = withSNat m $ weakenLeft (Proxy :: Proxy m) f
---
--- But, by using an `unsafeCoerce` implementation, we can avoid the 
--- `SNatI n` constraint in the type of this operation. 
-
+-- | weaken the bound of a Fin by an arbitrary amount
 -- >>> weakenFin (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
 -- 1
--- | weaken the bound of a Fin by an arbitrary amount
 weakenFin :: proxy m -> Fin n -> Fin (m + n)
-weakenFin _ f = unsafeCoerce f
+weakenFin _ (UnsafeFin f) = UnsafeFin f
 
 -- | weaken the bound of a Fin by 1.
 weaken1Fin :: Fin n -> Fin (S n)
@@ -144,9 +233,9 @@ weaken1Fin = weakenFin s1
 -- >>> weakenFinRight (s1 :: SNat N1) (f1 :: Fin N2) :: Fin N3
 -- 1
 weakenFinRight :: proxy m -> Fin n -> Fin (n + m)
-weakenFinRight m f = unsafeCoerce f
+weakenFinRight m (UnsafeFin f) = UnsafeFin f
 
--- | weaken th ebound of a Fin by 1.
+-- | weaken the bound of a Fin by 1.
 weaken1FinRight :: Fin n -> Fin (n + N1)
 weaken1FinRight = weakenFinRight s1
 
@@ -158,17 +247,15 @@ weaken1FinRight = weakenFinRight s1
 -- will work in any scope. (These are also called fin0, fin1, fin2, etc
 -- in Data.Fin)
 
-f0 :: Fin (S n)
-f0 = FZ
 f1 :: Fin (S (S n))
-f1 = FS f0
+f1 = UnsafeFin 1
 f2 :: Fin (S (S (S n)))
-f2 = FS f1
+f2 = UnsafeFin 2
 f3 :: Fin (S (S (S (S n))))
-f3 = FS f2
+f3 = UnsafeFin 3
 
--- >>> f2
--- 2
+-- >>> f3
+-- 3
 
 -------------------------------------------------------------------------------
 -- Strengthening
@@ -215,12 +302,20 @@ strengthen1Fin = strengthenRecFin s0 s1 snat
 -- Just 2
 
 strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
-strengthenRecFin SZ SZ n x = Just x  -- Base case: k = 0, m = 0
-strengthenRecFin SZ (snat_ -> SS_ m) n FZ = Nothing  
+strengthenRecFin k m n (UnsafeFin x) 
+  | x < snatToNatural k = Just (UnsafeFin x)
+  | x < snatToNatural k + snatToNatural m = Nothing 
+  | otherwise = Just $ UnsafeFin (x - snatToNatural m)
+
+{-
+strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
+strengthenRecFin (snat_ -> SZ_) (snat_ -> SZ_) n x = Just x  -- Base case: k = 0, m = 0
+strengthenRecFin (snat_ -> SZ_) (snat_ -> SS_ m) n FZ = Nothing  
   -- Case: k = 0, m > 0, and x is in the `m` range
-strengthenRecFin SZ (snat_ -> SS_ m) n (FS x) = 
+strengthenRecFin (snat_ -> SZ_) (snat_ -> SS_ m) n (FS x) = 
     strengthenRecFin SZ m n x 
-strengthenRecFin (snat_ -> SS_ k) m n FZ = Just FZ  
+strengthenRecFin (snat_ -> SS_ k) m n f0 = Just FZ  
   -- Case: x < k, leave it alone
 strengthenRecFin (snat_ -> SS_ k) m n (FS x) = 
     FS <$> strengthenRecFin k m n x 
+-}
