@@ -50,11 +50,6 @@ newtype Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) =
 -- Application
 ------------------------------------------------------------------------------
 
--- | Value of the index x in the substitution s
--- applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
--- applyEnv f = f
--- {-# INLINEABLE applyEnv #-}
-
 -- | Build an optimized version of applyE (does nothing here)
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
 applyOpt f = f

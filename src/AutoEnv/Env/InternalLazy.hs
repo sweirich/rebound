@@ -4,13 +4,12 @@ module AutoEnv.Env.InternalLazy where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
--- of the environment is also lazy
+-- *rest* of the environment is strict
 -- Includes optimized composition (Inc and Cons cancel)
 -- Includes Wadler's optimizations for the empty environment
 
 import AutoEnv.Lib
 import Data.Fin (Fin(..))
-import qualified Data.Fin as Fin
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
@@ -45,19 +44,20 @@ gapplyE = applyOpt (\s x -> to1 $ gsubst s (from1 x))
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: (SNat m) -> Env a n (n + m) --  weaken values in range by m
-  Weak  :: (SNat m) -> Env a n (m + n) --  weaken values in range by m
-  Inc   :: (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
+  WeakR :: (SubstVar a) => (SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
   Cons  :: (a m) -> (Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
-  (:<>) :: (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
+  (:<>) :: (SubstVar a) => (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------
 -- Application
 ------------------------------------------------------------------------------
 
 -- | Value of the index x in the substitution s
-applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
-applyEnv Zero x = case x of {}
+
+applyEnv :: Env a n m -> Fin n -> a m
+applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
@@ -87,18 +87,18 @@ zeroE = Zero
 
 -- make the bound bigger, on the right, but do not change any indices. 
 -- this is an identity function
-weakenER :: forall m v n. SNat m -> Env v n (n + m)
+weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
 weakenER = WeakR 
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.
 -- this is an identity function
-weakenE' :: forall m v n. SNat m -> Env v n (m + n)
+weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (m + n)
 weakenE' = Weak
 {-# INLINEABLE weakenE' #-}
 
 -- | increment all free variables by m
-shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
+shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
@@ -157,7 +157,7 @@ up e = var Fin.f0 .: comp e (Inc s1)
 {-# INLINEABLE up #-}
 
 -- | mapping operation for range of the environment
-transform :: (forall m. a m -> b m) -> Env a n m -> Env b n m
+transform :: (SubstVar b) => (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f Zero = Zero
 transform f (Weak x) = Weak x 
 transform f (WeakR x) = WeakR x
