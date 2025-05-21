@@ -39,6 +39,7 @@ import Data.SNat hiding (succ)
 import Data.Proxy (Proxy (..))
 import GHC.Num.Natural (Natural)
 import Test.QuickCheck
+import Control.DeepSeq (NFData (..))
 
 -- for efficiency
 import Unsafe.Coerce(unsafeCoerce)
@@ -48,6 +49,7 @@ import Unsafe.Coerce(unsafeCoerce)
 -------------------------------------------------------------------------------
 
 newtype Fin (n :: Nat) = UnsafeFin_ Natural
+  deriving (NFData)
 type role Fin nominal
 
 

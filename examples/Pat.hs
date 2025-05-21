@@ -344,15 +344,11 @@ e2 = App (App (Con "D") (Con "A")) (Con "C")
 -- Just [A,C]
 
 -- | Compare a pattern with an expression, potentially
--- producing a substitution for all of the variables
--- bound in the pattern
--- Note that the pattern "x y" will match the expression "e1 e2"
--- There is no restriction that the pattern be headed by a constant
+-- producing a substitution for all of the variables bound in the pattern
 patternMatch :: Pat p -> Exp m -> Maybe (Env Exp p m)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PHead p) e = patternMatchApp p e
 
--- Fin p -> Exp m
 patternMatchApp :: ConApp p -> Exp m -> Maybe (Env Exp p m)
 patternMatchApp (PApp p1 p2) (App e1 e2) = do
   env1 <- patternMatchApp p1 e1

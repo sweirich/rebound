@@ -40,6 +40,7 @@ import AutoEnv.Classes
 import qualified AutoEnv.Bind.Pat as Pat
 import AutoEnv.Env
 
+
 ----------------------------------------------------------------
 -- N-ary patterns
 ----------------------------------------------------------------

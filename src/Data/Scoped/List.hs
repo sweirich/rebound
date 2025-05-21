@@ -5,7 +5,7 @@
 -- Haskell language extension.
 module Data.Scoped.List where
 
-import Data.Nat
+import Data.SNat
 import Data.Kind
 import GHC.IsList
 import GHC.Generics 
