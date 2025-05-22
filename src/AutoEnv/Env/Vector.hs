@@ -2,14 +2,12 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 module AutoEnv.Env.Vector where
 
--- This is a lazy environment: values stored are not forced
--- Uses vectors to represent environments
+-- This is a lazy data structure: values stored in the vector are not forced
+-- Uses Data.Vec to represent environments
 -- Operations have more class constraints for the size of the vectors
--- So this isn't a good match for the existing code
 
 import AutoEnv.Lib as Lib
 import Data.Fin (Fin(..))
-import qualified Data.Fin as Fin
 import qualified Data.Fin as Fin
 import Data.Vec (Vec(..))
 import qualified Data.Vec as Vec
@@ -49,20 +47,19 @@ applyOpt f = f
 -- Environment representation
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) = Env { 
-    vec :: Vec n (a m), 
-    size :: SNat n
+    vec  :: !(Vec n (a m)), 
+    size :: !(SNat n)
 }
   
--- >>> :info Vec
 
 
-applyEnv :: (SubstVar a) => Env a n m -> Fin n -> a m
+applyEnv :: Env a n m -> Fin n -> a m
 applyEnv e n = vec e Vec.! n
 {-# INLINEABLE applyEnv #-}
 
 -- | The empty environment (zero domain)
 zeroE :: Env v Z n
-zeroE = Env VNil SZ
+zeroE = Env Vec.empty SZ
 {-# INLINEABLE zeroE #-}
 
 -- make the bound bigger, on the right, but do not change any indices. 
