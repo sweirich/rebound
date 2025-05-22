@@ -114,6 +114,7 @@ tail x = shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
 
 -- | composition: do f then g
+-- No optimizations here
 (.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
 (.>>) = (:<>)
 {-# INLINEABLE (.>>) #-}
