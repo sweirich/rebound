@@ -25,7 +25,8 @@ where
 
 import AutoEnv
 import AutoEnv.Classes
-import AutoEnv.MonadScoped (WithData (..))
+import AutoEnv.MonadNamed (Named (..))
+-- import AutoEnv.MonadScoped (WithData (..))
 import AutoEnv.Scope qualified as Scope
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
@@ -230,13 +231,11 @@ instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
     Vec.append @ps @p1 (names ps) (names p1)
 
-instance
-  forall (u :: Type) (s :: Nat -> Type) (p :: Nat) (pat :: Nat -> Type) (n :: Nat).
-  (SubstVar s, forall p n. WithData n (pat p) u s) =>
-  WithData n (PatList pat p) u s
-  where
-  getData PNil = Scope.empty
-  getData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
-    let (ps', r) = getSizedData @(p1' + n) ps
-     in -- TODO: Removing any of the @n breaks tc...
-        withSNat ps' $ Scope.append' @n (getData @n p1) r
+-- instance
+--   (forall p n. WithData v (pat p) n) =>
+--   WithData v (PatList pat p) n
+--   where
+--   extendWithData PNil = id
+--   extendWithData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
+--     case axiomAssoc @ps' @p1' @n of
+--       Refl -> extendWithData @v ps . extendWithData @v p1

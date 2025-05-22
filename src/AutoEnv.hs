@@ -5,7 +5,6 @@
 module AutoEnv
   (module AutoEnv.Classes,
    module AutoEnv.Env,
-   module AutoEnv.MonadNamed,
    module AutoEnv.Lib,
    module AutoEnv.Context,
    Generic(..),
@@ -20,7 +19,6 @@ import AutoEnv.Classes
 import AutoEnv.Context
 import AutoEnv.Env
 import AutoEnv.Lib
-import AutoEnv.MonadNamed
 import GHC.Generics hiding (S)
 
 

@@ -44,6 +44,7 @@ library
     , QuickCheck
     , fin >= 0.3
     , vec
+    , mono-traversable
   exposed-modules:
       AutoEnv
     , AutoEnv.Classes
@@ -58,6 +59,7 @@ library
     , AutoEnv.Env.Functional
     , AutoEnv.Env.Vector
     , AutoEnv.Scope
+    , AutoEnv.Scoped
     , AutoEnv.MonadNamed
     , AutoEnv.MonadScoped
     , AutoEnv.Bind.Single
@@ -99,6 +101,7 @@ library autoenv-examples
     , Pat
     , DepMatch
     , NBE
+    , SystemF
     , PiForall.Arbitrary
     , PiForall.Syntax
     , PiForall.ConcreteSyntax

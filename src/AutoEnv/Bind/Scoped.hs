@@ -4,36 +4,19 @@
 -- This is useful for type annotations and telescopes.
 -- The pattern type must have kind `Nat -> Type`
 -- For a simpler interface, see AutoEnv.Bind.Pat
-module AutoEnv.Bind.Scoped where
+module AutoEnv.Bind.Scoped
+  ( module AutoEnv.Bind.Scoped,
+    module AutoEnv.Scoped,
+  )
+where
 
 import AutoEnv
 import AutoEnv.Bind.Pat qualified as Pat
-import AutoEnv.MonadScoped (WithData (..))
-import AutoEnv.Scope qualified as Scope
+import AutoEnv.MonadNamed (Named (..))
+-- import AutoEnv.MonadScoped (WithData (..))
+import AutoEnv.Scoped
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
-
-----------------------------------------------------------
--- Sized type class for patterns
-----------------------------------------------------------
-
--- Scoped patterns have kinds :: Nat -> Nat -> Type where
--- the first parameter is `p`, the number of variables that pattern
--- binds, and the second parameter is `n`, the scope of for any
--- terms that appear inside the pattern.
-
--- Crucially, the number of variables bound by the pattern
--- shouldn't depend on the scope. We manifest that with the
--- associated type `ScopedSize :: Nat -> Type` and the constraint
--- that it must be the same as Size for any number of bound variables.
-
-class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
-
-instance (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
-
--- this is equivalent to (Size (t p) ~ ScopedSize pat
-class (forall p. EqSized pat p) => ScopedSized pat where
-  type ScopedSize (pat :: Nat -> Type) :: Nat
 
 -- For convenience, we give the `size` function a type that mentions
 -- `ScopedSize` instead of `Size`.
@@ -47,16 +30,15 @@ scopedNames ::
   Vec (ScopedSize pat) name
 scopedNames = names
 
-scopedData ::
-  forall (pat :: Nat -> Type) (p :: Nat) (u :: Type) (s :: Nat -> Type) (n :: Nat).
-  (ScopedSized pat, WithData n (pat p) u s) =>
-  pat p ->
-  Scope.Scope u s (ScopedSize pat) n
-scopedData p = get
-  where
-    -- The typechecker needs help...
-    get :: (Size (pat p) ~ ScopedSize pat) => Scope.Scope u s (ScopedSize pat) n
-    get = getData @n p
+-- scopedExtendWithData ::
+--   forall v pat n p s.
+--   (ScopedSized pat, WithData v (pat p) n, Scope v s) =>
+--   pat p ->
+--   s n ->
+--   s (ScopedSize pat + n)
+-- scopedExtendWithData =
+--   case Refl :: Size (pat p) :~: ScopedSize pat of
+--     Refl -> extendWithData @v @(pat p) @n
 
 scopedPatEq ::
   (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
@@ -249,11 +231,15 @@ iscopedSize = scopedSize
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
-iscopedData :: forall pat p n u s. (IScopedSized pat, WithData n (pat p n) u s) => pat p n -> Scope.Scope u s p n
-iscopedData p = get
-  where
-    get :: (ScopedSize (pat p) ~ p) => Scope.Scope u s p n
-    get = scopedData p
+-- iscopedExtendWithData ::
+--   forall v pat p n s.
+--   (IScopedSized pat, WithData v (pat p n) n, Scope v s) =>
+--   pat p n ->
+--   s n ->
+--   s (p + n)
+-- iscopedExtendWithData =
+--   case Refl :: ScopedSize (pat p) :~: p of
+--     Refl -> scopedExtendWithData @v @(pat p) @n
 
 iscopedPatEq ::
   (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
@@ -293,6 +279,15 @@ lengthTele (TCons _ ps) = 1 + lengthTele ps
   TeleList pat (p2 + p1) n
 e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
 
+(<++>) ::
+  forall p1 p2 pat n.
+  (IScopedSized pat) =>
+  TeleList pat p1 n ->
+  TeleList pat p2 (p1 + n) ->
+  TeleList pat (p2 + p1) n
+TNil <++> t = case axiomPlusZ @p2 of Refl -> t
+(TCons @_ @p12 @p11 h t) <++> t' = case axiomAssoc @p2 @p12 @p11 of Refl -> h <:> (t <++> t')
+
 infixr 9 <:>
 
 instance IScopedSized (TeleList pat)
@@ -315,14 +310,14 @@ instance
   names (TCons p ps) =
     Vec.append (names ps) (iscopedNames p)
 
-instance
-  (SubstVar s, forall p1 n. WithData n (pat p1 n) u s, IScopedSized pat) =>
-  WithData n (TeleList pat p n) u s
-  where
-  getData TNil = Scope.empty
-  getData (TCons (p :: pat p1 n) (ps :: TeleList pat p2 (p1 + n))) =
-    let (p2, ps') = getSizedData @(p1 + n) ps
-     in withSNat p2 $ Scope.append @n (iscopedData p) ps'
+-- instance
+--   forall v pat p n.
+--   (forall p1 n. WithData v (pat p1 n) n, IScopedSized pat) =>
+--   WithData v (TeleList pat p n) n
+--   where
+--   extendWithData TNil s = s
+--   extendWithData (TCons (p :: pat p1 n) (ps :: TeleList pat p2 (p1 + n))) s =
+--     extendWithData @v ps $ iscopedExtendWithData @v p s
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
   shift = shiftFromApplyE @v

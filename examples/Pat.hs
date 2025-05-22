@@ -94,8 +94,9 @@ instance Sized (Pat m) where
 instance Sized (ConApp m) where
   type Size (ConApp m) = m
 
-  size (PApp p1 p2) = sPlus (size p1) (size p2)
+  size :: ConApp m -> SNat (Size (ConApp m))
   size (PCon s) = s0
+  size (PApp p1 p2) = sPlus (size p1) (size p2)
 
 -- NOTE: we could drop `size` from the type class
 -- `Sized` by requiring `SNatI (Size p)` constraints whenever
