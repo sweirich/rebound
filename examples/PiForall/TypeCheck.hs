@@ -20,16 +20,16 @@ import PiForall.PrettyPrint (Display (..), D(..), disp, pp, debug)
 import PiForall.Syntax
 import Debug.Trace
 
-import AutoEnv.Lib
-import AutoEnv
-import AutoEnv.MonadScoped
+import Rebound.Lib
+import Rebound
+import Rebound.MonadScoped
 
-import AutoEnv.Bind.Pat (PatList(..))
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.Bind.Scoped (TeleList(..),(<:>))
-import qualified AutoEnv.Bind.Scoped as Scoped
-import qualified AutoEnv.Bind.Local as Local
-import AutoEnv.Context
+import Rebound.Bind.Pat (PatList(..))
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.Bind.Scoped (TeleList(..),(<:>))
+import qualified Rebound.Bind.Scoped as Scoped
+import qualified Rebound.Bind.Local as Local
+import Rebound.Context
 
 import Prettyprinter (pretty)
 

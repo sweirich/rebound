@@ -10,10 +10,10 @@
 
 module NBE where
 
-import AutoEnv
-import AutoEnv.Env
+import Rebound
+import Rebound.Env
 import Data.Fin
-import AutoEnv.Bind.Single
+import Rebound.Bind.Single
 
 -- we use the lambda calculus implementation as is
 import LC hiding (eval)
@@ -79,7 +79,7 @@ quote l = \case
    VVar x   -> withSNat l $ Var (invert x)
    VApp t u -> App (quote l t) (quote l u)
    VLam b ->
-       Lam (bind (quote (AutoEnv.succ l) 
+       Lam (bind (quote (Rebound.succ l) 
               (instantiateWith (applyBind weaken1Val b) (withSNat l $ var maxBound) eval)))
 
 vApp :: Bind Val Exp n -> Val n -> Val n

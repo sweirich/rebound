@@ -7,15 +7,15 @@
 
 module PiForall.ScopeCheck where
 
-import AutoEnv.Bind.Pat (PatList(..))
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.Bind.Scoped ((<:>))
-import qualified AutoEnv.Bind.Scoped as Scoped
-import qualified AutoEnv.Bind.Local as L
+import Rebound.Bind.Pat (PatList(..))
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.Bind.Scoped ((<:>))
+import qualified Rebound.Bind.Scoped as Scoped
+import qualified Rebound.Bind.Local as L
 import Data.Maybe (fromJust)
 import qualified PiForall.ConcreteSyntax as C
 import qualified PiForall.Syntax as S
-import AutoEnv.Lib
+import Rebound.Lib
              
 
 push :: a -> [(a, Fin n)] -> [(a, Fin (S n))]

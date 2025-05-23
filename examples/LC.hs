@@ -12,8 +12,8 @@
 -- term must be closed.
 module LC where
 
-import AutoEnv
-import AutoEnv.Bind.Single
+import Rebound
+import Rebound.Bind.Single
 import Data.Fin 
 import Data.Vec qualified
 

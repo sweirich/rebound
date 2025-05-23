@@ -12,13 +12,13 @@ import Control.Monad.IO.Class
 import Text.ParserCombinators.Parsec.Pos (SourcePos)
 import Prettyprinter ( Doc, vcat, sep, (<+>), nest, pretty )
 
-import AutoEnv.Context
+import Rebound.Context
 
-import AutoEnv
-import AutoEnv.Env
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.MonadScoped
-import qualified AutoEnv.Bind.Local as Local
+import Rebound
+import Rebound.Env
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.MonadScoped
+import qualified Rebound.Bind.Local as Local
 import PiForall.Syntax
 import PiForall.PrettyPrint
 

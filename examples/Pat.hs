@@ -15,10 +15,10 @@
 -- variables bound in the pattern.
 module Pat where
 
-import AutoEnv
+import Rebound
 
-import AutoEnv.Bind.PatN
-import qualified AutoEnv.Bind.Pat as Pat
+import Rebound.Bind.PatN
+import qualified Rebound.Bind.Pat as Pat
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
 import Data.Fin ( Fin, f0, f1 )

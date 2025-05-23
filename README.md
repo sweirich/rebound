@@ -1,4 +1,4 @@
-# Autoenv
+# Rebound
 
 *NOTE: this library is a work in progress. The interface is still under active 
 development and will change.*

@@ -7,11 +7,11 @@
 
 module ScopeCheck where
 
-import AutoEnv
-import AutoEnv.Bind
+import Rebound
+import Rebound.Bind
 import Data.Maybe (fromJust)
 import LC qualified
-import AutoEnv.Lib
+import Rebound.Lib
 
 -- | Named representation for the untyped lambda calculus
 -- The type parameter 'a' is the variable type

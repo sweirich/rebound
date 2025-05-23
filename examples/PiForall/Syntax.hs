@@ -4,14 +4,14 @@
 -- are represented by indices.
 module PiForall.Syntax where
 
-import AutoEnv
+import Rebound
 
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.Bind.Scoped (TeleList(..),(<:>))
-import qualified AutoEnv.Bind.Scoped as Scoped
-import qualified AutoEnv.Bind.Local as Local
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.Bind.Scoped (TeleList(..),(<:>))
+import qualified Rebound.Bind.Scoped as Scoped
+import qualified Rebound.Bind.Local as Local
 
-import AutoEnv.MonadScoped
+import Rebound.MonadScoped
 
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 import Data.Maybe qualified as Maybe

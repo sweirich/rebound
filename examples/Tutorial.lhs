@@ -1,6 +1,6 @@
 > module Tutorial where
 
-> import AutoEnv.Lib
+> import Rebound.Lib
 
 This is *beautiful* code. It is an evaluator for lambda-calculus
 expressions, where bound variables are represented by de Bruijn

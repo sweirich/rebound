@@ -6,13 +6,13 @@
 -- to optimize the execution.
 module DepMatch where
 
-import AutoEnv
-import AutoEnv.Context
+import Rebound
+import Rebound.Context
 
 
-import qualified AutoEnv.Bind.Pat as Pat
-import qualified AutoEnv.Bind.Scoped as Scoped
-import AutoEnv.Bind.PatN as PN
+import qualified Rebound.Bind.Pat as Pat
+import qualified Rebound.Bind.Scoped as Scoped
+import Rebound.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)

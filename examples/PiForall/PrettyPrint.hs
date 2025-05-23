@@ -13,16 +13,16 @@ import qualified Prettyprinter as PP
 
 import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
-import AutoEnv.Lib
-import AutoEnv.Classes
-import AutoEnv.Context
-import AutoEnv.Env
-import AutoEnv.Bind.Local as Local
-import AutoEnv.Bind.Scoped (TeleList(..))
-import qualified AutoEnv.Bind.Scoped as Scoped
-import AutoEnv.Bind.Pat (PatList(..))
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.MonadScoped
+import Rebound.Lib
+import Rebound.Classes
+import Rebound.Context
+import Rebound.Env
+import Rebound.Bind.Local as Local
+import Rebound.Bind.Scoped (TeleList(..))
+import qualified Rebound.Bind.Scoped as Scoped
+import Rebound.Bind.Pat (PatList(..))
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.MonadScoped
 
 import PiForall.Syntax
 

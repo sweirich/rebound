@@ -8,12 +8,12 @@ import PiForall.Environment (TcMonad, Context )
 import qualified PiForall.Environment as Env
 import PiForall.PrettyPrint
 
-import AutoEnv.Env as Env
-import AutoEnv
-import AutoEnv.MonadScoped
-import AutoEnv.Bind.Pat as Pat
-import AutoEnv.Bind.Local as L
-import AutoEnv.Bind.Scoped as Scoped
+import Rebound.Env as Env
+import Rebound
+import Rebound.MonadScoped
+import Rebound.Bind.Pat as Pat
+import Rebound.Bind.Local as L
+import Rebound.Bind.Scoped as Scoped
 
 import Prettyprinter as PP
 
