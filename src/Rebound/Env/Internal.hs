@@ -120,6 +120,7 @@ tail x = shiftNE s1 .>> x
 {-# INLINEABLE (.>>) #-}
 
 -- | smart constructor for composition
+-- Names of some cases are taken from Abadi et. al "Explicit Substitutions"
 comp :: forall a m n p. SubstVar a => 
          Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
@@ -140,10 +141,15 @@ comp s (WeakR SZ) =
 comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
   case axiomAssoc @m2 @m1 @m of
     Refl -> Inc (sPlus k2 k1)
+-- (sort of) ShiftId
 comp s (Inc SZ) = s
+-- IdL
 comp (Inc SZ) s = s
+-- ShiftCons
 comp (Inc (snat_ -> SS_ p1)) (Cons _t p) = comp (Inc p1) p
+-- Ass
 comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
+-- Map
 comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
 comp s1 s2 = s1 :<> s2
 {-# INLINEABLE comp #-}

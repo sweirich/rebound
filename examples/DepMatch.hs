@@ -1,9 +1,8 @@
 -- | A dependent type system, with nested dependent pattern matching for Sigma types.
 -- This is an advanced usage of the binding library, demonstrating the use of Scoped patterns.
 -- It doesn't correspond to any current system, but has its own elegance
--- (Maybe deserves to be written up on its own?)
--- However, this implementation does not attempt to use explicit environments
--- to optimize the execution.
+-- This implementation does not attempt to use explicit environments.
+
 module DepMatch where
 
 import Rebound
