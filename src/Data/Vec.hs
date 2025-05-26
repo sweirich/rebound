@@ -1,6 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-} 
 module Data.Vec(
     Vec(VNil, (:::)),
+    empty,
     setAt, 
     Data.Vec.lookup,
     (!),
@@ -18,7 +19,8 @@ module Data.Vec(
 
 import GHC.Num.Natural
 import Data.Type.Equality
-import Data.Sequence as Seq
+import Data.Sequence (Seq, fromList)
+import Data.Sequence qualified as Seq
 import Test.QuickCheck
 import Prelude hiding (lookup, repeat, zipWith)
 import Data.SNat
@@ -35,6 +37,9 @@ newtype Vec (n :: Nat) a = UnsafeVec (Seq a)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 -- no semigroup, monoid b/c length changes
 -- do we want Applicative, Monad?
+
+empty :: Vec Z a
+empty = UnsafeVec Seq.empty
 
 cons :: a -> Vec n a -> Vec (S n) a
 cons a (UnsafeVec s) = UnsafeVec (a Seq.:<| s)

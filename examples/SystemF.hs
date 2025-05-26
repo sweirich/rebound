@@ -9,8 +9,8 @@ module SystemF where
 -}
 
 import Prelude hiding (lookup)
-import AutoEnv
-import AutoEnv.Bind.Single
+import Rebound
+import Rebound.Bind.Single
 
 
 data Ty (n :: Nat) where
