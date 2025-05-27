@@ -11,22 +11,22 @@ import Rebound.Classes
 type Ctx v n = Env v n n
 
 -- This is not weakening --- it increments all variables by one
-shiftC :: forall v n. (SubstVar v) => v n -> v (S n)
+shiftC :: forall v n. (SubstVar v, SNatI n) => v n -> v (S n)
 shiftC = applyE @v shift1E
 
-shiftCtx :: (SubstVar v) => Env v n n -> Env v n (S n)
+shiftCtx :: (SubstVar v, SNatI n) => Env v n n -> Env v n (S n)
 shiftCtx g = g .>> shift1E
 
 -- | An empty context, that includes no variable assumptions
 emptyC :: Ctx v N0
 emptyC = zeroE
 
-shift :: forall v n. (SubstVar v) => v n -> v (S n)
+shift :: forall v n. (SubstVar v, SNatI n) => v n -> v (S n)
 shift = applyE @v shift1E
 
 -- | Append a new definition to the context
 -- All existing types in the context need to be shifted (lazily)
-(+++) :: forall v n. (SubstVar v) => Ctx v n -> v n -> Ctx v (S n)
+(+++) :: forall v n. (SubstVar v, SNatI n) => Ctx v n -> v n -> Ctx v (S n)
 g +++ a = applyE @v shift1E a .: (g .>> shift1E)
 
 {-

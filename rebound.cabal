@@ -79,9 +79,9 @@ library
       , LC
       , LCLet
       , PTS
-      , Pat
-      , DepMatch
-      , NBE
+--      , Pat
+--      , DepMatch
+--      , NBE
       , ScopeCheck
   hs-source-dirs:
       src

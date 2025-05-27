@@ -22,28 +22,28 @@ import qualified Rebound.Bind.Pat as Pat
 
 type Bind v c n = Pat.Bind v c LocalName n
 
-bind :: (Subst v c) => LocalName -> c (S n) -> Bind v c n
+bind :: (Subst v c, SNatI n) => LocalName -> c (S n) -> Bind v c n
 bind = Pat.bind
 
 getLocalName :: Bind v c n -> LocalName
 getLocalName = Pat.getPat
 
-internalBind :: (Subst v c) => c (S n) -> Bind v c n
+internalBind :: (Subst v c, SNatI n) => c (S n) -> Bind v c n
 internalBind = Pat.bind internalName
 
-getBody :: (Subst v c) => Bind v c n -> c (S n)
+getBody :: (Subst v c, SNatI n) => Bind v c n -> c (S n)
 getBody = Pat.getBody
 
 -- unbind, but also provide access to the local name
-unbind :: (Subst v c) => Bind v c n -> ((LocalName, c (S n)) -> d) -> d
+unbind :: (Subst v c, SNatI n) => Bind v c n -> ((LocalName, c (S n)) -> d) -> d
 unbind b f = f (getLocalName b, getBody b)
 
-instantiate :: (Subst v c) => Bind v c n -> v n -> c n
+instantiate :: (Subst v c, SNatI n) => Bind v c n -> v n -> c n
 instantiate b e = Pat.instantiate b (oneE e)
 
 applyUnder ::
-  (Subst v c) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (Subst v c, SNatI n2) =>
+  (forall m n. SNatI n => Env v m n -> c m -> c n) ->
   Env v n1 n2 ->
   Bind v c n1 ->
   Bind v c n2
@@ -52,5 +52,6 @@ applyUnder = Pat.applyUnder
 unbindWith :: (SubstVar v) => Bind v c n -> (forall m. LocalName -> Env v m n -> c (S m) -> d) -> d
 unbindWith = Pat.unbindWith
 
-instantiateWith :: (SubstVar v) => Bind v c n -> v n -> (forall m n. Env v m n -> c m -> c n) -> c n
-instantiateWith b v = Pat.instantiateWith b (oneE v)
+instantiateWith :: (SubstVar v, SNatI n) => Bind v c n -> v n -> (forall m n. Env v m n -> c m -> c n) -> c n
+instantiateWith b v = 
+  Pat.instantiateWith b (oneE v)

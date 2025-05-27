@@ -80,6 +80,7 @@ t2 = Let t0 (bind (App (Var f0) (Var f0)))
 -- (let (λ. 0) in (0 0))
 
 -- let rec fix = \f. f (fix f) in f
+t3 :: Exp Z
 t3 = LetRec (bind (Lam (bind (App (Var f0) (App (Var f1) (Var f0)))))) (bind (Var f0))
 
 -- >>> t3
@@ -116,14 +117,14 @@ t4 =
 -- The `getBody` operation has type
 -- `Bind Exp Exp n -> Exp (S n)`
 -- as the body of the binder has one more free variable
-instance (Subst Exp t, Eq (t (S n))) => Eq (Bind Exp t n) where
+instance (SNatI n, Subst Exp t, Eq (t (S n))) => Eq (Bind Exp t n) where
   b1 == b2 = getBody b1 == getBody b2
 
 -- | The derivable equality instance
 -- is alpha-equivalence
-deriving instance (Eq (Exp n))
+deriving instance SNatI n => (Eq (Exp n))
 
-deriving instance (Eq (Tele n))
+deriving instance SNatI n => (Eq (Tele n))
 
 ----------------------------------------------
 -- Substitution
@@ -172,7 +173,7 @@ instance Subst Exp Tele where
 -- | To show lambda terms, we use a simple recursive instance of
 -- Haskell's `Show` type class. In the case of a binder, we use the `getBody`
 -- operation to access the body of the lambda expression.
-instance Show (Exp n) where
+instance SNatI n => Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
@@ -218,7 +219,7 @@ instance Show (Exp n) where
 -- >>> eval t4
 -- (λ. 0)
 
-eval :: Exp n -> Exp n
+eval :: SNatI n => Exp n -> Exp n
 eval (Var x) = Var x
 eval (Lam b) = Lam b
 eval (App e1 e2) =
@@ -236,7 +237,7 @@ eval (LetRec e1 e2) =
    in eval (instantiate e2 v)
 eval (LetTele e) = evalTele e
 
-evalTele :: Tele n -> Exp n
+evalTele :: SNatI n => Tele n -> Exp n
 evalTele (Body e) = eval e
 evalTele (LetStar e t) =
   evalTele (instantiate t (eval e))
@@ -245,7 +246,7 @@ evalTele (LetStar e t) =
 -- environment based evaluation / normalization
 --------------------------------------------------------
 
-evalEnv :: Env Exp m n -> Exp m -> Exp n
+evalEnv :: SNatI n => Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam b) = applyE r (Lam b)
 evalEnv r (App e1 e2) =
@@ -262,7 +263,7 @@ evalEnv r (LetRec e1 e2) =
    in unbindWith e2 (\r' e' -> evalEnv (v .: (r' .>> r)) e')
 evalEnv r (LetTele e) = evalTeleEnv r e
 
-evalTeleEnv :: Env Exp m n -> Tele m -> Exp n
+evalTeleEnv :: SNatI n => Env Exp m n -> Tele m -> Exp n
 evalTeleEnv r (Body e) = evalEnv r e
 evalTeleEnv r (LetStar e1 e2) =
   let v = evalEnv r e1

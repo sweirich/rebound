@@ -25,7 +25,7 @@ data Exp (a :: Type) where
 scopeCheck :: (Eq a) => Exp a -> Maybe (LC.Exp Z)
 scopeCheck = to []
   where
-    to :: (Eq a) => [(a, Fin n)] -> Exp a -> Maybe (LC.Exp n)
+    to :: (Eq a, SNatI n) => [(a, Fin n)] -> Exp a -> Maybe (LC.Exp n)
     to vs (Var v) = do
       x <- lookup v vs
       return $ LC.Var x

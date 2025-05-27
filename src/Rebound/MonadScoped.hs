@@ -49,11 +49,11 @@ extendScope v s = Scope {
     scope_names = Vec.append v (scope_names s)
   }
 
-instance Sized (Scope name n) where
+instance SNatI n => Sized (Scope name n) where
   type Size (Scope name n) = n
   size :: Scope name n -> SNat n
   size = scope_size
-instance Named name (Scope name n) where
+instance SNatI n => Named name (Scope name n) where
   names :: Scope name n -> Vec n name
   names = scope_names
 
@@ -131,13 +131,13 @@ instance Named LocalName LocalName where
   names :: LocalName -> Vec N1 LocalName
   names ln = ln ::: VNil
 
-instance Named name (Vec p name) where
+instance SNatI p => Named name (Vec p name) where
   names :: Vec p name -> Vec p name
   names x = x
 
 -- TODO: this isn't isn't very good... it doesn't try to 
 -- "freshen" the names in any way
-instance Named LocalName (SNat p) where
+instance SNatI p => Named LocalName (SNat p) where
   names :: SNat p -> Vec p LocalName
   names p = fmap toLocalName vec where
     vec :: Vec p Int

@@ -39,7 +39,8 @@ data Exp (n :: Nat) where
 -- | The identity function "λ x. x".
 -- With de Bruijn indices we write it as "λ. 0"
 -- The `bind` function creates the binder
--- t0 :: Exp Z
+
+t0 :: Exp Z
 t0 = Lam (bind (Var f0))
 
 -- | A larger term "λ x. λy. x ((λ z. z) y)"
@@ -71,10 +72,10 @@ t1 =
 -- The `getBody` operation has type
 -- `Bind Exp Exp n -> Exp (S n)`
 -- as the body of the binder has one more free variable
-instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
+instance (Eq (Exp n), SNatI n) => Eq (Bind Exp Exp n) where
   b1 == b2 = getBody b1 == getBody b2
 
-deriving instance Eq (Exp n)
+deriving instance SNatI n => Eq (Exp n)
 
 ----------------------------------------------
 -- Substitution
@@ -125,7 +126,7 @@ deriving instance (Generic1 Exp)
 -- | To show lambda terms, we use a simple recursive instance of
 -- Haskell's `Show` type class. In the case of a binder, we use the `getBody`
 -- operation to access the body of the lambda expression.
-instance Show (Exp n) where
+instance SNatI n => Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
@@ -175,7 +176,7 @@ eval (App e1 e2) =
 -- | Do one step of evaluation, if possible
 -- If the function is already a value or is stuck
 -- this function returns `Nothing`
-step :: Exp n -> Maybe (Exp n)
+step :: SNatI n => Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
 step (Lam b) = Nothing
 step (App (Lam b) e2) = Just (instantiate b e2)
@@ -185,7 +186,7 @@ step (App e1 e2)
   | otherwise = Nothing
 
 -- | Evaluate the term as much as possible
-eval' :: Exp n -> Exp n
+eval' :: SNatI n => Exp n -> Exp n
 eval' e
   | Just e' <- step e = eval' e'
   | otherwise = e
@@ -198,7 +199,7 @@ eval' e
 -- is like evaluation except that it also reduces in the bodies
 -- of `Lam` expressions. In this case, we must first `getBody`
 -- the binder and then rebind when finished
-nf :: Exp n -> Exp n
+nf :: SNatI n => Exp n -> Exp n
 nf (Var x) = Var x
 nf (Lam b) = Lam (bind (nf (getBody b)))
 nf (App e1 e2) =
@@ -247,7 +248,7 @@ nf (App e1 e2) =
 -- getBody :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
 
 
-evalEnv :: Env Exp m n -> Exp m -> Exp n
+evalEnv :: SNatI n => Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam b) = applyE r (Lam b)
 evalEnv r (App e1 e2) =
@@ -272,10 +273,12 @@ evalEnv r (App e1 e2) =
 -- In the beta-reduction case, we could use `unbindWith` as above
 -- but the `instantiateWith` function already captures exactly
 -- this pattern.
-nfEnv :: Env Exp m n -> Exp m -> Exp n
+nfEnv :: (SNatI n) => Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
 --nfEnv r2 (Lam b) = Lam $ unbindWith b $ \r1 e -> bind (nfEnv (up (r1 .>> r2)) e)
-nfEnv r (Lam b) = Lam $ applyUnder nfEnv r b
+nfEnv r (Lam b) = 
+  withScope r $
+  Lam $ applyUnder nfEnv r b
 nfEnv r (App e1 e2) =
   let n = nfEnv r e1
    in case nfEnv r e1 of

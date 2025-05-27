@@ -83,7 +83,7 @@ data ConApp (m :: Nat) where
 -- that number from the pattern itself by counting the number
 -- of occurrences of `PVar`.
 
-instance Sized (Pat m) where
+instance SNatI m => Sized (Pat m) where
   type Size (Pat m) = m
 
   size :: Pat m -> SNat (Size (Pat m))
@@ -91,7 +91,7 @@ instance Sized (Pat m) where
   size (PHead p) = size p 
 
 
-instance Sized (ConApp m) where
+instance SNatI m => Sized (ConApp m) where
   type Size (ConApp m) = m
 
   size (PApp p1 p2) = sPlus (size p1) (size p2)
@@ -197,7 +197,7 @@ t3 = Con "cons" `App` Con "a" `App` (Con "cons" `App` Con "b" `App` Con "nil")
 
 -- NOTE: precendence is wonky
 
-instance Show (Exp n) where
+instance SNatI n => Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
@@ -233,7 +233,7 @@ instance Show (ConApp m) where
 
 -- In a `PatBind` term, we can access the pattern with `getPat`
 -- and the RHS with `getBody`
-instance Show (Branch n) where
+instance SNatI n => Show (Branch n) where
   showsPrec :: Int -> Branch n -> String -> String
   showsPrec d (Branch bnd) =
     shows (Pat.getPat bnd)

@@ -68,7 +68,7 @@ t01 = App (Var f0) (Var f1)
 -- >>> appearsFree f1 t00
 -- False
 instance FV Exp where
-  appearsFree :: Fin n -> Exp n -> Bool
+  appearsFree :: SNatI n => Fin n -> Exp n -> Bool
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
   appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
@@ -84,8 +84,9 @@ instance FV Exp where
 -- >>> weaken' s1 t00
 -- 0 0
 
-weaken' :: SNat m -> Exp n -> Exp (m + n)
-weaken' m = applyE @Exp (weakenE' m)
+weaken' :: SNatI n => SNat m -> Exp n -> Exp (m + n)
+weaken' m = 
+  applyE @Exp (weakenE' m)
 
 -- >>> strengthen' s1 s1 t00
 -- Just (0 0)
@@ -141,8 +142,10 @@ t1 =
 
 -- Polymorphic identity function and its type
 
+tyid :: Exp Z
 tyid = Pi Star (bind1 (Pi (Var f0) (bind1 (Var f1))))
 
+tmid :: Exp Z
 tmid = Lam Star (bind1 (Lam (Var f0) (bind1 (Var f0))))
 
 -- >>> tyid
@@ -151,7 +154,7 @@ tmid = Lam Star (bind1 (Lam (Var f0) (bind1 (Var f0))))
 -- >>> tmid
 -- λ. λ. 0
 
-instance Show (Exp n) where
+instance SNatI n => Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
@@ -201,16 +204,16 @@ instance Show (Exp n) where
         . shows (getBody2 b)
 
 -- To compare binders, we only need to `getBody1` them
-instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
+instance (SNatI n, Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
   b1 == b2 = getBody1 b1 == getBody1 b2
 
 -- This is also true for double binders
-instance (Eq (Exp n)) => Eq (Bind2 Exp Exp n) where
+instance (SNatI n, Eq (Exp n)) => Eq (Bind2 Exp Exp n) where
   b1 == b2 = getBody2 b1 == getBody2 b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
-deriving instance (Eq (Exp n))
+deriving instance (SNatI n) => (Eq (Exp n))
 
 --------------------------------------------------------
 
@@ -225,7 +228,7 @@ deriving instance (Eq (Exp n))
 -- >>> eval (t1 `App` t0)
 -- λ. λ. 0 (λ. 0 0)
 
-eval :: Exp n -> Exp n
+eval :: SNatI n => Exp n -> Exp n
 eval (Var x) = Var x
 eval (Lam a b) = Lam a b
 eval (App e1 e2) =
@@ -248,7 +251,7 @@ eval (Split a b) =
 -- >>> step (t1 `App` t0)
 -- Just (λ. λ. 0 (λ. 0 0))
 
-step :: Exp n -> Maybe (Exp n)
+step :: SNatI n => Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
 step (Lam a b) = Nothing
 step (App (Lam a b) e2) = Just (instantiate1 b e2)
@@ -265,7 +268,7 @@ step (Split a b)
   | Just a' <- step a = Just (Split a' b)
   | otherwise = Nothing
 
-eval' :: Exp n -> Exp n
+eval' :: SNatI n => Exp n -> Exp n
 eval' e
   | Just e' <- step e = eval' e'
   | otherwise = e
@@ -281,7 +284,7 @@ eval' e
 -- λ. λ. 0 0
 
 -- reduce the term everywhere, as much as possible
-nf :: Exp n -> Exp n
+nf :: SNatI n => Exp n -> Exp n
 nf (Var x) = Var x
 nf (Lam a b) = Lam a (bind1 (nf (getBody1 b)))
 nf (App e1 e2) =
@@ -298,7 +301,7 @@ nf (Split a b) =
     t -> Split t (PatN.bind2 (nf (getBody2 b)))
 
 -- first find the head form
-whnf :: Exp n -> Exp n
+whnf :: SNatI n => Exp n -> Exp n
 whnf (App a1 a2) = case whnf a1 of
   Lam a b -> whnf (instantiate1 b a1)
   t -> App t a2
@@ -308,7 +311,7 @@ whnf (Split a b) = case whnf a of
 -- all other terms are already in head form
 whnf a = a
 
-norm :: Exp n -> Exp n
+norm :: SNatI n => Exp n -> Exp n
 norm a = case whnf a of
   Lam a b -> Lam (norm a) (bind1 (norm (getBody1 b)))
   Pi a b -> Pi (norm a) (bind1 (norm (getBody1 b)))
@@ -337,7 +340,7 @@ norm a = case whnf a of
 -- closure. In other words, this function calls `evalEnv`
 -- recursively with the saved environment and body of the lambda term.
 
-evalEnv :: Env Exp m n -> Exp m -> Exp n
+evalEnv :: SNatI n =>Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam a b) = applyE r (Lam a b)
 evalEnv r (App e1 e2) =
@@ -358,20 +361,20 @@ evalEnv r (Split a b) =
 
 ----------------------------------------------------------------
 data Err where
-  Equate :: Exp n -> Exp n -> Err
-  PiExpected :: Exp n -> Err
-  SigmaExpected :: Exp n -> Err
-  VarEscapes :: Exp n -> Err
+  Equate :: SNatI n => Exp n -> Exp n -> Err
+  PiExpected :: SNatI n => Exp n -> Err
+  SigmaExpected :: SNatI n => Exp n -> Err
+  VarEscapes :: SNatI n => Exp n -> Err
    
 deriving instance (Show Err)
 
-equate :: (MonadError Err m) => Exp n -> Exp n -> m ()
+equate :: (MonadError Err m, SNatI n) => Exp n -> Exp n -> m ()
 equate t1 t2 = do
   let n1 = whnf t1
       n2 = whnf t2
   equateWHNF n1 n2
 
-equateWHNF :: (MonadError Err m) => Exp n -> Exp n -> m ()
+equateWHNF :: (MonadError Err m, SNatI n) => Exp n -> Exp n -> m ()
 equateWHNF n1 n2 =
   case (n1, n2) of
     (Star, Star) -> pure ()

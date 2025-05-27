@@ -34,7 +34,8 @@ module Rebound.Env(Env, applyEnv,
   tabulate,
   fromTable,
   weakenE',
-  weakenER
+  weakenER,
+  withScope
   ) where
 
 import Rebound.Lib
@@ -45,15 +46,16 @@ import Control.Monad
 import GHC.Generics hiding (S)
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
+import qualified Data.SNat as SNat
 
-import Rebound.Env.Internal
+import Rebound.Env.Vector
 
 ----------------------------------------------
 -- operations on environments/substitutions
 ----------------------------------------------
 
 -- TODO: do we want to replace uses of this operation with something else?
-env :: forall m v n. (SubstVar v, SNatI m) => (Fin m -> v n) -> Env v m n
+env :: forall m v n. (SubstVar v, SNatI m, SNatI n) => (Fin m -> v n) -> Env v m n
 env f = fromVec v where
         v :: Vec m (v n)
         v = Vec.tabulate f
@@ -61,16 +63,16 @@ env f = fromVec v where
 
 -- | A singleton environment (single index domain)
 -- maps that single variable to `v n`
-oneE :: SubstVar v => v n -> Env v (S Z) n
+oneE :: (SubstVar v, SNatI n) => v n -> Env v (S Z) n
 oneE v = v .: zeroE
 
 -- | an environment that maps index 0 to v and leaves
 -- all other indices alone.
-singletonE :: (SubstVar v) => v n -> Env v (S n) n
+singletonE :: (SubstVar v, SNatI n) => v n -> Env v (S n) n
 singletonE v = v .: idE
  
 -- | identity environment, any size
-idE :: (SubstVar v) => Env v n n
+idE :: (SubstVar v, SNatI n) => Env v n n
 idE = shiftNE s0
 
 -- | append two environments
@@ -94,8 +96,10 @@ appendE ::
   Env v (p + m) n
 appendE p = getAppendE (withSNat p (induction base step)) where
   base = MkAppendE $ \e1 e2 -> e2
+  step :: SubstVar v => AppendE v m n p -> AppendE v m n (S p)
   step (MkAppendE r) = MkAppendE $ \e1 e2 -> 
-    head e1 .: r (tail e1) e2
+    withScope e1 $
+       head e1 .: r (tail e1) e2
 
 newtype AppendE v m n p =
      MkAppendE { getAppendE :: 
@@ -108,34 +112,34 @@ head :: (SubstVar v) => Env v (S n) m -> v m
 head f = applyEnv f FZ
 
 -- | increment all free variables by 1
-shift1E :: (SubstVar v) => Env v n (S n)
+shift1E :: (SubstVar v, SNatI n) => Env v n (S n)
 shift1E = shiftNE s1
 
 -- | Shift an environment by size `p`
 upN :: forall v p m n.
-  (Subst v v) =>
+  (Subst v v, SNatI n) =>
   SNat p ->
   Env v m n ->
   Env v (p + m) (p + n)
-upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) where
+upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) p where
    base :: UpN v m n Z
-   base = MkUpN id
+   base = MkUpN (const id)
    step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
    step (MkUpN r) = MkUpN 
-    $ \e -> var Fin.f0 .: (r e .>> shiftNE s1)
+    $ \p e -> withSNat (sPlus (SNat.pred p) (snat @n)) $ var Fin.f0 .: (r (SNat.pred p) e .>> shiftNE s1)
 
 newtype UpN v m n p = 
-    MkUpN { getUpN :: Env v m n -> Env v (p + m) (p + n) }
+    MkUpN { getUpN :: SNat p -> Env v m n -> Env v (p + m) (p + n) }
 
 ----------------------------------------------------
 -- Create an environment from a length-indexed 
 -- vector of scoped values
 
-fromVec :: SubstVar v => Vec m (v n) -> Env v m n
+fromVec :: (SubstVar v, SNatI n) => Vec m (v n) -> Env v m n
 fromVec v = getEnv (Vec.induction v base step) where
-  base :: EnvN v n Z
+  base :: SNatI n => EnvN v n Z
   base = EnvN zeroE
-  step :: v n -> EnvN v n m -> EnvN v n (S m)
+  step :: (SubstVar v, SNatI n) => v n -> EnvN v n m -> EnvN v n (S m)
   step x (EnvN r) = EnvN (x .: r)
 
 
@@ -174,7 +178,7 @@ singletonR (x, t) =
 
 
 -- Move a refinement to a new scope
-shiftRefinement :: forall p n v. (Subst v v) => SNat p -> Refinement v n -> Refinement v (p + n)
+shiftRefinement :: forall p n v. (SubstVar v, SNatI n) => SNat p -> Refinement v n -> Refinement v (p + n)
 shiftRefinement p (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g' where
   f' = Map.mapKeysMonotonic (Fin.shiftN @p @n p) r
   g' = Map.map (applyE @v (shiftNE p)) f'

@@ -82,7 +82,7 @@ shiftNE m = Env $ \x -> var (Fin.shiftN m x)
 
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
-(.:) :: SubstVar v => v m -> Env v n m -> Env v (S n) m
+(.:) :: v m -> Env v n m -> Env v (S n) m
 ty .: s = Env $ \y -> case y of 
                  FZ -> ty 
                  FS x -> applyEnv s x

@@ -37,7 +37,7 @@ import Data.Fin
 
 -- | Does a variable appear free?
 class FV (t :: Nat -> Type) where
-  appearsFree :: Fin n -> t n -> Bool
+  appearsFree :: SNatI n => Fin n -> t n -> Bool
 
 ----------------------------------------------------------
 -- * Strengthening
@@ -88,7 +88,7 @@ instance Strengthen Fin where
 -- This number does not need to be an explicit parameter of the type
 -- so that we have flexibility about what types we can use as 
 -- patterns. 
-class Sized (t :: Type) where
+class SNatI (Size t) => Sized (t :: Type) where
   -- Retrieve size from the type (number of variables bound by the pattern)
   type Size t :: Nat
   -- Access size as a term
@@ -112,7 +112,7 @@ instance PatEq LocalName LocalName where
   patEq p1 p2 = Just Refl
 
 -- ** SNats
-instance Sized (SNat n) where
+instance SNatI n => Sized (SNat n) where
   type Size (SNat n) = n
   size n = n
 
@@ -122,7 +122,7 @@ instance PatEq (SNat n1) (SNat n2) where
 
 -- ** Vectors
 
-instance Sized (Vec n a) where
+instance SNatI n => Sized (Vec n a) where
   type Size (Vec n a) = n
   size = Vec.vlength
 
@@ -139,7 +139,7 @@ instance PatEq () () where patEq _ _ = Just Refl
 
 -- ** Pairs 
 
-instance (Sized a, Sized b) => Sized (a,b) where
+instance (SNatI ((Size a) + (Size b)), Sized a, Sized b) => Sized (a,b) where
    type Size (a,b) = Size a + Size b
    size (x,y) = sPlus (size x) (size y)
 

@@ -55,13 +55,13 @@ instance (SNatI p) => Sized (PatN p) where
 
 type BindN v c m n = Pat.Bind v c (PatN m) n
 
-bindN :: forall m v c n. (Subst v c, SNatI m) => c (m + n) -> BindN v c m n
+bindN :: forall m v c n. (Subst v c, SNatI m, SNatI n) => c (m + n) -> BindN v c m n
 bindN = Pat.bind (PatN (snat @m))
 
-unbindN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+unbindN :: forall m v c n. (Subst v c,SNatI m, SNatI n) => BindN v c m n -> c (m + n)
 unbindN = Pat.getBody
 
-getBodyN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+getBodyN :: forall m v c n. (Subst v c,SNatI m, SNatI n) => BindN v c m n -> c (m + n)
 getBodyN = Pat.getBody
 
 unbindWithN ::
@@ -71,7 +71,7 @@ unbindWithN ::
   d
 unbindWithN b f = Pat.unbindWith b (const f)
 
-instantiateN :: (Subst v c, SNatI m) => BindN v c m n -> Vec m (v n) -> c n
+instantiateN :: (Subst v c, SNatI m, SNatI n) => BindN v c m n -> Vec m (v n) -> c n
 instantiateN b v = Pat.instantiate b (fromVec v)
 
 instantiateWithN :: forall m v c d n.
@@ -83,8 +83,8 @@ instantiateWithN :: forall m v c d n.
 instantiateWithN b v f =
   unbindWithN b (f . appendE (snat @m) (fromVec v))
 
-applyUnderN :: (Subst v c2, SNatI m) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+applyUnderN :: (Subst v c2, SNatI m, SNatI n2) =>
+  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   BindN v c1 m n1 ->
   BindN v c2 m n2
@@ -99,14 +99,14 @@ applyUnderN = Pat.applyUnder
 
 type Bind1 v c n = Pat.Bind v c (PatN N1) n
 
-bind1 :: (Subst v c) => c (S n) -> Bind1 v c n
+bind1 :: (Subst v c, SNatI n) => c (S n) -> Bind1 v c n
 bind1 = Pat.bind (PatN s1)
 
-getBody1 :: forall v c n. (Subst v c) => 
+getBody1 :: forall v c n. (Subst v c, SNatI n) => 
   Bind1 v c n -> c (S n)
 getBody1 = Pat.getBody
 
-unbind1 :: forall v c n d. (Subst v c) => 
+unbind1 :: forall v c n d. (Subst v c, SNatI n) => 
   Bind1 v c n -> (c (S n) -> d) -> d
 unbind1 b f = f (Pat.getBody b)
 
@@ -115,18 +115,18 @@ unbindWith1 ::
   (forall m. Env v m n -> c (S m) -> d) -> d
 unbindWith1 b f = Pat.unbindWith b (const f)
 
-instantiate1 :: (Subst v c) => Bind1 v c n -> v n -> c n
+instantiate1 :: (Subst v c, SNatI n) => Bind1 v c n -> v n -> c n
 instantiate1 b v1 = Pat.instantiate b (v1 .: zeroE)
 
 instantiateWith1 ::
-  (SubstVar v) =>
+  (SubstVar v, SNatI n) =>
   Bind1 v c n -> v n ->
-  (forall m n. Env v m n -> c m -> d n) ->  d n
+  (forall m n. SNatI n => Env v m n -> c m -> d n) ->  d n
 instantiateWith1 b v1 f =
   unbindWith1 b (\r e -> f (v1 .: r) e)
 
-applyUnder1 :: (Subst v c2) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+applyUnder1 :: (Subst v c2, SNatI n2) =>
+  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind1 v c1 n1 ->
   Bind1 v c2 n2
@@ -141,14 +141,14 @@ applyUnder1 = Pat.applyUnder
 
 type Bind2 v c n = Pat.Bind v c (PatN N2) n
 
-bind2 :: (Subst v c) => c (S (S n)) -> Bind2 v c n
+bind2 :: (Subst v c, SNatI n) => c (S (S n)) -> Bind2 v c n
 bind2 = Pat.bind (PatN s2)
 
-getBody2 :: forall v c n. (Subst v c) => 
+getBody2 :: forall v c n. (Subst v c, SNatI n) => 
   Bind2 v c n -> c (S (S n))
 getBody2 = Pat.getBody
 
-unbind2 :: forall v c n d. (Subst v c) => 
+unbind2 :: forall v c n d. (Subst v c, SNatI n) => 
   Bind2 v c n -> (c (S (S n)) -> d) -> d
 unbind2 b f = f (getBody2 b)
 
@@ -159,7 +159,7 @@ unbindWith2 ::
   d
 unbindWith2 b f = Pat.unbindWith b (const f)
 
-instantiate2 :: (Subst v c) => Bind2 v c n -> v n -> v n -> c n
+instantiate2 :: (Subst v c, SNatI n) => Bind2 v c n -> v n -> v n -> c n
 instantiate2 b v1 v2 = Pat.instantiate b (v1 .: (v2 .: zeroE))
 
 instantiateWith2 ::
@@ -171,8 +171,8 @@ instantiateWith2 ::
 instantiateWith2 b v1 v2 f =
   unbindWith2 b (\r e -> f (v1 .: (v2 .: r)) e)
 
-applyUnder2 :: (Subst v c2) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+applyUnder2 :: (Subst v c2, SNatI n2) =>
+  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind2 v c1 n1 ->
   Bind2 v c2 n2

@@ -70,7 +70,7 @@ data Bind v c (pat :: Nat -> Type) (n :: Nat) where
 -- | Create a `Bind` with an identity substitution.
 bind ::
   forall v c pat n.
-  (ScopedSized pat, Subst v c) =>
+  (ScopedSized pat, Subst v c, SNatI n) =>
   pat n ->
   c (ScopedSize pat + n) ->
   Bind v c pat n
@@ -85,7 +85,7 @@ getPat (Bind pat env t) = pat
 -- bound in the pattern
 getBody ::
   forall v c pat n.
-  (ScopedSized pat, Subst v v, Subst v c) =>
+  (ScopedSized pat, Subst v v, Subst v c, SNatI n) =>
   Bind v c pat n ->
   c (ScopedSize pat + n)
 getBody (Bind (pat :: pat n) (env :: Env v m n) t) =
@@ -131,7 +131,7 @@ unBindWith ::
 unBindWith (Bind pat r t) f = f pat r t
 
 applyUnder :: forall pat v c n1 n2.
-  (ScopedSized pat, Subst v v, Subst v c, Subst v pat) =>
+  (ScopedSized pat, Subst v v, Subst v c, Subst v pat, SNatI n2) =>
   (forall m n. Env v m n -> c m -> c n) ->
   Env v n1 n2 ->
   Bind v c pat n1 ->
@@ -149,12 +149,13 @@ applyUnder f r2 (Bind p r1 t) =
 -- in the environment 
 instantiateWeakenEnv ::
   forall p n v c.
-  (SubstVar v, Subst v v) =>
+  (SubstVar v, Subst v v, SNatI n) =>
   SNat p ->
   SNat n ->
   v (p + n) ->
   Env v (S n) (p + n)
 instantiateWeakenEnv p n a = 
+  withSNat (sPlus p n) $
   a .: shiftNE p
 
 -----------------------------------------------------------------
@@ -166,7 +167,8 @@ instance (ScopedSized pat,
           Subst v v) => Subst v (Bind v c pat) where
   applyE (env1 :: Env v n m) 
          (Bind (pat :: pat n) (env2 :: Env v m1 n) m) =
-       Bind (applyE env1 pat) (env2 .>> env1) m 
+      withScope env1 $
+          Bind (applyE env1 pat) (env2 .>> env1) m 
     
       
 instance
@@ -178,9 +180,12 @@ instance
   ) =>
   FV (Bind v c p)
   where
+  appearsFree :: forall n. (SNatI n) => Fin n -> Bind v c p n -> Bool
   appearsFree n b =
     let pat = getPat b
-     in appearsFree n pat
+     in 
+      withSNat (sPlus (scopedSize pat) (snat @n)) $
+      appearsFree n pat
           || appearsFree (Fin.shiftN (scopedSize pat) n) (getBody b)
 
 
@@ -190,6 +195,7 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
 
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
+    withSNat (sPlus k n) $
       unbind bnd $ \(p :: p (k + (m + n))) t' ->
         case (axiomAssoc @(ScopedSize p) @k @(m + n), 
               axiomAssoc @(ScopedSize p) @k @n)  of 
@@ -199,10 +205,13 @@ instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengt
 
                 r  :: Maybe (c (ScopedSize p + (k + n)))
                 r  = strengthenRec (sPlus (scopedSize p) k) m n t'
-            in bind <$> p' <*> r
+            in 
+              bind <$> p' <*> r
 -----------------------------------------------------------------
 -- Telescopes
+-- TODO: update for vector based environments
 ---------------------------------------------------------------
+{-
 
 -- Telescopes are parameterized by scoped patterns, with kinds 
 -- `pat :: Nat -> Nat -> Type`. For these types, we need to know 
@@ -235,10 +244,10 @@ iscopedPatEq = scopedPatEq
 -- 'n' is the scope depth for A1 (and A2 has depth S n, etc.)
 -- We include the appropriate associativity property with ICons so 
 -- that it is always available for pattern matching
-data TeleList (pat :: Nat -> Nat -> Type) p n where
+data TeleList (pat :: Nat -> Nat -> Type) (p :: Nat) (n :: Nat) where
   TNil :: TeleList pat N0 n
   TCons :: 
-    ( IScopedSized pat, 
+    ( IScopedSized pat, SNatI p2,
       p2 + (p1 + n) ~ (p2 + p1) + n) =>
     pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
 
@@ -248,7 +257,7 @@ lengthTele (TCons _ ps) = 1 + lengthTele ps
 
 -- Smart constructor
 (<:>) :: forall p1 p2 pat n. 
-         (IScopedSized pat) =>
+         (IScopedSized pat, SNatI p2) =>
          pat p1 n -> TeleList pat p2 (p1 + n) -> TeleList pat (p2 + p1) n
 e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
 infixr <:>
@@ -258,7 +267,7 @@ instance IScopedSized (TeleList pat) where
 instance ScopedSized (TeleList pat p) where
   type ScopedSize (TeleList pat p) = p
 
-instance Sized (TeleList pat p n) where
+instance SNatI n => Sized (TeleList pat p n) where
   type Size (TeleList pat p n) = p
   size TNil = s0
   size (TCons p1 p2) = sPlus (size p2) (iscopedSize p1)
@@ -279,7 +288,8 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
   appearsFree :: forall n. (IScopedSized pat, forall p1. FV (pat p1)) => 
       Fin n -> TeleList pat p n -> Bool
   appearsFree n TNil = False
-  appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (Fin.shiftN (iscopedSize p1) n) p2
+  appearsFree n (TCons p1 p2) = 
+    appearsFree n p1 || appearsFree (Fin.shiftN (iscopedSize p1) n) p2
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
   strengthenRec k m n TNil = Just TNil
@@ -299,6 +309,7 @@ instance
     = Just Refl
   patEq _ _ = Nothing
 
+-}
 -----------------------------------------------------------------
 -- Rebind 
 -- TODO: this is the binary version of a telescope. 
