@@ -17,6 +17,8 @@ import Rebound.Bind.Single
 import Data.Fin  
 import Data.Vec qualified
 
+import Control.DeepSeq
+
 -- | Datatype of well-scoped lambda-calculus expressions
 --
 -- The `Var` constructor of this datatype takes an index that must
@@ -31,6 +33,14 @@ data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
   Lam :: Bind Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
+
+instance SNatI n => NFData (Exp n) where
+  rnf (Var x) = rnf x
+  rnf (Lam b) = rnf b
+  rnf (App e1 e2) = rnf e1 `seq` rnf e2
+
+instance SNatI n => NFData (Bind Exp Exp n) where
+  rnf b = rnf (getBody b)
 
 ----------------------------------------------
 -- Example lambda-calculus expressions
@@ -63,6 +73,7 @@ t1 =
 
 -- >>> t1
 -- (λ. (λ. (1 ((λ. 0) 0))))
+
 
 ----------------------------------------------
 -- (Alpha-)Equivalence
@@ -144,9 +155,11 @@ instance SNatI n => Show (Exp n) where
 -----------------------------------------------
 
 -- >>> eval t1
+-- (λ. (λ. (1 ((λ. 0) 0))))
 
 -- >>> eval (t1 `App` t0)
 -- (λ. ((λ. 0) ((λ. 0) 0)))
+
 
 
 -- TODO: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
@@ -172,6 +185,7 @@ eval (App e1 e2) =
 ----------------------------------------------
 -- >>> step (t1 `App` t0)
 -- Just (λ. ((λ. 0) ((λ. 0) 0)))
+
 
 -- | Do one step of evaluation, if possible
 -- If the function is already a value or is stuck
@@ -210,8 +224,10 @@ nf (App e1 e2) =
 -- >>> nf t0
 -- (λ. 0)
 
+
 -- >>> nf t1
 -- (λ. (λ. (1 0)))
+
 
 -- >>> nf (t1 `App` t0)
 -- (λ. 0)
@@ -245,7 +261,7 @@ nf (App e1 e2) =
 -- without substitution, it doesn't do any repeat work.
 
 -- >>> :t getBody
--- getBody :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
+-- getBody :: (Subst v c, SNatI n) => Bind v c n -> c ('S n)
 
 
 evalEnv :: SNatI n => Env Exp m n -> Exp m -> Exp n
@@ -259,8 +275,8 @@ evalEnv r (App e1 e2) =
           -- unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 
--- >>> evalEnv zeroE t1     -- start with "empty environment"
--- λ. λ. 1 (λ. 0 0)
+-- >>> evalEnv (zeroE :: Env Exp Z Z) t1     -- start with "empty environment"
+-- (λ. (λ. (1 ((λ. 0) 0))))
 
 -- For full reduction, we need to normalize under the binder too.
 -- In this case, the `applyUnder` function takes care of the
@@ -268,7 +284,7 @@ evalEnv r (App e1 e2) =
 -- to the modifed
 
 -- >>> :t applyUnder nfEnv
--- applyUnder nfEnv :: Env Exp n1 n2 -> Bind Exp Exp n1 -> Bind Exp Exp n2
+-- applyUnder nfEnv :: SNatI n2 => Env Exp n1 n2 -> Bind Exp Exp n1 -> Bind Exp Exp n2
 --
 -- In the beta-reduction case, we could use `unbindWith` as above
 -- but the `instantiateWith` function already captures exactly
@@ -284,5 +300,10 @@ nfEnv r (App e1 e2) =
    in case nfEnv r e1 of
         Lam b -> instantiateWith b n nfEnv
         t -> App t (nfEnv r e2)
+
+
+
+-- >>> nfEnv (zeroE :: Env Exp Z Z) t1     -- start with "empty environment"
+-- (λ. (λ. (1 (λ. 0))))
 
 ----------------------------------------------------------------

@@ -48,7 +48,7 @@ import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import qualified Data.SNat as SNat
 
-import Rebound.Env.Vector
+import Rebound.Env.Internal
 
 ----------------------------------------------
 -- operations on environments/substitutions

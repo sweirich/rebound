@@ -89,7 +89,8 @@ pattern FZ <- (UnsafeFin_ 0)  -- Matcher: succeeds if the wrapped Natural is 0
 -- Takes the Natural value from a Fin (S k) and tries to find its predecessor's Natural value
 viewFS :: Natural -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
 viewFS currentNat
-  | currentNat > 0 = Just (UnsafeFin_ (currentNat - 1)) -- This will be wrapped as Fin k
+  | currentNat > 0 = 
+    Just (UnsafeFin_ (currentNat - 1)) -- This will be wrapped as Fin k
   | otherwise      = Nothing -- Zero has no predecessor in this Fin model
 
 -- FS m represents the "successor" of m.
@@ -136,6 +137,9 @@ instance ToInt (Fin n) where
 
 -- >>> :info Fin
 
+-- >>> ([minBound .. maxBound] :: [Fin (S Z)])
+-- [0]
+
 instance SNatI n => Bounded (Fin n) where
   minBound = UnsafeFin 0
   maxBound = UnsafeFin (bound @n - 1)
@@ -158,7 +162,9 @@ instance SNatI n => Num (Fin n) where
     | k1 + k2 < bound @n = UnsafeFin (k1 + k2)
     | otherwise = error "addition out of range"
   UnsafeFin k1 - UnsafeFin k2 
+    | k1 >= k2
     = UnsafeFin (k1 - k2)
+    | otherwise = error "subtraction out of range"
   UnsafeFin k1 * UnsafeFin k2 
     | k1 * k2 < bound @n = UnsafeFin (k1 * k2)
     | otherwise = error "multiplication out of range"
@@ -179,8 +185,11 @@ invert f = maxBound - f
 mirror :: forall n. SNatI n => Fin n -> Fin n
 mirror = invert
 
-universe :: SNatI n => [Fin n]
-universe = [minBound .. maxBound]
+universe :: forall n. SNatI n => [Fin n]
+universe | snatToNatural (snat @n) > 0 
+         = [minBound .. maxBound]
+         | otherwise
+         = []
   
 -------------------------------------------------------------------------------
 -- Shifting and weakening
