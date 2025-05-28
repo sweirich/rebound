@@ -58,8 +58,6 @@ library
     , Rebound.Env.InternalB
     , Rebound.Env.Functional
     , Rebound.Env.Vector
-    , Rebound.Scope
-    , Rebound.Scoped
     , Rebound.MonadNamed
     , Rebound.MonadScoped
     , Rebound.Bind.Single

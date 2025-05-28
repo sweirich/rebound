@@ -26,8 +26,6 @@ where
 import Rebound
 import Rebound.Classes
 import Rebound.MonadNamed (Named (..))
--- import Rebound.MonadScoped (WithData (..))
-import Rebound.Scope qualified as Scope
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
