@@ -12,10 +12,10 @@
 -- term must be closed.
 module LC where
 
-import AutoEnv
-import AutoEnv.Bind.Single
 import Data.Fin
 import Data.Vec qualified
+import Rebound
+import Rebound.Bind.Single
 
 -- | Datatype of well-scoped lambda-calculus expressions
 --
@@ -99,8 +99,6 @@ instance SubstVar Exp where
 -- The function `applyEnv` looks up a mapping in
 -- an environment.
 
-
-
 -- | The operation `applyE` applies an environment
 -- (explicit substitution) to an expression.
 --
@@ -111,14 +109,15 @@ instance SubstVar Exp where
 -- the binder.
 instance Shiftable Exp where
   shift = shiftFromApplyE @Exp
+
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
   applyE r (Var x) = applyEnv r x
   applyE r e = gapplyE r e
+
 deriving instance (Generic1 Exp)
 
 -- >>> :info Rep1 Exp
-
 
 ----------------------------------------------
 -- Display (Show)
@@ -148,7 +147,6 @@ instance Show (Exp n) where
 
 -- >>> eval (t1 `App` t0)
 -- (λ. ((λ. 0) ((λ. 0) 0)))
-
 
 -- TODO: the above should pretty print as λ. (λ. 0) ((λ. 0) 0)
 
@@ -248,7 +246,6 @@ nf (App e1 e2) =
 -- >>> :t getBody
 -- getBody :: (Subst v v, Subst v c) => Bind v c n -> c ('S n)
 
-
 evalEnv :: Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam b) = applyE r (Lam b)
@@ -257,7 +254,7 @@ evalEnv r (App e1 e2) =
    in case evalEnv r e1 of
         Lam b ->
           instantiateWith b v evalEnv
-          -- unbindWith b (\r' e' -> evalEnv (v .: r') e')
+        -- unbindWith b (\r' e' -> evalEnv (v .: r') e')
         t -> App t v
 
 -- >>> evalEnv zeroE t1     -- start with "empty environment"
@@ -276,7 +273,7 @@ evalEnv r (App e1 e2) =
 -- this pattern.
 nfEnv :: Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
---nfEnv r2 (Lam b) = Lam $ unbindWith b $ \r1 e -> bind (nfEnv (up (r1 .>> r2)) e)
+-- nfEnv r2 (Lam b) = Lam $ unbindWith b $ \r1 e -> bind (nfEnv (up (r1 .>> r2)) e)
 nfEnv r (Lam b) = Lam $ applyUnder nfEnv r b
 nfEnv r (App e1 e2) =
   let n = nfEnv r e1

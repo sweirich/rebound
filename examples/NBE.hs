@@ -1,3 +1,5 @@
+-- TODO: This example is incomplete
+
 -- |
 -- Module      : NBE
 -- Description : Normalization-by-evaluation
@@ -5,18 +7,14 @@
 -- NBE is a technique for normalizing lambda-calculus terms. It involves
 -- reifying syntactic terms to another model, evaluating in that model, and
 -- then reflecting
-
--- TODO: This example is incomplete
-
 module NBE where
 
-import AutoEnv
-import AutoEnv.Env
 import Data.Fin
-import AutoEnv.Bind.Single
-
 -- we use the lambda calculus implementation as is
 import LC hiding (eval)
+import Rebound
+import Rebound.Bind.Single
+import Rebound.Env
 
 -- Inspired by https://github.com/AndrasKovacs/elaboration-zoo/blob/master/01-eval-closures-debruijn/Main.hs
 -- Dependent types added by SCW
@@ -28,9 +26,9 @@ import LC hiding (eval)
 -- Note that there is no binding form for levels in this AST. The
 -- closure case binds a de Bruijn *index* in the value.
 data Val m
- = VVar (Fin m)
- | VApp (Val m) (Val m)
- | VLam (Bind Val Exp m)
+  = VVar (Fin m)
+  | VApp (Val m) (Val m)
+  | VLam (Bind Val Exp m)
 
 -- The body of `VLam` is an expression that is closed with respect to
 -- indices by the delayed environment in the binder. The `Val`ues in the
@@ -48,6 +46,7 @@ instance Subst Val Val where
 --- TODO apply a function to a saved environment
 applyBind :: (v1 n -> v2 m) -> Bind v1 e n -> Bind v2 e m
 applyBind f b = undefined
+
 -- applyBind f (Bind (Env r) t) = Bind (Env (f . r)) t
 
 -- weaken the levels in a `Val`. This only makes the scope larger, it does not
@@ -58,7 +57,7 @@ weaken1Val = applyE @Val (weakenE' s1)
 -- A value environment replaces de Bruijn indices with leveled values
 type VEnv n m = Env Val n m
 
---evalInEnv :: Env Val n m -> Bind Exp Exp n -> Bind Val Exp m
+-- evalInEnv :: Env Val n m -> Bind Exp Exp n -> Bind Val Exp m
 -- evalInEnv r b = bind (applyE (up r) (unbind b))
 
 -- Convert an expression to a value
@@ -67,10 +66,10 @@ eval r = \case
   Var x -> applyEnv r x
   Lam b -> VLam (applyBind (eval r) b)
   App a1 a2 ->
-   let a2' = eval r a2 in
-   case eval r a1 of
-      (VLam b) -> instantiateWith b a2' eval
-      a1' -> VApp a1' a2'
+    let a2' = eval r a2
+     in case eval r a1 of
+          (VLam b) -> instantiateWith b a2' eval
+          a1' -> VApp a1' a2'
 
 -- | Convert a value to a term by translating
 -- all level-based vars to index-based vars
@@ -78,15 +77,19 @@ eval r = \case
 -- and for introducing the new bound variable.
 quote :: forall l. SNat l -> Val l -> Exp l
 quote l = \case
-   VVar x   -> withSNat l $ Var (invert x)
-   VApp t u -> App (quote l t) (quote l u)
-   VLam b ->
-       Lam (bind (quote (AutoEnv.succ l)
-              (instantiateWith (applyBind weaken1Val b) (withSNat l $ var maxBound) eval)))
+  VVar x -> withSNat l $ Var (invert x)
+  VApp t u -> App (quote l t) (quote l u)
+  VLam b ->
+    Lam
+      ( bind
+          ( quote
+              (Rebound.succ l)
+              (instantiateWith (applyBind weaken1Val b) (withSNat l $ var maxBound) eval)
+          )
+      )
 
 vApp :: Bind Val Exp n -> Val n -> Val n
 vApp b v = instantiateWith b v eval
-
 
 -- normalize by reflecting to one domain then
 -- reifying the result back

@@ -1,4 +1,4 @@
-# Autoenv
+# Rebound
 
 *NOTE: this library is a work in progress. The interface is still under active 
 development and will change.*
@@ -72,9 +72,9 @@ An implementation of a simple type checker for a dependent-type system. Language
 
 A dependent type system with nested, dependent pattern matching. Patterns may also include scoped terms.
 
-5. [PiForall](examples/PiForall.hs)
+6. [System F](examples/SystemF.hs)
 
-A simplification of the [pi-forall](https://github.com/sweirich/pi-forall) language, which includes dependent pattern matching for arbitrary user-defined datatypes.
+Working with two separate scopes (type and term variables) is tricky. This example shows one way to do it.
 
 ## Related libraries
 
@@ -85,6 +85,8 @@ Another scope-safe approach to de Bruijn indices in Haskell. Uses few language e
 - [Unbound](https://hackage.haskell.org/package/unbound-generics)
 
 Uses locally-nameless reprsentation. Inspiration for the type-direct approach to the binding interface found here. Not-scope safe so easy to get started. Working with this version requires a monad for fresh name generation. Can be slow. 
+
+- [Foil and Free Foil](https://hackage.haskell.org/package/free-foil)
 
 - [binder](https://hackage.haskell.org/package/binder)
 

@@ -23,7 +23,7 @@
 
 - More examples:  mutual recursion, MLTT, DOT, OO language? 
 
-- Change name from `autoenv` to something else? rebound? 
+- Change name from `Rebound` to something else? rebound? 
 
 - Rationalize naming and use of implicit/explicit singleton nats
 

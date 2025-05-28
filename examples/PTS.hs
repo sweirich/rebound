@@ -2,11 +2,11 @@
 -- Includes Pi/Sigma, untyped equivalence
 module PTS where
 
-import AutoEnv
+import Rebound
 
-import qualified AutoEnv.Bind.Pat as Pat
-import AutoEnv.Bind.PatN as PatN
-import AutoEnv.Context
+import qualified Rebound.Bind.Pat as Pat
+import Rebound.Bind.PatN as PatN
+import Rebound.Context
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin(Fin(..), f0,f1,f2)
 import Data.Fin qualified as Fin

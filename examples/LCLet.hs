@@ -8,8 +8,8 @@
 -- to implement these constructs.
 module LCLet where
 
-import AutoEnv
-import AutoEnv.Bind.Single
+import Rebound
+import Rebound.Bind.Single
 import Data.Fin
 import Data.Vec qualified as Vec
 

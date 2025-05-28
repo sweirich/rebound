@@ -1,13 +1,13 @@
 module Data.Scoped.Telescope where
 
-import AutoEnv.Classes
-import AutoEnv.Env (Shiftable (..))
+import Rebound.Classes
+import Rebound.Env (Shiftable (..))
 import Data.Fin (Fin)
 import Data.Nat
 import Data.Type.Equality ((:~:) (..))
 import Data.Type.Nat
 import Data.Vec.Lazy qualified as Vec
-import AutoEnv.Lib (axiomAssoc, axiomPlusZ, axiomSus)
+import Rebound.Lib (axiomAssoc, axiomPlusZ, axiomSus)
 import Data.SNat
 
 -- | Unlike 'Scoped.TeleList', this datatype does not nest: it is effectively a

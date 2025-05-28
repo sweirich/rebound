@@ -2,7 +2,7 @@
 -- Module      : Rebound
 -- Description : Explicit substitutions
 -- Stability   : experimental
-module Rebound
+module Rebound 
   (module Rebound.Classes,
    module Rebound.Env,
    module Rebound.Lib,
@@ -10,7 +10,7 @@ module Rebound
    Generic(..),
    Generic1(..))
 where
-
+  
 import Data.SNat (Nat(..))
 import Data.Fin
 import Data.Vec (Vec(..))

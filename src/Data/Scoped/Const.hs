@@ -1,6 +1,6 @@
 module Data.Scoped.Const where
 
-import AutoEnv (Subst(..), SubstVar(..), Shiftable(..))
+import Rebound (Subst(..), SubstVar(..), Shiftable(..))
 
 data Const n = Const
 

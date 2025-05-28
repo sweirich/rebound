@@ -1,18 +1,17 @@
 -- | A dependent type system, with nested dependent pattern matching for Sigma types.
 -- This is an advanced usage of the binding library, demonstrating the use of Scoped patterns.
 -- It doesn't correspond to any current system, but has its own elegance
--- (Maybe deserves to be written up on its own?)
--- However, this implementation does not attempt to use explicit environments
--- to optimize the execution.
+-- This implementation does not attempt to use explicit environments.
+
 module DepMatch where
 
-import AutoEnv
-import AutoEnv.Context
+import Rebound
+import Rebound.Context
 
 
-import qualified AutoEnv.Bind.Pat as Pat
-import qualified AutoEnv.Bind.Scoped as Scoped
-import AutoEnv.Bind.PatN as PN
+import qualified Rebound.Bind.Pat as Pat
+import qualified Rebound.Bind.Scoped as Scoped
+import Rebound.Bind.PatN as PN
 
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
