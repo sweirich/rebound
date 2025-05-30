@@ -1,0 +1,38 @@
+Darwin Stephanie-Weirich-MBP 24.5.0 Darwin Kernel Version 24.5.0: Tue Apr 22 19:53:27 PDT 2025; root:xnu-11417.121.6~2/RELEASE_ARM64_T6041 arm64
+benchmarking eval/Auto.Env.Strict.EnvV/
+time                 1.590 ms   (1.581 ms .. 1.599 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 1.584 ms   (1.581 ms .. 1.589 ms)
+std dev              13.44 μs   (10.88 μs .. 17.60 μs)
+
+benchmarking nf/Auto.Env.Strict.EnvV/
+time                 148.2 ms   (147.5 ms .. 148.8 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 148.9 ms   (148.5 ms .. 150.6 ms)
+std dev              1.086 ms   (213.2 μs .. 1.645 ms)
+variance introduced by outliers: 12% (moderately inflated)
+
+benchmarking random15/Auto.Env.Strict.EnvV/
+time                 955.0 μs   (947.6 μs .. 963.9 μs)
+                     1.000 R²   (0.999 R² .. 1.000 R²)
+mean                 947.6 μs   (943.2 μs .. 952.5 μs)
+std dev              15.62 μs   (12.89 μs .. 19.25 μs)
+
+benchmarking random20/Auto.Env.Strict.EnvV/
+time                 998.3 μs   (987.8 μs .. 1.009 ms)
+                     0.999 R²   (0.999 R² .. 1.000 R²)
+mean                 993.0 μs   (989.0 μs .. 997.8 μs)
+std dev              14.60 μs   (11.66 μs .. 20.21 μs)
+
+benchmarking random25/Auto.Env.Strict.EnvV/
+time                 2.296 ms   (2.285 ms .. 2.306 ms)
+                     1.000 R²   (0.999 R² .. 1.000 R²)
+mean                 2.315 ms   (2.304 ms .. 2.327 ms)
+std dev              41.19 μs   (34.24 μs .. 50.45 μs)
+
+benchmarking random35/Auto.Env.Strict.EnvV/
+time                 3.591 ms   (3.581 ms .. 3.604 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 3.601 ms   (3.593 ms .. 3.614 ms)
+std dev              32.86 μs   (23.39 μs .. 43.25 μs)
+
