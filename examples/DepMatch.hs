@@ -169,9 +169,9 @@ t01 = App (Var f0) (Var f1)
 instance FV Exp where
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
-  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
+  appearsFree n (Pi a b) = appearsFree n a || appearsFree (fs n) (getBody1 b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
+  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (fs n) (getBody1 b)
   appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
   appearsFree n (Match b) = any (appearsFree n) b
   appearsFree n (Annot a t) = appearsFree n a || appearsFree n t
@@ -297,7 +297,7 @@ instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
-    | appearsFree FZ (getBody1 b) =
+    | appearsFree f0 (getBody1 b) =
         showParen (d > 10) $
           showString "Pi "
             . shows a
@@ -309,7 +309,7 @@ instance Show (Exp n) where
             . showString " -> "
             . showsPrec 10 (getBody1 b)
   showsPrec d (Sigma a b)
-    | appearsFree FZ (getBody1 b) =
+    | appearsFree f0 (getBody1 b) =
         showParen (d > 10) $
           showString "Sigma "
             . shows a

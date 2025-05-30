@@ -9,9 +9,9 @@ module SystemF where
 -}
 
 import Prelude hiding (lookup)
-import Rebound
+import Rebound hiding (pred)
 import Rebound.Bind.Single
-
+import Data.Fin(prev)
 
 data Ty (n :: Nat) where
     TVar :: Fin n -> Ty n
@@ -83,10 +83,10 @@ data FCtx m n where
     ConsTyVar :: FCtx m n -> FCtx (S m) n
 
 lookup :: Fin n -> FCtx m n -> Ty m
-lookup FZ (ConsTmVar ty _) = ty
-lookup FZ (ConsTyVar g) = applyE @Ty shift1E $ lookup FZ g
-lookup (FS x) (ConsTmVar _ g) = lookup x g
-lookup (FS x) (ConsTyVar g) = applyE @Ty shift1E $ lookup (FS x) g
+lookup (fin_ -> FZ_) (ConsTmVar ty _) = ty
+lookup (fin_ -> FZ_) (ConsTyVar g) = applyE @Ty shift1E $ lookup f0 g
+lookup (fin_ -> FS_ x) (ConsTmVar _ g) = lookup x g
+lookup (fin_ -> FS_ x) (ConsTyVar g) = applyE @Ty shift1E $ lookup (fs x) g
 
 tc :: (SNatI m, SNatI n) => FCtx m n -> Exp m n -> Maybe (Ty m)
 tc g (EVar x) = return $ lookup x g

@@ -79,7 +79,7 @@ quote l = \case
    VVar x   -> withSNat l $ Var (invert x)
    VApp t u -> App (quote l t) (quote l u)
    VLam b ->
-       Lam (bind (quote (Rebound.succ l) 
+       Lam (bind (quote (Rebound.ss l) 
               (instantiateWith (applyBind weaken1Val b) (withSNat l $ var maxBound) eval)))
 
 vApp :: Bind Val Exp n -> Val n -> Val n

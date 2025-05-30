@@ -83,7 +83,7 @@ library
 --      , DepMatch
 --      , NBE
       , ScopeCheck
-      , SystemF
+--      , SystemF
   hs-source-dirs:
       src
       , examples

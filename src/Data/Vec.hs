@@ -25,6 +25,7 @@ import Test.QuickCheck
 import Prelude hiding (lookup, repeat, zipWith)
 import Data.SNat
 import Data.Fin as Fin
+import Data.Fin (Fin, universe)
 
 import Unsafe.Coerce(unsafeCoerce)
 
@@ -111,4 +112,3 @@ iterateN n f x =
 
 induction :: Vec n a -> v Z  -> (forall n. a -> v n -> v (S n)) -> v n
 induction (UnsafeVec v) zero succ = undefined
-

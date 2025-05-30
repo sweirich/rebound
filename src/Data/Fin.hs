@@ -16,8 +16,8 @@
 module Data.Fin(
   Nat(..), 
   SNat(SZ,SS),
-  Fin,   
-  Fin_(..), fin_, fs,
+  Fin,
+  fs, Fin_(FZ_,FS_), fin_, Data.Fin.prev, 
   toNatural, toInteger, 
   mirror, 
   absurd,
@@ -32,7 +32,6 @@ module Data.Fin(
   weaken1FinRight,
   strengthen1Fin,
   strengthenRecFin,
-  Data.Fin.prev,
  ) where
 
 
@@ -49,26 +48,15 @@ import Unsafe.Coerce(unsafeCoerce)
 -- Fin type
 -------------------------------------------------------------------------------
 
-newtype Fin (n :: Nat) = UnsafeFin_ Natural
+newtype Fin (n :: Nat) = UnsafeFin Natural
   deriving (NFData)
 type role Fin nominal
-
 
 toNatural :: Fin n -> Natural
 toNatural (UnsafeFin x) = x
 
 absurd :: Fin N0 -> a
 absurd x = error "impossible"
-
--- | A pattern that can be used to manipulate the
--- 'Natural' that a @Fin n@ contains under the hood.
---
--- When using this pattern to construct an @Fin n@, the actual
--- @Natural@ being stored in the @Fin n@ /must/ be less than @n@.
--- The compiler will not help you verify this, hence the \'unsafe\' name.
-pattern UnsafeFin :: forall n. Natural -> Fin n
-pattern UnsafeFin guts = UnsafeFin_ guts
-{-# COMPLETE UnsafeFin #-}
 
 instance Eq (Fin n) where
   UnsafeFin x == UnsafeFin y = x == y
@@ -77,8 +65,6 @@ instance Ord (Fin n) where
 instance Show (Fin n) where
   show (UnsafeFin x) = show x
 
-f0 :: Fin (S n)
-f0 = UnsafeFin 0
 
 fs :: Fin n -> Fin (S n)
 fs (UnsafeFin x) = UnsafeFin (x + 1)
@@ -95,30 +81,30 @@ fin_ (UnsafeFin x) = unsafeCoerce $ FS_ (UnsafeFin (x-1))
 
 -- FZ represents the "zero" element of Fin (S k)
 pattern FZ :: forall (k :: Nat) . Fin (S k)
-pattern FZ <- (UnsafeFin_ 0)  -- Matcher: succeeds if the wrapped Natural is 0
+pattern FZ <- (UnsafeFin 0)  -- Matcher: succeeds if the wrapped Natural is 0
   where
-    FZ = UnsafeFin_ 0      -- Constructor: creates UnsafeFin_ 0
+    FZ = UnsafeFin 0      -- Constructor: creates UnsafeFin_ 0
 
 -- Helper view function for the FS matcher
 -- Takes the Natural value from a Fin (S k) and tries to find its predecessor's Natural value
 viewFS :: Natural -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
 viewFS currentNat
   | currentNat > 0 = 
-    Just (UnsafeFin_ (currentNat - 1)) -- This will be wrapped as Fin k
+    Just (UnsafeFin (currentNat - 1)) -- This will be wrapped as Fin k
   | otherwise      = Nothing -- Zero has no predecessor in this Fin model
 
 -- FS m represents the "successor" of m.
 -- If m :: Fin k, then FS m :: Fin (S k).
 pattern FS :: forall (k :: Nat) (n :: Nat). Fin k -> Fin (S k)
-pattern FS prevFin <- UnsafeFin_ (viewFS -> Just prevFin) -- Matcher
+pattern FS prevFin <- UnsafeFin (viewFS -> Just prevFin) -- Matcher
   where
-    FS (UnsafeFin_ prevNat) = UnsafeFin_ (prevNat + 1)    -- Constructor
+    FS (UnsafeFin prevNat) = UnsafeFin (prevNat + 1)    -- Constructor
 
 {-# COMPLETE FZ, FS :: Fin #-}
 
 prev :: Fin (S k) -> Maybe (Fin k)
-prev (UnsafeFin_ 0) = Nothing
-prev (UnsafeFin_ x) = Just (UnsafeFin_ (x-1))
+prev (UnsafeFin 0) = Nothing
+prev (UnsafeFin x) = Just (UnsafeFin (x-1))
 
 -------------------------------------------------------------------------------
 -- Enum, Bounded, Num instances
@@ -272,6 +258,8 @@ weaken1FinRight = weakenFinRight s1
 -- will work in any scope. (These are also called fin0, fin1, fin2, etc
 -- in Data.Fin)
 
+f0 :: Fin (S n)
+f0 = UnsafeFin 0
 f1 :: Fin (S (S n))
 f1 = UnsafeFin 1
 f2 :: Fin (S (S (S n)))
