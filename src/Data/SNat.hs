@@ -11,8 +11,7 @@ module Data.SNat(
   axiomPlusZ,
   axiomAssoc,
   SNat_(..), snat_,
-  pred,
-  succ,
+  prev, ss,
   ToInt(..),
   induction,
  ) where
@@ -104,7 +103,6 @@ fromSNat (UnsafeSNat n) = n
 snatToNatural :: SNat n -> Natural
 snatToNatural = fromSNat
 
-
 -- | Add two runtime nats
 sPlus :: forall n1 n2. SNat n1 -> SNat n2 -> SNat (n1 + n2)
 sPlus (UnsafeSNat n1) (UnsafeSNat n2) = UnsafeSNat (n1 + n2)
@@ -131,7 +129,7 @@ class SNatI (n :: Nat) where
   snat :: SNat n
 
 instance SNatI Z where snat = UnsafeSNat 0
-instance SNatI n => SNatI (S n) where snat = succ snat
+instance SNatI n => SNatI (S n) where snat = ss snat
 
 -- | Convert an explicit @'SNat' n@ value into an implicit @'SNatI' n@
 -- constraint.
@@ -167,11 +165,11 @@ instance ToInt (SNat n) where
 -- View pattern access to the predecessor
 ---------------------------------------------------------
 
-pred :: SNat (S n) -> SNat n
-pred (UnsafeSNat n) = (UnsafeSNat (n-1))
+prev :: SNat (S n) -> SNat n
+prev (UnsafeSNat n) = (UnsafeSNat (n-1))
 
-succ :: SNat n -> SNat (S n)
-succ (UnsafeSNat x) = UnsafeSNat (x+1)
+ss :: SNat n -> SNat (S n)
+ss (UnsafeSNat x) = UnsafeSNat (x+1)
 
 data SNat_ (n :: Nat) where
   SZ_ :: (Z ~ n) => SNat_ n
@@ -191,18 +189,5 @@ pattern SZ <- (snat_ -> SZ_)
 pattern SS :: forall k . SNat k -> SNat (S k)
 pattern SS prev <- (snat_ -> SS_ prev)
   where
-    SS y = succ y
+    SS = ss
 
-
-{-
-pattern SZ :: () => (n ~ Z) => SNat n
-pattern SZ <- UnsafeSNat 0 
-  where 
-    SZ = UnsafeSNat 0
-
-pattern SS :: forall (k :: Nat) n. () => (n ~ S k) => SNat k -> SNat n
-pattern SS x <- (snat_ -> SS_ x)
-   where
-    SS (UnsafeSNat y) = UnsafeSNat (y+1)
--}
-{-# COMPLETE SZ, SS :: SNat #-}

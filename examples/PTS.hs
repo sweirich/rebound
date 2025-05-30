@@ -71,12 +71,12 @@ instance FV Exp where
   appearsFree :: SNatI n => Fin n -> Exp n -> Bool
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
-  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
-  appearsFree n (Lam a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
+  appearsFree n (Pi a b) = appearsFree n a || appearsFree (fs n) (getBody1 b)
+  appearsFree n (Lam a b) = appearsFree n a || appearsFree (fs n) (getBody1 b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
+  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (fs n) (getBody1 b)
   appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n t
-  appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (getBody2 b)
+  appearsFree n (Split a b) = appearsFree n a || appearsFree (fs (fs n)) (getBody2 b)
 
 -- >>> :t weaken' s1 t00
 -- weaken' s1 t00 :: Exp ('S ('S N1))
@@ -158,7 +158,7 @@ instance SNatI n => Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
-    | appearsFree FZ (getBody1 b) =
+    | appearsFree f0 (getBody1 b) =
         showParen (d > 10) $
           showString "Pi "
             . shows a
@@ -170,7 +170,7 @@ instance SNatI n => Show (Exp n) where
             . showString " -> "
             . showsPrec 10 (getBody1 b)
   showsPrec d (Sigma a b)
-    | appearsFree FZ (getBody1 b) =
+    | appearsFree f0 (getBody1 b) =
         showParen (d > 10) $
           showString "Sigma "
             . shows a

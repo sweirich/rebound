@@ -30,7 +30,7 @@ scopeCheck = to []
       x <- lookup v vs
       return $ LC.Var x
     to vs (Lam v b) = do
-      b' <- to ((v, FZ) : map (fmap FS) vs) b
+      b' <- to ((v, f0) : map (fmap fs) vs) b
       return $ LC.Lam (bind b')
     to vs (App f a) = do
       f' <- to vs f

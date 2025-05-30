@@ -48,7 +48,7 @@ import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import qualified Data.SNat as SNat
 
-import Rebound.Env.Internal
+import Rebound.Env.Vector
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -109,7 +109,7 @@ newtype AppendE v m n p =
 
 -- | access value at index 0
 head :: (SubstVar v) => Env v (S n) m -> v m
-head f = applyEnv f FZ
+head f = applyEnv f f0
 
 -- | increment all free variables by 1
 shift1E :: (SubstVar v, SNatI n) => Env v n (S n)
@@ -126,7 +126,7 @@ upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) p where
    base = MkUpN (const id)
    step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
    step (MkUpN r) = MkUpN 
-    $ \p e -> withSNat (sPlus (SNat.pred p) (snat @n)) $ var Fin.f0 .: (r (SNat.pred p) e .>> shiftNE s1)
+    $ \p e -> withSNat (sPlus (SNat.prev p) (snat @n)) $ var Fin.f0 .: (r (SNat.prev p) e .>> shiftNE s1)
 
 newtype UpN v m n p = 
     MkUpN { getUpN :: SNat p -> Env v m n -> Env v (p + m) (p + n) }

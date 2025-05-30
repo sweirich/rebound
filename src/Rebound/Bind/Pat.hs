@@ -213,7 +213,7 @@ instance (forall p1 p2. PatEq (pat p1) (pat p2)) =>
   
 instance (forall p. Named name (pat p), SNatI p) => Named name (PatList pat p) where
   names :: PatList pat p -> Vec p name
-  names PNil = VNil
+  names PNil = Vec.empty
   names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = 
     Vec.append @ps @p1 (names ps) (names p1)
 

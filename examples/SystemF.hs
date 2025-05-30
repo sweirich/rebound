@@ -19,7 +19,7 @@ data Ty (n :: Nat) where
     TArr :: Ty n -> Ty n -> Ty n
       deriving (Eq)
 
-instance Eq (Bind Ty Ty n) where
+instance SNatI n => Eq (Bind Ty Ty n) where
     b1 == b2 = getBody b1 == getBody b2
 
 -- swap the order of the scopes so that we can talk about 
@@ -40,17 +40,18 @@ instance Subst Ty Ty where
     applyE r (TAll b) = TAll (applyE r b)
     applyE r (TArr t1 t2) = TArr (applyE r t1) (applyE r t2)
 
-instance SubstVar (Exp m) where
+instance SNatI m => SubstVar (Exp m) where
     var = EVar
 
 -- apply type substitution to an expression, using the newtype
-substTy :: Env Ty m1 m2 -> Exp m1 n -> Exp m2 n
+substTy :: SNatI n => Env Ty m1 m2 -> Exp m1 n -> Exp m2 n
 substTy r e = unTyExp (applyE r (TyExp e))
 
-instance Subst Ty (TyExp n) where
+instance SNatI n => Subst Ty (TyExp n) where
     applyE :: forall m1 m2 n. Env Ty m1 m2 -> TyExp n m1 -> TyExp n m2
     applyE r (TyExp (EVar x)) = TyExp (EVar x)
     applyE r (TyExp (ELam ty b)) = 
+        withScope r $
         let q = substTy r (getBody b)
         in TyExp (ELam (applyE r ty) (bind q))
     applyE r (TyExp (EApp e1 e2)) = TyExp (EApp (substTy r e1) (substTy r e2))
@@ -61,10 +62,11 @@ instance Subst Ty (TyExp n) where
         TyExp (ETApp (substTy r e1) (applyE r t2))
 
 -- | shift the type scope in the range of a term substiution
-upTyScope :: Env (Exp m) n1 n2 -> Env (Exp (S m)) n1 n2
-upTyScope = transform (substTy shift1E)
+upTyScope :: SNatI m => Env (Exp m) n1 n2 -> Env (Exp (S m)) n1 n2
+upTyScope r = withScope r $ 
+                 transform (substTy shift1E) r
     
-instance Subst (Exp m) (Exp m) where
+instance SNatI m => Subst (Exp m) (Exp m) where
     applyE :: forall m n1 n2. Env (Exp m) n1 n2 -> Exp m n1 -> Exp m n2
     applyE r (EVar x) = applyEnv r x
     applyE r (ELam ty b) = ELam ty (applyE r b)
@@ -86,7 +88,7 @@ lookup FZ (ConsTyVar g) = applyE @Ty shift1E $ lookup FZ g
 lookup (FS x) (ConsTmVar _ g) = lookup x g
 lookup (FS x) (ConsTyVar g) = applyE @Ty shift1E $ lookup (FS x) g
 
-tc :: FCtx m n -> Exp m n -> Maybe (Ty m)
+tc :: (SNatI m, SNatI n) => FCtx m n -> Exp m n -> Maybe (Ty m)
 tc g (EVar x) = return $ lookup x g
 tc g (ELam ty b) = tc (ConsTmVar ty g) (getBody b)
 tc g (EApp a b) = do 

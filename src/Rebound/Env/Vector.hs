@@ -9,6 +9,7 @@ module Rebound.Env.Vector where
 import Rebound.Lib as Lib
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
+import qualified Data.SNat as SNat
 import Data.Vec (Vec(..))
 import qualified Data.Vec as Vec
 import GHC.Generics hiding (S)
@@ -92,7 +93,7 @@ shiftNE m =
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: SNatI m => v m -> Env v n m -> Env v (S n) m
 v .: f = 
-  Env (v ::: vec f) (Lib.succ (size f))
+  Env (v |> vec f) (SNat.ss (size f))
 {-# INLINEABLE (.:) #-}
 
 -- | composition: do f then g
@@ -102,7 +103,7 @@ f .>> g = Env (fmap (applyE g) (vec f)) (size f)
 
 -- | inverse of `cons` -- remove the first mapping
 tail :: Env v (S n) m -> Env v n m
-tail (Env (_ ::: vs) n) = Env vs (Lib.pred n) 
+tail (Env vs n) = Env vs' (SNat.prev n) where (_,vs') = Vec.unCons vs
 
 -- | modify an environment so that it can go under
 -- a binder

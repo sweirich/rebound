@@ -1,6 +1,6 @@
 {-# LANGUAGE PatternSynonyms #-} 
 module Data.Vec(
-    Vec(VNil, (:::)),
+    Vec, Vec_(..), vec_, (|>), unCons, 
     empty,
     setAt, 
     Data.Vec.lookup,
@@ -44,36 +44,29 @@ empty = UnsafeVec Seq.empty
 cons :: a -> Vec n a -> Vec (S n) a
 cons a (UnsafeVec s) = UnsafeVec (a Seq.:<| s)
 
+(|>) :: a -> Vec n a -> Vec (S n) a
+(|>) = cons
+
 toSeq :: Vec n a -> Seq a
 toSeq (UnsafeVec v) = v
 
-pattern VNil :: () => Vec Z a
-pattern VNil = UnsafeVec Seq.Empty
+data Vec_ (n :: Nat) a where
+  VNil_ :: Vec_ Z a
+  VCons_ :: a -> Vec n a -> Vec_ (S n) a 
 
+vec_ :: Vec n a -> Vec_ n a 
+vec_ (UnsafeVec s) = case Seq.viewl s of 
+                        Seq.EmptyL -> unsafeCoerce VNil_
+                        h Seq.:< tSeq -> unsafeCoerce VCons_ h tSeq
 
 -- Helper function for matching the cons-pattern (:::)
 -- This function explicitly handles the deconstruction and wrapping.
-matchCons :: Vec ('S n) a -> Maybe (a, Vec n a)
-matchCons (UnsafeVec s) =
+unCons :: Vec ('S n) a -> (a, Vec n a)
+unCons (UnsafeVec s) =
   case Seq.viewl s of
-    Seq.EmptyL    -> Nothing -- This case should be impossible for Vec (S n) a
-    h Seq.:< tSeq -> Just (h, UnsafeVec tSeq)
+    Seq.EmptyL    -> error "BUG: impossible case"
+    h Seq.:< tSeq -> (h, UnsafeVec tSeq)
 
-
--- Bidirectional pattern synonym for cons (:::)
--- The `() =>` constraint can be used but is often not strictly needed here.
--- The type signature specifies 'n' is of kind Nat.
-pattern (:::) :: forall (n :: Nat) a. a -> Vec n a -> Vec ('S n) a
-pattern h ::: t <- (matchCons -> Just (h, t)) -- Matcher using the helper
-  where
-    -- Constructor part:
-    -- When `h ::: t` is used in an expression, `consVec` is called.
-    h ::: t = cons h t
-
-
-{-
-instance (Arbitrary a, SNatI n) => Arbitrary (Vec n a) where
--}
 
 setAt :: Fin n -> Vec n a -> a -> Vec n a
 setAt f (UnsafeVec v) x = UnsafeVec (Seq.update (toInt f) x v)

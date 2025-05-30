@@ -61,8 +61,7 @@ applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
-applyEnv (Cons ty _s) FZ = ty
-applyEnv (Cons _ty s) (FS x) = applyEnv s x
+applyEnv (Cons ty s) f = case fin_ f of FZ_ -> ty ; FS_ x -> applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
 

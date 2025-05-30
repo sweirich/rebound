@@ -39,7 +39,7 @@ data Scope name n = Scope {
 emptyScope :: Scope name Z
 emptyScope = Scope {
     scope_size = SZ ,
-    scope_names = VNil
+    scope_names = Vec.empty
   }
 
 extendScope :: forall p n name. 
@@ -129,7 +129,7 @@ push p = withSNat (size p) $ pushVec (names p)
 
 instance Named LocalName LocalName where
   names :: LocalName -> Vec N1 LocalName
-  names ln = ln ::: VNil
+  names ln = ln |> Vec.empty
 
 instance SNatI p => Named name (Vec p name) where
   names :: Vec p name -> Vec p name

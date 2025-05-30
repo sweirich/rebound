@@ -61,7 +61,7 @@ applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
 applyEnv (Cons ty s) f = 
-  case Fin.pred f of
+  case Fin.prev f of
      Nothing -> ty
      Just x -> applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
