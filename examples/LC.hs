@@ -13,8 +13,8 @@
 module LC where
 
 import Rebound
-import Rebound.EnvVec
-import Rebound.BindVec.Single
+import Rebound.Env
+import Rebound.Bind.Single
 import Data.Fin  
 import Data.Vec qualified
 

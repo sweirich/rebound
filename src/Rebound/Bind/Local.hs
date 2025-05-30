@@ -42,8 +42,8 @@ instantiate :: (Subst v c, SNatI n) => Bind v c n -> v n -> c n
 instantiate b e = Pat.instantiate b (oneE e)
 
 applyUnder ::
-  (Subst v c) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (Subst v c, SNatI n2) =>
+  (forall m n. SNatI n => Env v m n -> c m -> c n) ->
   Env v n1 n2 ->
   Bind v c n1 ->
   Bind v c n2
