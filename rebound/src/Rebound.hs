@@ -7,6 +7,7 @@ module Rebound
    module Rebound.MonadScoped, 
    module Rebound.Lib,
    module Rebound.Context,
+   module Rebound.Env,
    Generic(..),
    Generic1(..))
 where
@@ -17,6 +18,7 @@ import Data.Vec (Vec(..))
 
 import Rebound.Classes
 import Rebound.Context
+import Rebound.Env
 import Rebound.Lib
 import Rebound.MonadScoped
 import GHC.Generics hiding (S)
