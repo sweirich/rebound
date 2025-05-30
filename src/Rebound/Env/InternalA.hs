@@ -30,14 +30,20 @@ class (SubstVar v) => Subst v c where
   default applyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) => Env v m n -> c m -> c n
   applyE = gapplyE
   {-# INLINE applyE #-}
+  isVar :: c n -> Maybe (v :~: c, Fin n)
+  isVar _ = Nothing
+  {-# INLINE isVar #-}
+  
+gapplyE :: forall c v m n. (Generic1 c, GSubst v (Rep1 c), Subst v c) => Env v m n -> c m -> c n
+gapplyE r e | Just (Refl, x) <- isVar @v @c e = applyEnv r x
+gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
+{-# INLINEABLE gapplyE #-}
 
 -- Generic programming
 class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
 
-gapplyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) => Env v m n -> c m -> c n
-gapplyE = applyOpt (\s x -> to1 $ gsubst s (from1 x))
-{-# INLINEABLE gapplyE #-}
+
 
 ------------------------------------------------------------------------------
 -- Environment representation

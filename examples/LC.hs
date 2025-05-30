@@ -89,18 +89,6 @@ instance SubstVar Exp where
   var :: Fin n -> Exp n
   var = Var
 
--- The library represents a substitution using an "Environment".
--- The type `Env Exp n m` is a substitution that can be applied to
--- indices bounded by n. It produces a result `Exp` with indices
--- bounded by m. It is equivalent to a total function of type:
---
---       Fin n -> Exp m
---
--- The function `applyEnv` looks up a mapping in
--- an environment.
-
-
-
 -- | The operation `applyE` applies an environment
 -- (explicit substitution) to an expression.
 --
@@ -110,13 +98,10 @@ instance SubstVar Exp where
 -- the Bind type which handles the variable lifting needed under
 -- the binder.
 instance Subst Exp Exp where
-  applyE :: Env Exp n m -> Exp n -> Exp m
-  applyE r (Var x) = applyEnv r x
-  applyE r e = gapplyE r e
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+
 deriving instance (Generic1 Exp)
-
--- >>> :info Rep1 Exp
-
 
 ----------------------------------------------
 -- Display (Show)
