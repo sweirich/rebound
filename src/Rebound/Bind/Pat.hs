@@ -25,6 +25,7 @@ module Rebound.Bind.Pat(
 
 import Rebound
 import Rebound.Classes
+import Rebound.Env
 import Data.Fin (Fin)
 import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
@@ -37,14 +38,14 @@ import qualified Data.Vec as Vec
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
-  Bind :: (SNatI m) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+  Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
-bind :: (Sized pat, Subst v c, SNatI n) =>
+bind :: (Sized pat, Subst v c) =>
   pat -> c (Size pat + n) -> Bind v c pat n
 bind pat = Bind pat idE
 
-bindWith :: (SNatI n, SNatI m) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+bindWith :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 bindWith = Bind
 
 -- | Access the pattern of a pattern binding
@@ -55,7 +56,7 @@ getPat (Bind pat env t) = pat
 -- The pattern type determines the number of variables
 -- bound in the pattern
 getBody :: forall v c pat n.
-  (Sized pat, Subst v c, SNatI n) => Bind v c pat n ->  c (Size pat + n)
+  (Sized pat, Subst v c) => Bind v c pat n ->  c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
   applyE @v @c @(Size pat + m) (upN (size pat) env) t
 
@@ -104,14 +105,13 @@ unbindWith (Bind pat (r :: Env v m n) t) f =
 
 -- | apply an environment-parameterized function & environment
 -- underneath a binder
-applyUnder :: forall n1 n2 pat v c1 c2.
-  (Sized pat, Subst v c2, SNatI n2) =>
-  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
+applyUnder ::
+  (Sized pat, Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind v c1 pat n1 ->
   Bind v c2 pat n2
-applyUnder f r2 (Bind p (r1 :: Env v m n) t) =
-  withSNat (sPlus (size p) (snat @n2)) $
+applyUnder f r2 (Bind p r1 t) =
   Bind p idE (f r' t)
   where
     r' = upN (size p) (r1 .>> r2)
@@ -123,15 +123,12 @@ applyUnder f r2 (Bind p (r1 :: Env v m n) t) =
 
 -- | The substitution operation composes the explicit
 -- substitution with the one stored at the binder
-instance (Sized p, SubstVar v) => Subst v (Bind v c p) where
+instance (SubstVar v) => Subst v (Bind v c p) where
   applyE :: Env v n m -> Bind v c p n -> Bind v c p m
-  applyE (env1 :: Env v n m) (Bind p (env2 :: Env v m1 n) e) = 
-    withSNat (sPlus (size p) (snat @m1)) $
-    withScope env1 $
-       Bind p (env2 .>> env1) e
+  applyE env1 (Bind p env2 m) = Bind p (env2 .>> env1) m
 
 instance ( Subst v c, Sized p, FV c ) => FV (Bind v c p) where
-  appearsFree :: forall n. SNatI n => Fin n -> Bind v c p n -> Bool
+  appearsFree :: forall n. (SNatI n) => Fin n -> Bind v c p n -> Bool
   appearsFree n b =
     withSNat (sPlus (snat @(Size p)) (snat @n)) $
     appearsFree (Fin.shiftN (size (getPat b)) n) (getBody b)
@@ -141,7 +138,6 @@ instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
                 -> Bind v c p (k + (m + n)) -> Maybe (Bind v c p (k + n))
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd = 
     withSNat (sPlus k (sPlus m n)) $
-    withSNat (sPlus k n) $
       unbind bnd $ \(p :: p) t' ->
         case (axiomAssoc @(Size p) @k @(m + n), 
               axiomAssoc @(Size p) @k @n)  of 
@@ -153,21 +149,19 @@ instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
 ---------------------------------------------------------------
 
 data Rebind pat p2 n where
-  Rebind :: SNatI n => pat -> p2 (Size pat + n) -> Rebind pat p2 n
+  Rebind :: pat -> p2 (Size pat + n) -> Rebind pat p2 n
 
 instance
   (Subst v v, Sized p1, Subst v p2) =>
   Subst v (Rebind p1 p2)
   where
   applyE :: Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
-  applyE r (Rebind p1 p2) = 
-    withScope r $
-    Rebind p1 (applyE (upN (size p1) r) p2)
+  applyE r (Rebind p1 p2) = Rebind p1 (applyE (upN (size p1) r) p2)
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: forall n. (Sized p1, FV p2, SNatI n) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = 
-    withSNat (sPlus (size p1) (snat @n))
+    withSNat (sPlus (size p1) (snat @n)) $
     appearsFree (Fin.shiftN (size p1) n) p2
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
@@ -175,8 +169,7 @@ instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
     case (axiomAssoc @(Size p1) @k @(m + n), 
           axiomAssoc @(Size p1) @k @n) of 
       (Refl, Refl) ->
-        withSNat (sPlus k n)
-        Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
+       Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
 
 --------------------------------------------------------------
 -- Lists of patterns

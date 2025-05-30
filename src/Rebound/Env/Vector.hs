@@ -101,8 +101,11 @@ v .: f =
 {-# INLINEABLE (.:) #-}
 
 -- | composition: do f then g
-(.>>) :: (Subst v v, SNatI m) => Env v p n -> Env v n m -> Env v p m
-f .>> g = Env (fmap (applyE g) (vec f)) (size f)
+(.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
+f .>> g = 
+  withScope f $
+  withScope g $
+  Env (fmap (applyE g) (vec f)) (size f)
 {-# INLINEABLE (.>>) #-}
 
 -- | inverse of `cons` -- remove the first mapping
@@ -111,9 +114,9 @@ tail (Env vs n) = Env vs' (SNat.prev n) where (_,vs') = Vec.unCons vs
 
 -- | modify an environment so that it can go under
 -- a binder
-up :: (SubstVar v, SNatI m) => Env v n m -> Env v (S n) (S m)
+up :: (SubstVar v) => Env v n m -> Env v (S n) (S m)
 up e = 
-  withSNat (size e) $
+  withScope e $
      var Fin.f0 .: (e .>> shiftNE s1)
 {-# INLINEABLE up #-}
 

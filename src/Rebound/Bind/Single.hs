@@ -14,6 +14,7 @@ module Rebound.Bind.Single
 
 import Rebound
 import Rebound.Classes
+import Rebound.Env
 import Rebound.Bind.PatN
 
 type Bind v c n = Bind1 v c n
@@ -36,8 +37,8 @@ unbindWith = unbindWith1
 instantiateWith :: (SubstVar v, SNatI n) => Bind v c n -> v n -> (forall m n. SNatI n => Env v m n -> c m -> d n) -> d n
 instantiateWith = instantiateWith1
 
-applyUnder :: (Subst v c2, SNatI n2) => 
-    (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) -> Env v n1 n2 -> Bind v c1 n1 -> Bind v c2 n2
+applyUnder :: (Subst v c2) => 
+    (forall m n. Env v m n -> c1 m -> c2 n) -> Env v n1 n2 -> Bind v c1 n1 -> Bind v c2 n2
 applyUnder = applyUnder1
 
 

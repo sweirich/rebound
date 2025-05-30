@@ -8,7 +8,8 @@
 module ScopeCheck where
 
 import Rebound
-import Rebound.Bind.Single
+import Rebound.EnvVec
+import Rebound.BindVec.Single
 import Data.Maybe (fromJust)
 import LC qualified
 import Rebound.Lib

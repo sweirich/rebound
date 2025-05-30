@@ -7,6 +7,7 @@ import Rebound
 import qualified Rebound.Bind.Pat as Pat
 import Rebound.Bind.PatN as PatN
 import Rebound.Context
+import Rebound.Env
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin(Fin(..), f0,f1,f2)
 import Data.Fin qualified as Fin
