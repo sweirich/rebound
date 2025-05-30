@@ -58,7 +58,6 @@ library
       , Rebound.Context
       , Rebound.Lib
       , Rebound.Env
-      , Rebound.EnvVec
       , Rebound.Env.Internal
       , Rebound.Env.InternalStrict
       , Rebound.Env.InternalLazy
@@ -72,9 +71,6 @@ library
       , Rebound.Bind.PatN
       , Rebound.Bind.Pat
 ---      , Rebound.Bind.Scoped
-      , Rebound.BindVec.Single
-      , Rebound.BindVec.PatN
-      , Rebound.BindVec.Pat
       , Data.SNat
       , Data.Fin
       , Data.Vec

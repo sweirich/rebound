@@ -46,12 +46,8 @@ gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 -- Environment representation as finite function
 ------------------------------------------------------------------------------
 
-data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) = 
-  SNatI m =>
-    Env { applyEnv :: Fin n -> a m , size :: SNat n} 
-
-withScope :: Env a n m -> ((SNatI n, SNatI m) => c) -> c
-withScope e@(Env{}) c = withSNat (size e) c
+newtype Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) = 
+    Env {applyEnv :: Fin n -> a m}
 
 ------------------------------------------------------------------------------
 -- Application
@@ -67,47 +63,42 @@ applyOpt f = f
 ------------------------------------------------------------------------------
 
 -- | The empty environment (zero domain)
-zeroE :: SNatI n => Env v Z n
-zeroE = Env Fin.absurd s0
+zeroE :: Env v Z n
+zeroE = Env Fin.absurd 
 {-# INLINEABLE zeroE #-}
 
 -- make the bound bigger, on the right, but do not change any indices. 
 -- this is an identity function
-weakenER :: forall m v n. (SubstVar v, SNatI n) => SNat m -> Env v n (n + m)
+weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
 weakenER m = 
-  withSNat (sPlus (snat @n) m) $
-  Env (\x -> var (Fin.weakenFinRight m x)) (snat @n)
+  Env (\x -> var (Fin.weakenFinRight m x)) 
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.
 -- this is an identity function
-weakenE' :: forall m v n. (SubstVar v, SNatI n) => SNat m -> Env v n (m + n)
+weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (m + n)
 weakenE' m = 
-  withSNat (sPlus m (snat @n)) $
-  Env (\x -> var (Fin.weakenFin m x)) (snat @n)
+  Env (\x -> var (Fin.weakenFin m x)) 
 {-# INLINEABLE weakenE' #-}
 
 -- | increment all free variables by m
-shiftNE :: forall v m n. (SubstVar v, SNatI n) => SNat m -> Env v n (m + n)
+shiftNE :: forall v m n. (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE m = 
-  withSNat (sPlus m (snat @n)) $
-  Env (\x -> var (Fin.shiftN m x)) (snat @n)
+  Env (\x -> var (Fin.shiftN m x)) 
 {-# INLINEABLE shiftNE #-}
 
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
-(.:) :: SNatI m => v m -> Env v n m -> Env v (S n) m
+(.:) :: v m -> Env v n m -> Env v (S n) m
 ty .: s = 
   Env (\y -> case fin_ y of 
                  FZ_ -> ty 
-                 FS_ x -> applyEnv s x) (ss (size s))
+                 FS_ x -> applyEnv s x) 
 {-# INLINEABLE (.:) #-}
 
 -- | inverse of `cons` -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
 tail x = 
-  withScope x $
-  withSNat (prev (size x)) $
   shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
 
@@ -120,21 +111,17 @@ tail x =
 comp :: forall a m n p. SubstVar a =>
          Env a m n -> Env a n p -> Env a m p
 comp s1 s2 = 
-  withScope s1 $
-  withScope s2 $
-  Env (\x -> applyE s2 (applyEnv s1 x)) (size s1)
+  Env (\x -> applyE s2 (applyEnv s1 x)) 
 {-# INLINEABLE comp #-}
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
 up e = 
-  withScope e $
   var Fin.f0 .: comp e (shiftNE s1)
 {-# INLINEABLE up #-}
 
 -- | mapping operation for range of the environment
 transform :: (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f g = 
-  withScope g $
-  Env (\x -> f (applyEnv g x)) (size g)
+  Env (\x -> f (applyEnv g x)) 
 {-# INLINEABLE transform #-}

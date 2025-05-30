@@ -13,8 +13,8 @@
 module LC where
 
 import Rebound
-import Rebound.EnvVec
-import Rebound.BindVec.Single
+import Rebound.Env
+import Rebound.Bind.Single
 import Data.Fin  
 import Data.Vec qualified
 
@@ -199,7 +199,7 @@ eval' e
 -- is like evaluation except that it also reduces in the bodies
 -- of `Lam` expressions. In this case, we must first `getBody`
 -- the binder and then rebind when finished
-nf :: SNatI n => Exp n -> Exp n
+nf :: Exp n -> Exp n
 nf (Var x) = Var x
 nf (Lam b) = Lam (bind (nf (getBody b)))
 nf (App e1 e2) =
@@ -250,7 +250,7 @@ nf (App e1 e2) =
 -- getBody :: (Subst v c, SNatI n) => Bind v c n -> c ('S n)
 
 
-evalEnv :: SNatI n => Env Exp m n -> Exp m -> Exp n
+evalEnv :: Env Exp m n -> Exp m -> Exp n
 evalEnv r (Var x) = applyEnv r x
 evalEnv r (Lam b) = applyE r (Lam b)
 evalEnv r (App e1 e2) =
@@ -275,11 +275,10 @@ evalEnv r (App e1 e2) =
 -- In the beta-reduction case, we could use `unbindWith` as above
 -- but the `instantiateWith` function already captures exactly
 -- this pattern.
-nfEnv :: (SNatI n) => Env Exp m n -> Exp m -> Exp n
+nfEnv :: Env Exp m n -> Exp m -> Exp n
 nfEnv r (Var x) = applyEnv r x
 --nfEnv r2 (Lam b) = Lam $ unbindWith b $ \r1 e -> bind (nfEnv (up (r1 .>> r2)) e)
 nfEnv r (Lam b) = 
-  withScope r $
   Lam $ applyUnder nfEnv r b
 nfEnv r (App e1 e2) =
   let n = nfEnv r e1

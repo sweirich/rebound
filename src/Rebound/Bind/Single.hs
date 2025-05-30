@@ -19,22 +19,22 @@ import Rebound.Bind.PatN
 
 type Bind v c n = Bind1 v c n
 
-bind :: (Subst v c, SNatI n) => c (S n) -> Bind v c n
+bind :: (Subst v c) => c (S n) -> Bind v c n
 bind = bind1
 
-unbind :: forall v c n d. (Subst v c, SNatI n) => Bind v c n -> (c (S n) -> d) -> d
+unbind :: forall v c n d. (Subst v c) => Bind v c n -> (c (S n) -> d) -> d
 unbind = unbind1
 
-getBody :: forall v c n. (Subst v c, SNatI n) => Bind v c n -> c (S n)
+getBody :: forall v c n. (Subst v c) => Bind v c n -> c (S n)
 getBody = getBody1
 
-instantiate :: (Subst v c, SNatI n) => Bind v c n -> v n -> c n
+instantiate :: (Subst v c) => Bind v c n -> v n -> c n
 instantiate = instantiate1
 
 unbindWith :: (SubstVar v) => Bind v c n -> (forall m. Env v m n -> c (S m) -> d) -> d
 unbindWith = unbindWith1
 
-instantiateWith :: (SubstVar v, SNatI n) => Bind v c n -> v n -> (forall m n. SNatI n => Env v m n -> c m -> d n) -> d n
+instantiateWith :: (SubstVar v) => Bind v c n -> v n -> (forall m n. Env v m n -> c m -> d n) -> d n
 instantiateWith = instantiateWith1
 
 applyUnder :: (Subst v c2) => 
