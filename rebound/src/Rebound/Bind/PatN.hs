@@ -84,8 +84,8 @@ instantiateWithN :: forall m v c d n.
 instantiateWithN b v f =
   unbindWithN b (f . appendE (snat @m) (fromVec v))
 
-applyUnderN :: (Subst v c2, SNatI m, SNatI n2) =>
-  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
+applyUnderN :: (Subst v c2, SNatI m) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   BindN v c1 m n1 ->
   BindN v c2 m n2
@@ -126,8 +126,8 @@ instantiateWith1 ::
 instantiateWith1 b v1 f =
   unbindWith1 b (\r e -> f (v1 .: r) e)
 
-applyUnder1 :: (Subst v c2, SNatI n2) =>
-  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
+applyUnder1 :: (Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind1 v c1 n1 ->
   Bind1 v c2 n2
@@ -172,8 +172,8 @@ instantiateWith2 ::
 instantiateWith2 b v1 v2 f =
   unbindWith2 b (\r e -> f (v1 .: (v2 .: r)) e)
 
-applyUnder2 :: (Subst v c2, SNatI n2) =>
-  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
+applyUnder2 :: (Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind2 v c1 n1 ->
   Bind2 v c2 n2

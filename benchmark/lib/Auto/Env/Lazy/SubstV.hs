@@ -63,14 +63,14 @@ instance SubstVar DB where
 
 instance Subst DB DB where
   applyE s (DVar i) = applyEnv s i
-  applyE s (DLam b) = withScope s $ DLam (applyE (up s) b)
+  applyE s (DLam b) = DLam (applyE (up s) b)
   applyE s (DApp f a) = DApp (applyE s f) (applyE s a)
   applyE s (DIf a b c) = DIf (applyE s a) (applyE s b) (applyE s c)
   applyE s (DBool b) = DBool b
   {-# INLINEABLE applyE #-}
 
 
-{-# SPECIALIZE idE :: SNatI n => Env DB n n #-}
+{-# SPECIALIZE idE ::Env DB n n #-}
 
 {-# SPECIALIZE (.>>) :: Env DB m n -> Env DB n p -> Env DB m p #-}
 
@@ -96,7 +96,7 @@ nf (DIf a b c) =
     DBool False -> nf b
     a' -> DIf (nf a) (nf b) (nf c)
 
-whnf :: SNatI n => DB n -> DB n
+whnf :: DB n -> DB n
 whnf e@(DVar _) = e
 whnf e@(DLam _) = e
 whnf (DApp f a) =
@@ -112,7 +112,7 @@ whnf (DIf a b c) =
 
 
 
-eval :: SNatI n => DB n -> DB n
+eval :: DB n -> DB n
 eval e@(DVar _) = e
 eval e@(DLam _) = e
 eval (DApp f a) =

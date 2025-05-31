@@ -34,8 +34,7 @@ module Rebound.Env(Env, applyEnv,
   tabulate,
   fromTable,
   weakenE',
-  weakenER,
-  withScope
+  weakenER
   ) where
 
 import Rebound.Lib
@@ -48,7 +47,7 @@ import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import qualified Data.SNat as SNat
 
-import Rebound.Env.Vector
+import Rebound.Env.Internal
 
 ----------------------------------------------
 -- operations on environments/substitutions
@@ -63,16 +62,16 @@ env f = fromVec v where
 
 -- | A singleton environment (single index domain)
 -- maps that single variable to `v n`
-oneE :: (SubstVar v, SNatI n) => v n -> Env v (S Z) n
+oneE :: (SubstVar v) => v n -> Env v (S Z) n
 oneE v = v .: zeroE
 
 -- | an environment that maps index 0 to v and leaves
 -- all other indices alone.
-singletonE :: (SubstVar v, SNatI n) => v n -> Env v (S n) n
+singletonE :: (SubstVar v) => v n -> Env v (S n) n
 singletonE v = v .: idE
  
 -- | identity environment, any size
-idE :: (SubstVar v, SNatI n) => Env v n n
+idE :: (SubstVar v) => Env v n n
 idE = shiftNE s0
 
 -- | append two environments
@@ -98,7 +97,6 @@ appendE p = getAppendE (withSNat p (induction base step)) where
   base = MkAppendE $ \e1 e2 -> e2
   step :: SubstVar v => AppendE v m n p -> AppendE v m n (S p)
   step (MkAppendE r) = MkAppendE $ \e1 e2 -> 
-    withScope e1 $
        head e1 .: r (tail e1) e2
 
 newtype AppendE v m n p =
@@ -112,12 +110,12 @@ head :: (SubstVar v) => Env v (S n) m -> v m
 head f = applyEnv f f0
 
 -- | increment all free variables by 1
-shift1E :: (SubstVar v, SNatI n) => Env v n (S n)
+shift1E :: (SubstVar v) => Env v n (S n)
 shift1E = shiftNE s1
 
 -- | Shift an environment by size `p`
 upN :: forall v p m n.
-  (Subst v v, SNatI n) =>
+  (Subst v v) =>
   SNat p ->
   Env v m n ->
   Env v (p + m) (p + n)
@@ -126,7 +124,8 @@ upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step)) p where
    base = MkUpN (const id)
    step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
    step (MkUpN r) = MkUpN 
-    $ \p e -> withSNat (sPlus (SNat.prev p) (snat @n)) $ var Fin.f0 .: (r (SNat.prev p) e .>> shiftNE s1)
+    $ \p e -> 
+        var Fin.f0 .: (r (SNat.prev p) e .>> shiftNE s1)
 
 newtype UpN v m n p = 
     MkUpN { getUpN :: SNat p -> Env v m n -> Env v (p + m) (p + n) }

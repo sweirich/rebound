@@ -72,19 +72,19 @@ instance Subst DB DB where
   applyE r e = gapplyE r e
 
 
-{-# SPECIALIZE idE :: SNatI n => Env DB n n #-}
+{-# SPECIALIZE idE ::Env DB n n #-}
 
 {-# SPECIALIZE (.>>) :: Env DB m n -> Env DB n p -> Env DB m p #-}
 
 {-# SPECIALIZE up ::  Env DB n m -> Env DB ('S n) ('S m) #-}
 
-{-# SPECIALIZE getBody :: SNatI n => Bind DB DB n -> DB ('S n) #-}
+{-# SPECIALIZE getBody ::  Bind DB DB n -> DB ('S n) #-}
 
-{-# SPECIALIZE instantiate :: SNatI n => Bind DB DB n -> DB n -> DB n #-}
+{-# SPECIALIZE instantiate ::  Bind DB DB n -> DB n -> DB n #-}
 
-{-# SPECIALIZE bind :: SNatI n => DB (S n) -> Bind DB DB n #-}
+{-# SPECIALIZE bind :: DB (S n) -> Bind DB DB n #-}
 
-{-# SPECIALIZE applyUnder :: SNatI n2 => (forall m n. SNatI n => Env DB m n -> DB m -> DB n)-> Env DB n1 n2 -> Bind DB DB n1 -> Bind DB DB n2 #-}
+{-# SPECIALIZE applyUnder :: (forall m n. Env DB m n -> DB m -> DB n)-> Env DB n1 n2 -> Bind DB DB n1 -> Bind DB DB n2 #-}
 
 ----------------------------------------------------------
 
@@ -103,7 +103,7 @@ nf (DIf a b c) =
     a' -> DIf (nf a) (nf b) (nf c)
 
 -- invariant: all expressions in the environment are in whnf
-whnf :: SNatI n => Env DB m n -> DB m -> DB n
+whnf :: Env DB m n -> DB m -> DB n
 whnf r e@(DVar _) = applyE r e
 whnf r e@(DLam _) = applyE r e
 whnf r (DApp f a) =
@@ -120,11 +120,11 @@ whnf r (DIf a b c) =
     a' -> DIf a' (applyE r b) (applyE r c)
 
 
-eval :: SNatI n => DB n -> DB n
+eval :: DB n -> DB n
 eval = evalr idE 
 
 
-evalr :: SNatI n => Env DB m n -> DB m -> DB n
+evalr :: Env DB m n -> DB m -> DB n
 evalr r e@(DVar _) = applyE r e
 evalr r e@(DLam _) = applyE r e
 evalr r (DApp f a) =

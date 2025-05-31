@@ -38,14 +38,14 @@ import qualified Data.Vec as Vec
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
-  Bind :: (SNatI m) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+  Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 -- | Create a `Bind` with an identity substitution.
-bind :: (Sized pat, Subst v c, SNatI n) =>
+bind :: (Sized pat, Subst v c) =>
   pat -> c (Size pat + n) -> Bind v c pat n
 bind pat = Bind pat idE
 
-bindWith :: (SNatI n, SNatI m) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+bindWith :: (SNatI n) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 bindWith = Bind
 
 -- | Access the pattern of a pattern binding
@@ -56,7 +56,7 @@ getPat (Bind pat env t) = pat
 -- The pattern type determines the number of variables
 -- bound in the pattern
 getBody :: forall v c pat n.
-  (Sized pat, Subst v c, SNatI n) => Bind v c pat n ->  c (Size pat + n)
+  (Sized pat, Subst v c) => Bind v c pat n ->  c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
   applyE @v @c @(Size pat + m) (upN (size pat) env) t
 
@@ -85,12 +85,12 @@ instantiateWith b v f = unbindWith b (\p r e -> withSNat (size p) $ f (v .++ r) 
 -- in a context where the extended size is available at runtime.
 unbind ::
   forall v c pat n d.
-  (SNatI n, Sized pat, Subst v v, Subst v c) =>
+  (Sized pat, Subst v v, Subst v c) =>
   Bind v c pat n ->
-  (forall m. (SNatI m, m ~ Size pat + n) => pat -> c m -> d) ->
+  (forall m. (m ~ Size pat + n) => pat -> c m -> d) ->
   d
 unbind bnd f =
-  withSNat (sPlus (size (getPat bnd)) (snat @n)) $
+  -- withSNat (sPlus (size (getPat bnd)) (snat @n)) $
     f (getPat bnd) (getBody bnd)
 
 -- | Apply a function to the pattern, suspended environment, and body
@@ -106,13 +106,13 @@ unbindWith (Bind pat (r :: Env v m n) t) f =
 -- | apply an environment-parameterized function & environment
 -- underneath a binder
 applyUnder :: forall n1 n2 pat v c1 c2.
-  (Sized pat, Subst v c2, SNatI n2) =>
-  (forall m n. SNatI n => Env v m n -> c1 m -> c2 n) ->
+  (Sized pat, Subst v c2) =>
+  (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind v c1 pat n1 ->
   Bind v c2 pat n2
 applyUnder f r2 (Bind p (r1 :: Env v m n) t) =
-  withSNat (sPlus (size p) (snat @n2)) $
+  -- withSNat (sPlus (size p) (snat @n2)) $
   Bind p idE (f r' t)
   where
     r' = upN (size p) (r1 .>> r2)
@@ -127,8 +127,6 @@ applyUnder f r2 (Bind p (r1 :: Env v m n) t) =
 instance (Sized p, SubstVar v) => Subst v (Bind v c p) where
   applyE :: Env v n m -> Bind v c p n -> Bind v c p m
   applyE (env1 :: Env v n m) (Bind p (env2 :: Env v m1 n) e) = 
-    withSNat (sPlus (size p) (snat @m1)) $
-    withScope env1 $
        Bind p (env2 .>> env1) e
 
 instance ( Subst v c, Sized p, FV c ) => FV (Bind v c p) where
@@ -154,7 +152,7 @@ instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
 ---------------------------------------------------------------
 
 data Rebind pat p2 n where
-  Rebind :: SNatI n => pat -> p2 (Size pat + n) -> Rebind pat p2 n
+  Rebind :: pat -> p2 (Size pat + n) -> Rebind pat p2 n
 
 instance
   (Subst v v, Sized p1, Subst v p2) =>
@@ -162,7 +160,6 @@ instance
   where
   applyE :: Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
   applyE r (Rebind p1 p2) = 
-    withScope r $
     Rebind p1 (applyE (upN (size p1) r) p2)
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where

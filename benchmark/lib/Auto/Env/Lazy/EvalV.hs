@@ -57,7 +57,7 @@ instance SNatI a => NFData (Term a) where
 instance SubstVar Val where
   var = error "xx"
 instance Subst Val Val where
-  applyE r (VClos r' x) = withScope r $ VClos (r' .>> r) x
+  applyE r (VClos r' x) = VClos (r' .>> r) x
   applyE r (VBool x) = VBool x
 
 ----------------------------------------------------------

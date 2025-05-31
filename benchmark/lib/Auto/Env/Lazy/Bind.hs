@@ -74,17 +74,17 @@ instance Subst DB DB where
   applyE s (DBool b) = DBool b
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE idE :: SNatI n => Env DB n n #-}
+{-# SPECIALIZE idE ::Env DB n n #-}
 
 {-# SPECIALIZE (.>>) :: Env DB m n -> Env DB n p -> Env DB m p #-}
 
 {-# SPECIALIZE up ::  Env DB n m -> Env DB ('S n) ('S m) #-}
 
-{-# SPECIALIZE getBody :: SNatI n => Bind DB DB n -> DB ('S n) #-}
+{-# SPECIALIZE getBody ::  Bind DB DB n -> DB ('S n) #-}
 
-{-# SPECIALIZE instantiate :: SNatI n => Bind DB DB n -> DB n -> DB n #-}
+{-# SPECIALIZE instantiate ::  Bind DB DB n -> DB n -> DB n #-}
 
-{-# SPECIALIZE bind :: SNatI n => DB (S n) -> Bind DB DB n #-}
+{-# SPECIALIZE bind :: DB (S n) -> Bind DB DB n #-}
 
 ----------------------------------------------------------
 
@@ -104,7 +104,7 @@ nf (DIf a b c) =
     DBool False -> nf b
     a' -> DIf (nf a) (nf b) (nf c)
 
-whnf :: SNatI n => DB n -> DB n
+whnf :: DB n -> DB n
 whnf e@(DVar _) = e
 whnf e@(DLam _) = e
 whnf (DApp f a) =
@@ -120,7 +120,7 @@ whnf (DIf a b c) =
     
 
 
-eval :: SNatI n => DB n -> DB n
+eval :: DB n -> DB n
 eval e@(DVar _) = e
 eval e@(DLam _) = e
 eval (DApp f a) =

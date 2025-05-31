@@ -68,17 +68,15 @@ instance SubstVar Exp where
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
   applyE s (DVar i) = applyEnv s i
-  applyE s (DLam b) = 
-    withScope s $
-      DLam (Sub (up s) b)
+  applyE s (DLam b) = DLam (Sub (up s) b)
   applyE s (DApp f a) = 
     DApp (Sub s f) (Sub s a)
   applyE s (DIf a b c) = DIf (Sub s a) (Sub s b) (Sub s c)
   applyE s (DBool b) = DBool b
-  applyE s (Sub r t) = withScope s $ applyE (r .>> s) t
+  applyE s (Sub r t) = applyE (r .>> s) t
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE idE :: SNatI n => Env Exp n n #-}
+{-# SPECIALIZE idE ::Env Exp n n #-}
 
 {-# SPECIALIZE (.>>) :: Env Exp m n -> Env Exp n p -> Env Exp m p #-}
 ----------------------------------------------------
