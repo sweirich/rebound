@@ -2,49 +2,20 @@
 
 # Script to iterate through variables, change a line in a file, execute make, and move files.
 # The script will revert the haskell file after running make eval
-# and generate an xlsx file from the results.
 
-# Function to display usage instructions.
-usage() {
-  echo "Usage: $0 [-h]"
-  echo "  -h, --help      Display this help message."
-  echo "  -b, --branch X  Branch in Rebound repo."
-  echo ""
-  echo "  This script will iterate through predefined variables, changing the line"
-  echo "  'import Rebound.Env.Internal' in ../Rebound/src/Rebound/Env.hs,"
-  echo "  executing 'make normalize', moving files accordingly, generating txt files"
-  exit 1
-}
+# 
+valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
+# Move files.
+source_dir="results/`hostname`/rebound_strict_envV"
 
 # Define the file to modify.
 file="../rebound/src/Rebound/Env.hs"
-# define the branch to use
-# branch="wip/phantom-snat-fin-vec"
-branch="main"
-
-# Parse command-line options.
-while [[ $# -gt 0 ]]; do
-  key="$1"
-  case "$key" in
-    -h|--help)
-      usage
-      ;;
-    *)
-      usage
-      exit 1
-      ;;
-  esac
-done
-
 
 # Check if the file exists.
 if [ ! -f "$file" ]; then
   echo "Error: File '$file' not found."
   exit 1
 fi
-
-# Define the list of variables.
-valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
 
 # Iterate through the variables.
 for variable in "${valid_variables[@]}"; do
@@ -71,9 +42,6 @@ for variable in "${valid_variables[@]}"; do
 
   echo "'make eval' executed successfully for variable '$variable'."
 
-  # Move files.
-  source_dir="results/Stephanie-Weirich-MBP/rebound_strict_envV"
-  dest_dir="results/ablate/rebound_strict_envV/$branch/$variable"
 
   # Check if the source directory exists.
   if [ ! -d "$source_dir" ]; then
@@ -82,6 +50,9 @@ for variable in "${valid_variables[@]}"; do
     sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Internal/" "$file"
     exit 1
   fi
+
+  # Move files.
+  dest_dir="results/ablate/rebound_strict_envV/$branch/$variable"
 
   # Create the destination directory if it doesn't exist.
   mkdir -p "$dest_dir"
