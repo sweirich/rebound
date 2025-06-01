@@ -1,37 +1,37 @@
 Darwin Stephanie-Weirich-MBP 24.5.0 Darwin Kernel Version 24.5.0: Tue Apr 22 19:53:27 PDT 2025; root:xnu-11417.121.6~2/RELEASE_ARM64_T6041 arm64
 benchmarking eval/Auto.Env.Strict.EnvV/
-time                 594.6 μs   (592.4 μs .. 596.9 μs)
+time                 587.7 μs   (586.5 μs .. 589.4 μs)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 593.9 μs   (592.4 μs .. 595.2 μs)
-std dev              4.507 μs   (3.823 μs .. 5.692 μs)
+mean                 588.8 μs   (587.4 μs .. 590.7 μs)
+std dev              5.378 μs   (3.753 μs .. 8.240 μs)
 
 benchmarking nf/Auto.Env.Strict.EnvV/
-time                 897.5 μs   (895.0 μs .. 900.0 μs)
+time                 889.5 μs   (886.1 μs .. 893.5 μs)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 903.1 μs   (900.3 μs .. 907.2 μs)
-std dev              10.98 μs   (8.088 μs .. 17.97 μs)
+mean                 888.2 μs   (885.6 μs .. 891.0 μs)
+std dev              9.244 μs   (7.362 μs .. 12.46 μs)
 
 benchmarking random15/Auto.Env.Strict.EnvV/
-time                 550.1 μs   (547.7 μs .. 552.3 μs)
+time                 539.7 μs   (537.2 μs .. 542.1 μs)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 550.0 μs   (548.3 μs .. 551.6 μs)
-std dev              5.664 μs   (4.801 μs .. 6.713 μs)
+mean                 537.9 μs   (536.3 μs .. 539.4 μs)
+std dev              5.206 μs   (4.194 μs .. 6.736 μs)
 
 benchmarking random20/Auto.Env.Strict.EnvV/
-time                 555.4 μs   (553.8 μs .. 557.8 μs)
+time                 554.7 μs   (552.2 μs .. 557.0 μs)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 558.3 μs   (556.8 μs .. 560.0 μs)
-std dev              5.408 μs   (4.397 μs .. 6.891 μs)
+mean                 554.0 μs   (553.0 μs .. 555.1 μs)
+std dev              3.704 μs   (3.165 μs .. 4.547 μs)
 
 benchmarking random25/Auto.Env.Strict.EnvV/
-time                 2.809 ms   (2.797 ms .. 2.821 ms)
+time                 2.823 ms   (2.809 ms .. 2.836 ms)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 2.829 ms   (2.822 ms .. 2.835 ms)
-std dev              22.21 μs   (18.47 μs .. 27.17 μs)
+mean                 2.819 ms   (2.812 ms .. 2.826 ms)
+std dev              23.21 μs   (18.85 μs .. 30.45 μs)
 
 benchmarking random35/Auto.Env.Strict.EnvV/
-time                 4.358 ms   (4.337 ms .. 4.382 ms)
+time                 4.327 ms   (4.315 ms .. 4.339 ms)
                      1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 4.384 ms   (4.374 ms .. 4.393 ms)
-std dev              28.85 μs   (23.03 μs .. 38.00 μs)
+mean                 4.341 ms   (4.332 ms .. 4.352 ms)
+std dev              32.94 μs   (27.16 μs .. 40.81 μs)
 
