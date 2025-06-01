@@ -53,7 +53,9 @@ for variable in "${valid_variables[@]}"; do
   fi
 
   # Move files.
-  dest_dir="results/ablate/rebound_strict_envV/$branch/$variable"
+  dest_dir="results/ablate/rebound_strict_envV/main/$variable"
+
+  echo $dest_dir
 
   # Create the destination directory if it doesn't exist.
   mkdir -p "$dest_dir"
