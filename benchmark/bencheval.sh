@@ -2,39 +2,14 @@
 
 # Script to compare different versions of the rebound library.
 
-# Function to display usage instructions.
-usage() {
-  echo "Usage: $0 [-h]"
-  echo "  -h, --help      Display this help message."
-  echo "  -b, --branch X  Branch in Rebound repo."
-  echo ""
-  echo "  This script will iterate through predefined variables, changing the line"
-  echo "  'import Rebound.Env.Internal' in ../Rebound/src/Rebound/Env.hs,"
-  echo "  executing 'make normalize', moving files accordingly, generating txt files"
-  exit 1
-}
+# 
+valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
+# Move files.
+source_dir="results/`hostname`/rebound_strict_envV"
+
 
 # Define the file to modify.
 file="../rebound/src/Rebound/Env.hs"
-# define the branch to use
-# branch="rebound"
-branch="wip/phantom-snat-fin"
-# branch="wip/phantom-snat-fin-vec"
-
-# Parse command-line options.
-while [[ $# -gt 0 ]]; do
-  key="$1"
-  case "$key" in
-    -h|--help)
-      usage
-      ;;
-    *)
-      usage
-      exit 1
-      ;;
-  esac
-done
-
 
 # Check if the file exists.
 if [ ! -f "$file" ]; then
@@ -42,16 +17,9 @@ if [ ! -f "$file" ]; then
   exit 1
 fi
 
-# checkout the corresponding branch 
-git checkout "$branch"
-pushd "../rebound"; git checkout "$branch"; popd
-
-# Define the list of variables.
-valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
-
 # Iterate through the variables.
 for variable in "${valid_variables[@]}"; do
-  # Use sed to change the line.  Use a different sed syntax. 
+  # Use sed to change the line.  
   new_string="import Rebound.Env.$variable"
   sed -i -e "s/import Rebound.Env.Internal/$new_string/" "$file"
 
@@ -74,10 +42,6 @@ for variable in "${valid_variables[@]}"; do
 
   echo "'make eval' executed successfully for variable '$variable'."
 
-  # Move files.
-  source_dir="results/Stephanie-Weirich-MBP/rebound_strict_envV"
-  dest_dir="results/ablate/rebound_strict_envV/$branch/$variable"
-
   # Check if the source directory exists.
   if [ ! -d "$source_dir" ]; then
     echo "Error: Source directory '$source_dir' not found for variable '$variable'."
@@ -85,6 +49,8 @@ for variable in "${valid_variables[@]}"; do
     sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Internal/" "$file"
     exit 1
   fi
+
+  dest_dir="results/ablate/rebound_strict_envV/$branch/$variable"
 
   # Create the destination directory if it doesn't exist.
   mkdir -p "$dest_dir"
