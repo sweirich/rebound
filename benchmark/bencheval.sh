@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# define the branch to use
 branch="wip/phantom-snat-fin-vec"
 
 machine=`hostname`
@@ -10,7 +9,7 @@ stack test
 echo "---------------- BENCHMARKING ---------------"
 make normalize 
 
-source_dir="results/Stephanie-Weirich-MBP/rebound_strict_envV"
+source_dir="results/`hostname`/rebound_strict_envV"
 dest_dir="results/ablate/rebound_strict_envV/$branch/Vector"
 
 
