@@ -6,7 +6,6 @@ module Rebound.Env.Functional where
 
 -- Represents the environment using a function
 
-
 import Rebound.Lib
 import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin

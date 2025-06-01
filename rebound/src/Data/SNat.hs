@@ -1,8 +1,9 @@
 {-# LANGUAGE PatternSynonyms #-} 
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE MagicHash #-}
 module Data.SNat(
   Nat(..), pattern UnsafeSNat, 
-  SNat(SZ,SS), snatToNatural,
+  SNat(SZ,SS), snatToNatural, snatToInt, fromSNat,
   SNatI(..), withSNat, 
   type (+), 
   N0, N1, N2, N3,
@@ -17,7 +18,8 @@ module Data.SNat(
  ) where
 
 -- We want a type-level natural number with an inductive structure but uses machine ints for the runtime representation. 
--- GHC.TypeLits gets us part-way there, but the type level is not inductive.
+-- GHC.TypeLits gets us part-way there, but the type level is not inductive. 
+-- This module replicates that implementation for `SNat`, but with an inductive nat index.
 
 import Prelude hiding (pred, succ)
 
@@ -27,7 +29,7 @@ import Test.QuickCheck
 
 import GHC.Num.Natural ( Natural )
 import GHC.Show ( appPrec, appPrec1 )
-import GHC.Exts
+import GHC.Exts ( WithDict( withDict) )
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -41,15 +43,14 @@ type family (m :: Nat) + (n :: Nat) :: Nat where
   Z + n = n
   (S m) + n = S (m + n)
 
--- Monoid properties for plus (axioms)
+-- Monoid properties for addition (axioms)
 axiomPlusZ :: forall m. m + Z :~: m
 axiomPlusZ = unsafeCoerce Refl
 
 axiomAssoc :: forall p m n. p + (m + n) :~: (p + m) + n
 axiomAssoc = unsafeCoerce Refl
 
-
--- constants
+-- some constants
 type N0 = Z
 
 type N1 = S N0
@@ -68,7 +69,7 @@ type N4 = S N3
 -- instead of the more abstract type-level Nats of GHC.TypeNats
 ---------------------------------------------------------
 
-newtype SNat (n :: Nat) = UnsafeSNat Natural
+newtype SNat (n :: Nat) = UnsafeSNat Int
 type role SNat nominal
 
 decNat :: SNat a -> SNat b -> Either (a :~: b -> Void) (a :~: b)
@@ -97,15 +98,18 @@ instance TestEquality SNat where
 
 -- | Return the 'Natural' number corresponding to @n@ in an @'SNat' n@ value.
 --
-fromSNat :: SNat n -> Natural
+fromSNat :: SNat n -> Int
 fromSNat (UnsafeSNat n) = n
 
+snatToInt :: SNat n -> Int
+snatToInt = fromSNat
+
 snatToNatural :: SNat n -> Natural
-snatToNatural = fromSNat
+snatToNatural = fromInteger . toInteger . fromSNat
 
 -- | Add two runtime nats
 sPlus :: forall n1 n2. SNat n1 -> SNat n2 -> SNat (n1 + n2)
-sPlus (UnsafeSNat n1) (UnsafeSNat n2) = UnsafeSNat (n1 + n2)
+sPlus !(UnsafeSNat n1) !(UnsafeSNat n2) = UnsafeSNat (n1 + n2)
 
 ---------------------------------------------------------
 -- Induction
@@ -113,8 +117,8 @@ sPlus (UnsafeSNat n1) (UnsafeSNat n2) = UnsafeSNat (n1 + n2)
 
 induction' :: forall n v. SNat n -> v Z -> 
   (forall m. SNatI m => v m -> v (S m)) -> v n
-induction' (snat_ -> SZ_) base step = base
-induction' (snat_ -> SS_ x) base step = 
+induction' !(snat_ -> SZ_) base step = base
+induction' !(snat_ -> SS_ x) base step = 
   withSNat x $ step (induction' x base step)
 
 induction :: forall n v. (SNatI n) => v Z -> 

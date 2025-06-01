@@ -48,12 +48,12 @@ import Unsafe.Coerce(unsafeCoerce)
 -- Fin type
 -------------------------------------------------------------------------------
 
-newtype Fin (n :: Nat) = UnsafeFin Natural
+newtype Fin (n :: Nat) = UnsafeFin Int
   deriving (NFData)
 type role Fin nominal
 
 toNatural :: Fin n -> Natural
-toNatural (UnsafeFin x) = x
+toNatural (UnsafeFin x) = (fromInteger . toInteger) x
 
 absurd :: Fin N0 -> a
 absurd x = error "impossible"
@@ -87,7 +87,7 @@ pattern FZ <- (UnsafeFin 0)  -- Matcher: succeeds if the wrapped Natural is 0
 
 -- Helper view function for the FS matcher
 -- Takes the Natural value from a Fin (S k) and tries to find its predecessor's Natural value
-viewFS :: Natural -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
+viewFS :: Int -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
 viewFS currentNat
   | currentNat > 0 = 
     Just (UnsafeFin (currentNat - 1)) -- This will be wrapped as Fin k
@@ -110,8 +110,8 @@ prev (UnsafeFin x) = Just (UnsafeFin (x-1))
 -- Enum, Bounded, Num instances
 -------------------------------------------------------------------------------
 
-bound :: forall n. SNatI n => Natural
-bound = snatToNatural (snat @n)
+bound :: forall n. SNatI n => Int
+bound = snatToInt (snat @n)
 
 -- >>> [minBound .. maxBound] :: [Fin N3]
 -- [0,1,2]
@@ -133,7 +133,7 @@ bound = snatToNatural (snat @n)
 -- also include this class for simple conversion.
 instance ToInt (Fin n) where
   toInt :: Fin n -> Int
-  toInt (UnsafeFin x) = fromInteger (toInteger x)
+  toInt (UnsafeFin x) = x
 
 -- >>> :info Fin
 
@@ -158,7 +158,7 @@ instance SNatI n => Enum (Fin n) where
 
 
 instance SNatI n => Num (Fin n) where
-  UnsafeFin k1 + UnsafeFin k2 
+  !(UnsafeFin k1) + !(UnsafeFin k2) 
     | k1 + k2 < bound @n = UnsafeFin (k1 + k2)
     | otherwise = error "addition out of range"
   UnsafeFin k1 - UnsafeFin k2 
@@ -172,7 +172,7 @@ instance SNatI n => Num (Fin n) where
   signum (UnsafeFin x) = if x == 0 then 0 else 1
   fromInteger i | i < 0 = error "fromInteger: negative number"
   fromInteger i = 
-    let k :: Natural 
+    let
         k = fromInteger i 
     in
     if k < bound @n then UnsafeFin k 
@@ -211,7 +211,7 @@ universe | snatToNatural (snat @n) > 0
 
 -- increment by a fixed amount (on the left)
 shiftN :: forall n m . SNat n -> Fin m -> Fin (n + m)
-shiftN p (UnsafeFin f) = UnsafeFin (snatToNatural p + f)
+shiftN p (UnsafeFin f) = UnsafeFin (snatToInt p + f)
 
 shift1 :: Fin m -> Fin (S m)
 shift1 = shiftN s1
@@ -233,7 +233,7 @@ shift1 = shiftN s1
 -- >>> weakenFin (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
 -- 1
 weakenFin :: proxy m -> Fin n -> Fin (m + n)
-weakenFin _ (UnsafeFin f) = UnsafeFin f
+weakenFin _ !(UnsafeFin f) = UnsafeFin f
 
 -- | weaken the bound of a Fin by 1.
 weaken1Fin :: Fin n -> Fin (S n)
@@ -244,7 +244,7 @@ weaken1Fin = weakenFin s1
 -- >>> weakenFinRight (s1 :: SNat N1) (f1 :: Fin N2) :: Fin N3
 -- 1
 weakenFinRight :: proxy m -> Fin n -> Fin (n + m)
-weakenFinRight m (UnsafeFin f) = UnsafeFin f
+weakenFinRight m !(UnsafeFin f) = UnsafeFin f
 
 -- | weaken the bound of a Fin by 1.
 weaken1FinRight :: Fin n -> Fin (n + N1)
@@ -316,9 +316,9 @@ strengthen1Fin = strengthenRecFin s0 s1 snat
 
 strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
 strengthenRecFin k m n (UnsafeFin x) 
-  | x < snatToNatural k = Just (UnsafeFin x)
-  | x < snatToNatural k + snatToNatural m = Nothing 
-  | otherwise = Just $ UnsafeFin (x - snatToNatural m)
+  | x < snatToInt k = Just (UnsafeFin x)
+  | x < snatToInt k + snatToInt m = Nothing 
+  | otherwise = Just $ UnsafeFin (x - snatToInt m)
 
 {-
 strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))

@@ -20,6 +20,7 @@ common common-stanza
      -fwarn-incomplete-patterns
   build-depends:
       base >=4.15
+    , ghc-prim 
     , HUnit 
     , QuickCheck
     , containers
@@ -74,7 +75,6 @@ library
       , Data.Fin
       , Data.Vec
       , Data.LocalName    
-      , Data.Scoped.List  
       , LC
       , LCLet
       , PTS

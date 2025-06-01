@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-} 
+{-# LANGUAGE BangPatterns #-}
 module Data.Vec(
     Vec, Vec_(..), vec_, (|>), unCons, 
     empty,
@@ -70,14 +71,14 @@ unCons (UnsafeVec s) =
 
 
 setAt :: Fin n -> Vec n a -> a -> Vec n a
-setAt f (UnsafeVec v) x = UnsafeVec (Seq.update (toInt f) x v)
+setAt !f (UnsafeVec v) x = UnsafeVec (Seq.update (toInt f) x v)
 
 lookup :: Fin n -> Vec n a -> a
-lookup n (UnsafeVec v) = v `Seq.index` (toInt n) 
+lookup !n (UnsafeVec v) = v `Seq.index` (toInt n) 
 
 -- Vectors are Representable. 
 (!) :: Vec n a -> Fin n -> a
-(UnsafeVec v) ! f = Seq.index v (toInt f) 
+!(UnsafeVec v) ! f = Seq.index v (toInt f)
 
 tabulate :: forall m a. SNatI m => (Fin m -> a) -> Vec m a
 tabulate f = UnsafeVec (Seq.fromList v) where
@@ -87,9 +88,7 @@ append :: forall n m a. Vec n a -> Vec m a -> Vec (n + m) a
 append (UnsafeVec v1) (UnsafeVec v2) = UnsafeVec (v1 <> v2)
 
 vlength :: Vec n a -> SNat n
-vlength (UnsafeVec v) = UnsafeSNat n where
-    n :: Natural
-    n = fromInteger (toInteger (Seq.length v))
+vlength (UnsafeVec v) = UnsafeSNat (Seq.length v) 
 
 -- | knowing that two vectors are equal means that their 
 -- lengths are equal
@@ -99,8 +98,8 @@ veq (UnsafeVec v1) (UnsafeVec v2) =
 
 -- 𝑂(𝑛)
 -- Constructs a sequence by repeated application of a function to a seed value.
-iterateN :: SNat n -> (a -> a) -> a -> Vec n a
-iterateN n f x = 
+iterateN :: (SNat n) -> (a -> a) -> a -> Vec n a
+iterateN !n f x = 
     UnsafeVec (fromList (Prelude.take (toInt n) (Prelude.iterate f x)))
 
 
