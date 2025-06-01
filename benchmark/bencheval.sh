@@ -5,8 +5,9 @@
 
 # 
 valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
-# Move files.
+
 source_dir="results/`hostname`/rebound_strict_envV"
+branch = "main"
 
 # Define the file to modify.
 file="../rebound/src/Rebound/Env.hs"
