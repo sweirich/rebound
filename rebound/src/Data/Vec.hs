@@ -17,7 +17,6 @@ module Data.Vec(
 -- Should be imported qualified as it includes operations that
 -- conflict with list operations in the Prelude
 
-import GHC.Num.Natural
 import Data.Type.Equality
 import Data.Sequence (Seq, fromList)
 import Data.Sequence qualified as Seq
@@ -88,8 +87,7 @@ append (UnsafeVec v1) (UnsafeVec v2) = UnsafeVec (v1 <> v2)
 
 vlength :: Vec n a -> SNat n
 vlength (UnsafeVec v) = UnsafeSNat n where
-    n :: Natural
-    n = fromInteger (toInteger (Seq.length v))
+    n = Seq.length v
 
 -- | knowing that two vectors are equal means that their 
 -- lengths are equal

@@ -2,7 +2,7 @@
 {-# LANGUAGE RoleAnnotations #-}
 module Data.SNat(
   Nat(..), pattern UnsafeSNat, 
-  SNat(SZ,SS), snatToNatural,
+  SNat(SZ,SS), snatToNatural, fromSNat,
   SNatI(..), withSNat, 
   type (+), 
   N0, N1, N2, N3,
@@ -68,7 +68,7 @@ type N4 = S N3
 -- instead of the more abstract type-level Nats of GHC.TypeNats
 ---------------------------------------------------------
 
-newtype SNat (n :: Nat) = UnsafeSNat Natural
+newtype SNat (n :: Nat) = UnsafeSNat Int
 type role SNat nominal
 
 decNat :: SNat a -> SNat b -> Either (a :~: b -> Void) (a :~: b)
@@ -97,11 +97,11 @@ instance TestEquality SNat where
 
 -- | Return the 'Natural' number corresponding to @n@ in an @'SNat' n@ value.
 --
-fromSNat :: SNat n -> Natural
+fromSNat :: SNat n -> Int
 fromSNat (UnsafeSNat n) = n
 
 snatToNatural :: SNat n -> Natural
-snatToNatural = fromSNat
+snatToNatural = fromInteger . toInteger . fromSNat
 
 -- | Add two runtime nats
 sPlus :: forall n1 n2. SNat n1 -> SNat n2 -> SNat (n1 + n2)
@@ -159,7 +159,7 @@ class ToInt a where
 
 instance ToInt (SNat n) where
   toInt :: SNat n -> Int
-  toInt = fromInteger . toInteger . snatToNatural
+  toInt = fromSNat
 
 ---------------------------------------------------------
 -- View pattern access to the predecessor

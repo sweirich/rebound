@@ -18,7 +18,7 @@ module Data.Fin(
   SNat(SZ,SS),
   Fin,
   fs, Fin_(FZ_,FS_), fin_, Data.Fin.prev, 
-  toNatural, toInteger, 
+  toInteger, 
   mirror, 
   absurd,
   universe,
@@ -48,12 +48,9 @@ import Unsafe.Coerce(unsafeCoerce)
 -- Fin type
 -------------------------------------------------------------------------------
 
-newtype Fin (n :: Nat) = UnsafeFin Natural
+newtype Fin (n :: Nat) = UnsafeFin Int
   deriving (NFData)
 type role Fin nominal
-
-toNatural :: Fin n -> Natural
-toNatural (UnsafeFin x) = x
 
 absurd :: Fin N0 -> a
 absurd x = error "impossible"
@@ -87,7 +84,7 @@ pattern FZ <- (UnsafeFin 0)  -- Matcher: succeeds if the wrapped Natural is 0
 
 -- Helper view function for the FS matcher
 -- Takes the Natural value from a Fin (S k) and tries to find its predecessor's Natural value
-viewFS :: Natural -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
+viewFS :: Int -> Maybe (Fin k) -- The 'k' is inferred from the context of FS
 viewFS currentNat
   | currentNat > 0 = 
     Just (UnsafeFin (currentNat - 1)) -- This will be wrapped as Fin k
@@ -110,8 +107,8 @@ prev (UnsafeFin x) = Just (UnsafeFin (x-1))
 -- Enum, Bounded, Num instances
 -------------------------------------------------------------------------------
 
-bound :: forall n. SNatI n => Natural
-bound = snatToNatural (snat @n)
+bound :: forall n. SNatI n => Int
+bound = fromSNat (snat @n)
 
 -- >>> [minBound .. maxBound] :: [Fin N3]
 -- [0,1,2]
@@ -133,7 +130,7 @@ bound = snatToNatural (snat @n)
 -- also include this class for simple conversion.
 instance ToInt (Fin n) where
   toInt :: Fin n -> Int
-  toInt (UnsafeFin x) = fromInteger (toInteger x)
+  toInt (UnsafeFin x) = x
 
 -- >>> :info Fin
 
@@ -172,7 +169,7 @@ instance SNatI n => Num (Fin n) where
   signum (UnsafeFin x) = if x == 0 then 0 else 1
   fromInteger i | i < 0 = error "fromInteger: negative number"
   fromInteger i = 
-    let k :: Natural 
+    let 
         k = fromInteger i 
     in
     if k < bound @n then UnsafeFin k 
@@ -186,7 +183,7 @@ mirror :: forall n. SNatI n => Fin n -> Fin n
 mirror = invert
 
 universe :: forall n. SNatI n => [Fin n]
-universe | snatToNatural (snat @n) > 0 
+universe | toInt (snat @n) > 0 
          = [minBound .. maxBound]
          | otherwise
          = []
@@ -211,7 +208,7 @@ universe | snatToNatural (snat @n) > 0
 
 -- increment by a fixed amount (on the left)
 shiftN :: forall n m . SNat n -> Fin m -> Fin (n + m)
-shiftN p (UnsafeFin f) = UnsafeFin (snatToNatural p + f)
+shiftN p (UnsafeFin f) = UnsafeFin (toInt p + f)
 
 shift1 :: Fin m -> Fin (S m)
 shift1 = shiftN s1
@@ -316,9 +313,9 @@ strengthen1Fin = strengthenRecFin s0 s1 snat
 
 strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
 strengthenRecFin k m n (UnsafeFin x) 
-  | x < snatToNatural k = Just (UnsafeFin x)
-  | x < snatToNatural k + snatToNatural m = Nothing 
-  | otherwise = Just $ UnsafeFin (x - snatToNatural m)
+  | x < fromSNat k = Just (UnsafeFin x)
+  | x < fromSNat k + fromSNat m = Nothing 
+  | otherwise = Just $ UnsafeFin (x - fromSNat m)
 
 {-
 strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
