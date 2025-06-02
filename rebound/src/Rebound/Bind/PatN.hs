@@ -60,7 +60,7 @@ bindN = Pat.bind (PatN (snat @m))
 unbindN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
 unbindN = Pat.getBody
 
-getBodyN :: forall m v c n. (Subst v c,SNatI m) => BindN v c m n -> c (m + n)
+getBodyN :: forall m v c n. (Subst v c, SNatI m) => BindN v c m n -> c (m + n)
 getBodyN = Pat.getBody
 
 unbindWithN ::

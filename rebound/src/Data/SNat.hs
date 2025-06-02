@@ -7,12 +7,11 @@ module Data.SNat(
   N0, N1, N2, N3,
   s0, s1, s2, s3, 
   sPlus,
-  axiomSus,
   axiomPlusZ,
   axiomAssoc,
   SNat_(..), snat_,
-  pred,
-  succ,
+  prev,
+  next,
   ToInt(..),
  ) where
 
@@ -37,11 +36,6 @@ axiomPlusZ = unsafeCoerce Refl
 
 axiomAssoc :: forall p m n. p + (m + n) :~: (p + m) + n
 axiomAssoc = unsafeCoerce Refl
-
--- Another property about addition
--- Somewhat sus. Can we get rid of this?
-axiomSus :: forall m n. m + S n :~: S (m + n)
-axiomSus = unsafeCoerce Refl
 
 -----------------------------------------------------
 -- Nats (singleton nats and implicit singletons)
@@ -91,7 +85,7 @@ type family (n :: Nat) + (m :: Nat) :: Nat where
 
 sPlus :: forall n1 n2. SNat n1 -> SNat n2 -> SNat (n1 + n2)
 sPlus SZ n = n
-sPlus x@SS y = withSNat (sPlus (pred x) y) SS
+sPlus x@SS y = withSNat (sPlus (prev x) y) SS
 
 -- >>> reflect $ sPlus s3 s1
 -- 4
@@ -108,8 +102,8 @@ snat_ :: SNat n -> SNat_ n
 snat_ SZ = SZ_
 snat_ SS = SS_ snat
 
-pred :: SNat (S n) -> SNat n
-pred SS = snat
+prev :: SNat (S n) -> SNat n
+prev SS = snat
 
-succ :: SNat n -> SNat (S n)
-succ x = withSNat x SS
+next :: SNat n -> SNat (S n)
+next x = withSNat x SS

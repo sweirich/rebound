@@ -2,7 +2,8 @@ module Data.Vec(
     module Data.Vec.Lazy,
     vlength,
     append,
-    setAt
+    setAt,
+    all2
  ) where
 
 --- replace with
@@ -40,3 +41,9 @@ vlength :: Vec n a -> SNat n
 vlength VNil = SZ
 vlength (_ ::: v) = withSNat (vlength v) SS
 
+-- >>> all (\x -> x > 3) (4 ::: 5 ::: VNil)
+-- True
+
+all2 :: (a -> b -> Bool) -> Vec n a -> Vec n b -> Bool
+all2 f (x ::: xs) (y ::: ys) = f x y && all2 f xs ys
+all2 f VNil VNil = True

@@ -65,7 +65,6 @@ library
       , Rebound.Env.InternalA
       , Rebound.Env.InternalB
       , Rebound.Env.Functional
-      , Rebound.Env.Vector
       , Rebound.MonadScoped
       , Rebound.Bind.Single
       , Rebound.Bind.Local
@@ -76,8 +75,8 @@ library
       , Data.Fin
       , Data.Vec
       , Data.LocalName    
-      , Data.Scoped.List  
       , LC
+      , LCQC
       , LCLet
       , PTS
       , Pat

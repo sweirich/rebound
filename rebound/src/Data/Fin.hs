@@ -61,6 +61,24 @@ instance ToInt (Fin n) where
 -- [0,1,2]
 
 -- >>> :info Fin
+-- type role Fin nominal
+-- type Fin :: Nat -> *
+-- data Fin n where
+--   FZ :: Fin ('S n1)
+--   FS :: Fin n1 -> Fin ('S n1)
+--   	-- Defined in ‘Data.Fin’
+-- instance ToInt (Fin n)
+--   -- Defined at /Users/sweirich/github/haskell/rebound/rebound/src/Data/Fin.hs:51:10
+-- instance [safe] (n ~ 'S m, SNatI m) => Bounded (Fin n)
+--   -- Defined in ‘Data.Fin’
+-- instance [safe] SNatI n => Enum (Fin n) -- Defined in ‘Data.Fin’
+-- instance [safe] SNatI n => Integral (Fin n)
+--   -- Defined in ‘Data.Fin’
+-- instance [safe] SNatI n => Num (Fin n) -- Defined in ‘Data.Fin’
+-- instance [safe] SNatI n => Real (Fin n) -- Defined in ‘Data.Fin’
+-- instance [safe] Eq (Fin n) -- Defined in ‘Data.Fin’
+-- instance [safe] Ord (Fin n) -- Defined in ‘Data.Fin’
+-- instance [safe] Show (Fin n) -- Defined in ‘Data.Fin’
 
 -- | Convert an "index" Fin to a "level" Fin and vice versa
 invert :: forall n. SNatI n => Fin n -> Fin n

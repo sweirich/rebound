@@ -142,6 +142,6 @@ instance Named LocalName (SNat p) where
   names = go where
     go :: forall p. SNat p -> Vec p LocalName
     go SZ = VNil
-    go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.succ q)) ::: go q
+    go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.next q)) ::: go q
 
 
