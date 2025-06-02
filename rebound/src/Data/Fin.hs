@@ -206,7 +206,7 @@ f3 = FS f2
 -- Just 1
 
 strengthen1Fin :: forall n. SNatI n => Fin (S n) -> Maybe (Fin n)
-strengthen1Fin = strengthenRecFin s0 s1 snat
+strengthen1Fin = strengthenRecFin s0 s1 undefined
 
 -- We implement strengthening with the following operation that 
 -- generalizes the induction hypothesis, so that we can strengthen
@@ -232,7 +232,8 @@ strengthen1Fin = strengthenRecFin s0 s1 snat
 -- >>> strengthenRecFin s1 s1 s2 (f3 :: Fin (N1 + N1 + N2)) :: Maybe (Fin N3)
 -- Just 2
 
-strengthenRecFin :: SNat k -> SNat m -> SNat n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
+strengthenRecFin :: 
+   SNat k -> SNat m -> proxy n -> Fin (k + (m + n)) -> Maybe (Fin (k + n))
 strengthenRecFin SZ SZ n x = Just x  -- Base case: k = 0, m = 0
 strengthenRecFin SZ (snat_ -> SS_ m) n FZ = Nothing  
   -- Case: k = 0, m > 0, and x is in the `m` range

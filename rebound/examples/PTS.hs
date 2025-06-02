@@ -11,6 +11,7 @@ import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin(Fin(..), f0,f1,f2)
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
+import GHC.Generics (Generic1)
 
 -- In a pure type system, terms and types are combined
 -- into the same syntactic class.
@@ -35,6 +36,7 @@ data Exp (n :: Nat) where
   -- the two components of the pair
   Split :: Exp n -> Bind2 Exp Exp n -> Exp n
 
+deriving instance (Generic1 Exp)
 ----------------------------------------------
 
 instance SubstVar Exp where
@@ -42,16 +44,8 @@ instance SubstVar Exp where
   var = Var
 
 instance Subst Exp Exp where
-  applyE :: Env Exp n m -> Exp n -> Exp m
-  applyE r Star = Star
-  applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
-  applyE r (Var x) = applyEnv r x
-  applyE r (Lam a b) = Lam (applyE r a) (applyE r b)
-  applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
-  applyE r (Sigma a b) = Sigma (applyE r a) (applyE r b)
-  applyE r (Pair e1 e2 t1) = Pair (applyE r e1) (applyE r e2) (applyE r t1)
-  applyE r (Split e1 e2) = Split (applyE r e1) (applyE r e2)
-
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing 
 ----------------------------------------------
 
 t00 :: Exp N2
@@ -68,16 +62,7 @@ t01 = App (Var f0) (Var f1)
 -- >>> appearsFree f1 t00
 -- False
 instance FV Exp where
-  appearsFree :: Fin n -> Exp n -> Bool
-  appearsFree n (Var x) = n == x
-  appearsFree n Star = False
-  appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
-  appearsFree n (Lam a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
-  appearsFree n (App a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
-  appearsFree n (Pair a b t) = appearsFree n a || appearsFree n b || appearsFree n t
-  appearsFree n (Split a b) = appearsFree n a || appearsFree (FS (FS n)) (getBody2 b)
-
+ 
 -- >>> :t weaken' s1 t00
 -- weaken' s1 t00 :: Exp ('S ('S N1))
 
@@ -94,15 +79,6 @@ weaken' m = applyE @Exp (weakenE' m)
 -- Nothing
 
 instance Strengthen Exp where
-
-  strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
-  strengthenRec k m n Star = pure Star
-  strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (Lam a b) = Lam <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (Sigma a b) = Sigma <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (Pair a b t) = Pair <$> strengthenRec k m n a <*> strengthenRec k m n b <*> strengthenRec k m n t
-  strengthenRec k m n (Split a b) = Split <$> strengthenRec k m n a <*> strengthenRec k m n b
 
 ----------------------------------------------
 -- Examples
@@ -278,7 +254,7 @@ eval' e
 -- λ. λ. 1 0
 
 -- >>> nf (t1 `App` t0)
--- λ. λ. 0 0
+-- λ. 0
 
 -- reduce the term everywhere, as much as possible
 nf :: Exp n -> Exp n
@@ -460,5 +436,7 @@ inferType g (Split a b) = do
 -- >>> inferType zeroE tmid :: Either Err (Exp N0)
 -- Right (Pi *. 0 -> 1)
 
+
 -- >>> inferType zeroE (App tmid tyid) :: Either Err (Exp N0)
 -- Right ((Pi *. 0 -> 1) -> Pi *. 0 -> 1)
+

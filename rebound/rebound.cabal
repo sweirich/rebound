@@ -81,7 +81,6 @@ library
       , PTS
       , Pat
       , DepMatch
-      , NBE
       , ScopeCheck
       , SystemF
   hs-source-dirs:

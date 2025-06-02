@@ -13,6 +13,9 @@ import qualified Data.Fin as Fin
 import Rebound
 import Rebound.Bind.Pat qualified as Pat
 
+import Data.Set (Set)
+import qualified Data.Set as Set
+
 ----------------------------------------------------------
 -- Sized type class for patterns
 ----------------------------------------------------------
@@ -170,8 +173,7 @@ instance (ScopedSized pat,
     
       
 instance
-  ( Subst v v,
-    Subst v c,
+  ( Subst v c,
     ScopedSized p,
     FV p,
     FV c
@@ -183,6 +185,14 @@ instance
      in appearsFree n pat
           || appearsFree (Fin.shiftN (scopedSize pat) n) (getBody b)
 
+  freeVars :: forall n. (Subst v c, ScopedSized p, FV p, FV c) => 
+     Bind v c p n -> Set (Fin n)
+  freeVars b = 
+    let pat = getPat b
+        body = getBody b
+    in 
+       freeVars pat <> rescope (scopedSize pat) (freeVars body)
+    
 
 instance (ScopedSized p, SubstVar v, Subst v v, Subst v c, Strengthen c, Strengthen p) =>
   Strengthen (Bind v c p)
@@ -280,6 +290,10 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
       Fin n -> TeleList pat p n -> Bool
   appearsFree n TNil = False
   appearsFree n (TCons p1 p2) = appearsFree n p1 || appearsFree (Fin.shiftN (iscopedSize p1) n) p2
+
+  freeVars :: TeleList pat p n -> Set (Fin n)
+  freeVars TNil = Set.empty
+  freeVars (TCons p1 p2) = freeVars p1 <> rescope (iscopedSize p1) (freeVars p2)
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
   strengthenRec k m n TNil = Just TNil

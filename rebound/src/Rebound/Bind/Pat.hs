@@ -28,6 +28,8 @@ import Rebound.Classes
 import Data.Fin (Fin)
 import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 ----------------------------------------------------------
 -- Bind type
@@ -126,10 +128,13 @@ instance (SubstVar v) => Subst v (Bind v c p) where
   applyE :: Env v n m -> Bind v c p n -> Bind v c p m
   applyE env1 (Bind p env2 m) = Bind p (env2 .>> env1) m
 
-instance ( Subst v c, Sized p, FV c ) => FV (Bind v c p) where
+instance (Subst v c, Sized p, FV c) => FV (Bind v c p) where
   appearsFree :: Fin n -> Bind v c p n -> Bool
   appearsFree n b =
     appearsFree (Fin.shiftN (size (getPat b)) n) (getBody b)
+  freeVars :: forall n. Bind v c p n -> Set (Fin n)
+  freeVars b = rescope (size (getPat b)) (freeVars (getBody b)) 
+
 
 instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
   strengthenRec :: SNat k -> SNat m -> SNat n 
@@ -159,6 +164,9 @@ instance
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree :: (Sized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
   appearsFree n (Rebind p1 p2) = appearsFree (Fin.shiftN (size p1) n) p2
+
+  freeVars :: (Sized p1, FV p2) => Rebind p1 p2 n -> Set (Fin n)
+  freeVars = undefined
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) = 

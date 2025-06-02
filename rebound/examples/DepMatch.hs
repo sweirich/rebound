@@ -1,7 +1,6 @@
 -- | A dependent type system, with nested dependent pattern matching for Sigma types.
 -- This is an advanced usage of the binding library, demonstrating the use of Scoped patterns.
 -- It doesn't correspond to any current system, but has its own elegance
--- This implementation does not attempt to use explicit environments.
 
 module DepMatch where
 
@@ -18,8 +17,10 @@ import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin
 import Data.List qualified as List
 import Data.Maybe qualified as Maybe
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Vec qualified
-import Debug.Trace
+import GHC.Generics (Generic1)
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 
 -- In this system, `Match` introduces a Pi type and generalizes 
@@ -43,6 +44,8 @@ data Exp (n :: Nat)
 
 -- | A single branch in a match expression. Binds a pattern
 -- with expression variables, within some expression body
+-- This data structure includes an "existential" size, so we 
+-- cannot use GHC.Generics to derive any operations
 data Branch (n :: Nat)
   = forall p. Branch (Scoped.Bind Exp Exp (Pat p) n)
 
@@ -138,6 +141,7 @@ instance Subst Exp Exp where
   applyE r (Pair a b) = Pair (applyE r a) (applyE r b)
   applyE r (Match brs) = Match (map (applyE r) brs)
   applyE r (Annot a t) = Annot (applyE r a) (applyE r t)
+  
 
 instance Subst Exp (Pat p) where
   applyE :: Env Exp n m -> Pat p n -> Pat p m
@@ -149,6 +153,7 @@ instance Subst Exp (Pat p) where
 instance Subst Exp Branch where
   applyE :: forall n m. Env Exp n m -> Branch n -> Branch m
   applyE r (Branch b) = Branch (applyE r b)
+
 
 ----------------------------------------------
 -- Free variable calculation
@@ -176,13 +181,29 @@ instance FV Exp where
   appearsFree n (Match b) = any (appearsFree n) b
   appearsFree n (Annot a t) = appearsFree n a || appearsFree n t
 
+  freeVars :: Exp n -> Set (Fin n)
+  freeVars (Var x) = Set.singleton x
+  freeVars Star = Set.empty
+  freeVars (Pi a b) = freeVars a <> rescope s1 (freeVars (getBody1 b))
+  freeVars (App a b) = freeVars a <> freeVars b
+  freeVars (Sigma a b) = freeVars a <> rescope s1 (freeVars (getBody1 b))
+  freeVars (Pair a b) = freeVars a <> freeVars b
+  freeVars (Match b) = foldMap freeVars b
+  freeVars (Annot a t) = freeVars a <> freeVars t
+
 instance FV Branch where
   appearsFree n (Branch bnd) = appearsFree n bnd
+
+  freeVars (Branch bnd)= freeVars bnd
 
 instance FV (Pat p) where
   appearsFree n PVar = False
   appearsFree n (PPair p1 p2) = appearsFree n p1 || appearsFree (shiftN (size p1) n) p2
   appearsFree n (PAnnot p t) = appearsFree n p || appearsFree n t
+
+  freeVars PVar = Set.empty
+  freeVars (PPair p1 p2) = freeVars p1 <> rescope (size p1) (freeVars p2)
+  freeVars (PAnnot p t) = freeVars p <> freeVars t
 
 ----------------------------------------------
 -- weakening (convenience functions)

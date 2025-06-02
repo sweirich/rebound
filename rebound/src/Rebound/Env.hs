@@ -201,7 +201,7 @@ fromTable rho =
                                   
 --------------------------------------------
 -- Generic implementation of Subst class
------------------------------------------------
+--------------------------------------------
 
 -- Constant types
 instance GSubst v (K1 i c) where
