@@ -97,6 +97,11 @@ class Sized (t :: Type) where
 class PatEq (t1 :: Type) (t2 :: Type) where
     patEq :: t1 -> t2 -> Maybe (Size t1 :~: Size t2)
 
+-- | Class of patterns that are indexed by a natural number
+-- where the size is that index directly
+class (Sized (t p), Size (t p) ~ p) => SizeIndex t p
+
+
 ---------------------------------------------------------
 -- Pattern Class Instances for Prelude and Lib Types
 ---------------------------------------------------------

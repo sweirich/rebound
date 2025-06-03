@@ -48,6 +48,8 @@ import Rebound.Env
 newtype PatN (p :: Nat) where
   PatN :: SNat p -> PatN p
 
+instance SNatI p => SizeIndex PatN p
+
 instance (SNatI p) => Sized (PatN p) where
   type Size (PatN p) = p
   size (PatN sn) = sn

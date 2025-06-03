@@ -17,8 +17,9 @@ module Pat where
 
 import Rebound
 
-import Rebound.Bind.PatN
+import Rebound.Bind.PatN as PatN
 import qualified Rebound.Bind.Pat as Pat
+import Rebound.Bind.Scoped qualified as Scoped
 import Data.Maybe qualified as Maybe
 import Data.Type.Equality
 import Data.Fin ( Fin, f0, f1 )
@@ -40,16 +41,19 @@ data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
   Lam :: Bind1 Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
+  Pair :: Exp n -> Exp n -> Exp n
+  Let  :: Exp n -> Branch PPat n -> Exp n
+
   Con :: String -> Exp n
   -- ^ constant (or symbol) like 'cons or 'nil
-  Case :: Exp n -> [Branch n] -> Exp n
+  Case :: Exp n -> [Branch Pat n] -> Exp n
    
 
 -- Each branch in a case expression is a pattern binding,
 -- i.e. a data structure that binds m variables in some
 -- expression body with scope n
-data Branch (n :: Nat) where
-  Branch :: Pat.Bind Exp Exp (Pat m) n -> Branch n
+data Branch pat (n :: Nat) where
+  Branch :: SNatI m => Pat.Bind Exp Exp (pat m) n -> Branch pat n
 
 -- The index `m` in the pattern is the number of occurrences of
 -- PVar, i.e. the number variables bound by the pattern.
@@ -65,7 +69,11 @@ data Pat (m :: Nat) where
 
 data ConApp (m :: Nat) where
   PCon :: String -> ConApp N0 -- binds zero variables
-  PApp :: ConApp m1 -> Pat m2 -> ConApp (m1 + m2)
+  PApp :: ConApp m1 -> Pat m2 -> ConApp (m2 + m1)
+
+data PPat (m :: Nat) where
+  PPVar :: PPat N1
+  PPair :: PPat m1 -> PPat m2 -> PPat (m2 + m1)
 
 ----------------------------------------------
 
@@ -94,7 +102,7 @@ instance Sized (Pat m) where
 instance Sized (ConApp m) where
   type Size (ConApp m) = m
 
-  size (PApp p1 p2) = sPlus (size p1) (size p2)
+  size (PApp p1 p2) = sPlus (size p2) (size p1)
   size (PCon s) = s0
 
 -- NOTE: we could drop `size` from the type class 
@@ -103,6 +111,13 @@ instance Sized (ConApp m) where
 -- is set up with a default implementation that will add 
 -- this constraint if the `size` function is not 
 -- already provided.-
+
+instance Sized (PPat m) where
+  type Size (PPat m) = m
+
+  size :: PPat m -> SNat (Size (PPat m))
+  size PPVar = s1
+  size (PPair p1 p2) = sPlus (size p2) (size p1)
 
 ----------------------------------------------
 
@@ -121,9 +136,11 @@ instance Subst Exp Exp where
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
   applyE r (Con s) = Con s
   applyE r (Case e brs) = Case (applyE r e) (map (applyE r) brs)
+  applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
+  applyE r (Let e1 b) = Let (applyE r e1) (applyE r b)
 
-instance Subst Exp Branch where
-  applyE :: Env Exp n m -> Branch n -> Branch m
+instance Subst Exp (Branch pat) where
+  applyE :: Env Exp n m -> Branch pat n -> Branch pat m
   applyE r (Branch bnd) = Branch (applyE r bnd)
 
 
@@ -216,6 +233,27 @@ instance Show (Exp n) where
         . shows e
         . showString " of "
         . shows brs
+  showsPrec d (Pair e1 e2) = 
+    showParen True $ 
+       shows e1 
+       . showString ","
+       . shows e2
+  showsPrec d (Let e (Branch b)) = 
+    showString "let "
+    . shows (Pat.getPat b)
+    . showString " = "
+    . shows e
+    . showString " in "
+    . showsPrec d (Pat.getBody b)
+
+instance Show (PPat m) where
+  showsPrec :: Int -> PPat m -> String -> String
+  showsPrec d PPVar = showString "V"
+  showsPrec d (PPair p1 p2) =
+    showParen True $
+      shows p1
+        . showString ","
+        . shows p2
 
 instance Show (Pat m) where
   showsPrec :: Int -> Pat m -> String -> String
@@ -233,8 +271,8 @@ instance Show (ConApp m) where
 
 -- In a `PatBind` term, we can access the pattern with `getPat`
 -- and the RHS with `getBody`
-instance Show (Branch n) where
-  showsPrec :: Int -> Branch n -> String -> String
+instance Show (Branch Pat n) where
+  showsPrec :: Int -> Branch Pat n -> String -> String
   showsPrec d (Branch bnd) =
     shows (Pat.getPat bnd)
       . showString " => "
@@ -285,15 +323,28 @@ instance PatEq (ConApp m1) (ConApp m2) where
   patEq (PCon s1) (PCon s2) | s1 == s2 = Just Refl
   patEq _ _ = Nothing
 
+instance PatEq (PPat m1) (PPat m2) where
+  patEq (PPair p1 p2) (PPair p1' p2') = do
+    Refl <- patEq p1 p1'
+    Refl <- patEq p2 p2'
+    return Refl
+  patEq PPVar PPVar = Just Refl
+  patEq _ _ = Nothing
+
 
 -- the generalized equality can be used for the usual equality
 instance Eq (Pat m) where
   p1 == p2 = Maybe.isJust (patEq p1 p2)
 
-instance Eq (Branch n) where
-  (==) :: Branch n -> Branch n -> Bool
-  (Branch (p1 :: Pat.Bind Exp Exp (Pat m1) n))
-    == (Branch (p2 :: Pat.Bind Exp Exp (Pat m2) n)) =
+instance SizeIndex PPat p
+instance SizeIndex Pat p
+
+
+instance (forall m. SizeIndex pat m,
+          forall m1 m2. PatEq (pat m1) (pat m2)) => Eq (Branch pat n) where
+  (==) :: Branch pat n -> Branch pat n -> Bool
+  (Branch (p1 :: Pat.Bind Exp Exp (pat m1) n))
+    == (Branch (p2 :: Pat.Bind Exp Exp (pat m2) n)) =
       case testEquality
         (size (Pat.getPat p1) :: SNat m1)
         (size (Pat.getPat p2) :: SNat m2) of
@@ -301,12 +352,15 @@ instance Eq (Branch n) where
         Nothing -> False
 
 -- To compare simple binders, we need to `unbind` them
-instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
+--
+instance {-# OVERLAPPING #-} (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
   b1 == b2 = getBody1 b1 == getBody1 b2
 
 -- To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
-instance (Eq (Exp n)) => Eq (Pat.Bind Exp Exp (Pat m) n) where
+instance (forall m. SizeIndex pat m,
+          forall m1 m2. PatEq (pat m1) (pat m2),
+          Eq (Exp n)) => Eq (Pat.Bind Exp Exp (pat m) n) where
   b1 == b2 =
     Maybe.isJust (patEq (Pat.getPat b1) (Pat.getPat b2))
       && Pat.getBody b1 == Pat.getBody b2
@@ -357,17 +411,26 @@ patternMatchApp :: ConApp p -> Exp m -> Maybe (Env Exp p m)
 patternMatchApp (PApp p1 p2) (App e1 e2) = do
   env1 <- patternMatchApp p1 e1
   env2 <- patternMatch p2 e2
-  withSNat (size p1) $ return (env1 .++ env2)
+  withSNat (size p2) $ return (env2 .++ env1)
 patternMatchApp (PCon s1) (Con s2) =
   if s1 == s2 then Just zeroE else Nothing
 patternMatchApp _ _ = Nothing
 
-findBranch :: Exp n -> [Branch n] -> Maybe (Exp n)
+findBranch :: Exp n -> [Branch Pat n] -> Maybe (Exp n)
 findBranch e [] = Nothing
 findBranch e (Branch bind : brs) =
   case patternMatch (Pat.getPat bind) e of
     Just r -> Just $ Pat.instantiate bind r
     Nothing -> findBranch e brs
+
+
+ppatternMatch :: PPat p -> Exp m -> Maybe (Env Exp p m)
+ppatternMatch PVar e = Just $ oneE e
+ppatternMatch (PPair p1 p2) (Pair e1 e2) = do
+  env1 <- ppatternMatchApp p1 e1
+  env2 <- ppatternMatch p2 e2
+  withSNat (size p2) $ return (env2 .++ env1)
+
 
 --------------------------------------------------------
 -- Eval and step
@@ -400,6 +463,11 @@ eval (Case e brs) =
    in case findBranch v brs of
         Just br -> eval br
         Nothing -> Case v brs -- if cannot reduce, return neutral term
+eval (Pair e1 e2) = Pair e1 e2
+eval (Let e (Branch b)) = case 
+  ppatternMatch (Pat.getPat b) (eval e) of
+    Just r -> eval (Pat.instantiate (Pat.getBody b) r)
+    Nothing -> error "No match!"
 
 -- | small-step evaluation
 -- >>> step (t1 `App` t0)
@@ -445,6 +513,6 @@ nf (Case e brs) =
         Just b -> nf b
         Nothing -> Case e (map nfBr brs)
 
-nfBr :: Branch n -> Branch n
+nfBr :: (forall n. Sized (pat n)) => Branch pat n -> Branch pat n
 nfBr (Branch bnd) =
   Branch (Pat.bind (Pat.getPat bnd) (nf (Pat.getBody bnd)))
