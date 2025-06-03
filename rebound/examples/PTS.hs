@@ -48,7 +48,7 @@ instance Shiftable Exp where
 
 instance Subst Exp Exp where
   isVar (Var x) = Just (Refl, x)
-  isVar _ = Nothing 
+  isVar _ = Nothing
 ----------------------------------------------
 
 t00 :: Exp N2
@@ -65,7 +65,7 @@ t01 = App (Var f0) (Var f1)
 -- >>> appearsFree f1 t00
 -- False
 instance FV Exp where
- 
+
 -- >>> :t weaken' s1 t00
 -- weaken' s1 t00 :: Exp ('S ('S N1))
 
@@ -75,10 +75,10 @@ instance FV Exp where
 weaken' :: SNat m -> Exp n -> Exp (m + n)
 weaken' m = applyE @Exp (weakenE' m)
 
--- >>> strengthen' s1 s1 t00
+-- >>> strengthenRec s1 s1 snat t00
 -- Just (0 0)
 
--- >>> strengthen' s1 s1 t01
+-- >>> strengthenRec s1 s1 snat t01
 -- Nothing
 
 instance Strengthen Exp where
@@ -113,10 +113,10 @@ t1 =
 -- operation to access the body of the lambda expression.
 
 -- >>> t0
--- λ. 0
+-- λ *. 0
 
 -- >>> t1
--- λ. λ. 1 (λ. 0 0)
+-- λ *. λ *. 1 ((λ *. 0) 0)
 
 -- Polymorphic identity function and its type
 
@@ -128,35 +128,35 @@ tmid = Lam Star (bind1 (Lam (Var f0) (bind1 (Var f0))))
 -- Pi *. 0 -> 1
 
 -- >>> tmid
--- λ. λ. 0
+-- λ *. λ 0. 0
 
 instance Show (Exp n) where
   showsPrec :: Int -> Exp n -> String -> String
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Pi "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec d (Sigma a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Sigma "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " * "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
@@ -164,8 +164,10 @@ instance Show (Exp n) where
         . showString " "
         . showsPrec 11 e2
   showsPrec d (Lam t b) =
-    showParen (d > 10) $
-      showString "λ. "
+    showParen (d > 9) $
+      showString "λ "
+        . shows t
+        . showString ". "
         . shows (getBody1 b)
   showsPrec d (Pair e1 e2 t) =
     showParen (d > 0) $
@@ -199,10 +201,10 @@ deriving instance (Eq (Exp n))
 -- big-step evaluation
 
 -- >>> eval t1
--- λ. λ. 1 (λ. 0 0)
+-- λ *. λ *. 1 ((λ *. 0) 0)
 
 -- >>> eval (t1 `App` t0)
--- λ. λ. 0 (λ. 0 0)
+-- λ *. (λ *. 0) ((λ *. 0) 0)
 
 eval :: Exp n -> Exp n
 eval (Var x) = Var x
@@ -225,7 +227,7 @@ eval (Split a b) =
 -- small-step evaluation
 
 -- >>> step (t1 `App` t0)
--- Just (λ. λ. 0 (λ. 0 0))
+-- Just (λ *. λ *. 0 (λ *. 0 0))
 
 step :: Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
@@ -257,7 +259,7 @@ eval' e
 -- λ. λ. 1 0
 
 -- >>> nf (t1 `App` t0)
--- λ. 0
+-- λ *. 0
 
 -- reduce the term everywhere, as much as possible
 nf :: Exp n -> Exp n
@@ -303,7 +305,7 @@ norm a = case whnf a of
 -- environment explicitly
 
 -- >>> evalEnv idE t1
--- λ. λ. 1 (λ. 0 0)
+-- λ *. λ *. 1 ((λ *. 0) 0)
 
 -- Below, if n is 0, then this function acts like an
 -- "environment-based" bigstep evaluator. The result of

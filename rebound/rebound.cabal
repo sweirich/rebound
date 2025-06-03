@@ -71,7 +71,7 @@ library
     , Data.Scoped.Telescope
   hs-source-dirs: src
 
-library rebound-examples
+library examples
   import:
     common-stanza
   build-depends:
@@ -98,3 +98,27 @@ library rebound-examples
     , ScopeCheck
     , SystemF
   hs-source-dirs: examples
+
+test-suite tests
+  import:
+    common-stanza
+  build-depends:
+      base
+    , rebound
+    , examples
+    , tasty
+    , tasty-hunit
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    All.hs
+  other-modules:
+    Utils
+    Examples.LC
+    Examples.LCLet
+    Examples.Pat
+    Examples.SystemF
+    Examples.PTS
+    Examples.DepMatch

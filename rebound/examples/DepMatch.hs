@@ -44,7 +44,7 @@ data Exp (n :: Nat)
 
 -- | A single branch in a match expression. Binds a pattern
 -- with expression variables, within some expression body
--- This data structure includes an "existential" size, so we 
+-- This data structure includes an "existential" size, so we
 -- cannot use GHC.Generics to derive any operations
 data Branch (n :: Nat)
   = forall p. Branch (Scoped.Bind Exp Exp (Pat p) n)
@@ -143,7 +143,7 @@ instance Subst Exp Exp where
   applyE r (Pair a b) = Pair (applyE r a) (applyE r b)
   applyE r (Match brs) = Match (map (applyE r) brs)
   applyE r (Annot a t) = Annot (applyE r a) (applyE r t)
-  
+
 
 instance Shiftable (Pat p) where
   shift = shiftFromApplyE @Exp
@@ -231,10 +231,10 @@ weakenBind' m = applyE @Exp (weakenE' m)
 -- strengthening
 ----------------------------------------------
 
--- >>> strengthen' s1 s1 t00
+-- >>> strengthenRec s1 s1 snat t00
 -- Just (0 0)
 
--- >>> strengthen' s1 s1 t01
+-- >>> strengthenRec s1 s1 snat t01
 -- Nothing
 
 instance Strengthen Exp where
@@ -325,28 +325,28 @@ instance Show (Exp n) where
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Pi "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec d (Sigma a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Sigma "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " * "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
@@ -359,9 +359,9 @@ instance Show (Exp n) where
         . showString ", "
         . showsPrec 11 e2
   showsPrec d (Match [b]) =
-    showParen (d > 10) $
+    showParen (d > 9) $
       showString "λ"
-        . showsPrec 10 b
+        . showsPrec 9 b
   showsPrec d (Match b) =
     showParen (d > 10) $
       showString "match"
@@ -452,10 +452,7 @@ deriving instance (Eq (Exp n))
 -- λ_. (λ_. (1 (λ_. (0 0))))
 
 -- >>> eval (t1 `App` t0)
--- λ_. (λ_. 0 (λ_. (0 0)))
-
--- OLD
--- λ. λ. 0 (λ. 0 0)
+-- λ_. ((λ_. 0) (λ_. (0 0)))
 
 eval :: (SNatI n) => Exp n -> Exp n
 eval (Var x) = Var x

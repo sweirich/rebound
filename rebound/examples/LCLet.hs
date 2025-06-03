@@ -113,7 +113,7 @@ t3 = letrec (lam (v0 @@(v1 @@ v0))) v0
 -- (let rec (λ. (0 (1 0))) in 0)
 
 -- let* x1 = \x.x ; x2 = x1 x1 ; x3 = x2 s1 in x3 x2 x1
-t5 = LetTele
+t4 = LetTele
        (letstar t0
          (letstar (v0 @@ v0)
             (letstar (v0 @@ v1)

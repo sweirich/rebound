@@ -339,7 +339,7 @@ e2 :: Exp N0
 e2 = App (App (Con "D") (Con "A")) (Con "C")
 
 -- >>> patternMatch p1 e1
--- Just [A,B]
+-- Just [(0,A),(1,B)]
 
 -- >>> patternMatch p2 e1
 -- Nothing
@@ -348,7 +348,7 @@ e2 = App (App (Con "D") (Con "A")) (Con "C")
 -- Nothing
 
 -- >>> patternMatch p2 e2
--- Just [A,C]
+-- Just [(0,A),(1,C)]
 
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for all of the variables
