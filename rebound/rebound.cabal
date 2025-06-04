@@ -33,7 +33,6 @@ common common-stanza
     , FunctionalDependencies
     , ViewPatterns
 
-
 library
   import:
       common-stanza
@@ -44,7 +43,6 @@ library
     , QuickCheck
     , fin >= 0.3
     , vec
-    , mono-traversable
   exposed-modules:
       Rebound
     , Rebound.Classes
@@ -81,14 +79,7 @@ library rebound-examples
     , mtl
     , HUnit
     , QuickCheck
-    , filepath
-    , parsec
-    , prettyprinter
     , containers
-    , network
-    , directory
-    , random
-    , mtl
   exposed-modules:
       LC
     , LCQC

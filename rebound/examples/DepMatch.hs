@@ -21,7 +21,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vec qualified
 import GHC.Generics (Generic1)
-import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 
 -- In this system, `Match` introduces a Pi type and generalizes
 -- dependent functions
