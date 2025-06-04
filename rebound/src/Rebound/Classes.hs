@@ -6,7 +6,7 @@
 module Rebound.Classes where
 
 import Rebound.Lib
-import Data.Fin
+
 import Data.Foldable
 import Data.Vec qualified as Vec
 import Data.Fin
@@ -73,7 +73,7 @@ instance Strengthen Fin where
 
 -- | Update a set of free variables to a new scope through strengthening
 rescope :: forall n k. SNat k -> Set (Fin (k + n)) -> Set (Fin n)
-rescope k s = foldMap g s where
+rescope k = foldMap g where
    g :: Fin (k + n) -> Set (Fin n)
    g x = case strengthenRecFin s0 k (undefined :: SNat n) x of
            Nothing -> Set.empty

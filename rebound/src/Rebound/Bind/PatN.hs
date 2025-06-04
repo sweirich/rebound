@@ -39,6 +39,7 @@ import qualified Data.Vec as Vec
 import Rebound.Classes
 import qualified Rebound.Bind.Pat as Pat
 import Rebound.Env
+import Data.Type.Equality
 
 ----------------------------------------------------------------
 -- N-ary patterns
@@ -47,6 +48,9 @@ import Rebound.Env
 -- * A pattern that binds `p` variables
 newtype PatN (p :: Nat) where
   PatN :: SNat p -> PatN p
+
+deriving instance (Eq (PatN p))
+deriving instance (TestEquality PatN)
 
 instance SNatI p => SizeIndex PatN p
 
