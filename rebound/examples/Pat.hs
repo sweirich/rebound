@@ -147,7 +147,7 @@ instance Subst Exp Exp where
   applyE r (LetPair e1 b) = LetPair (applyE r e1) (applyE r b)
 
 
-instance Shiftable Branch where
+instance Shiftable (Branch pat) where
   shift = shiftFromApplyE @Exp
 
 instance Subst Exp (Branch pat) where
@@ -404,7 +404,7 @@ e2 :: Exp N0
 e2 = App (App (Con "D") (Con "A")) (Con "C")
 
 -- >>> patternMatch p1 e1
--- Just [(0,A),(1,B)]
+-- Just [(0,B),(1,A)]
 
 -- >>> patternMatch p2 e1
 -- Nothing
@@ -413,7 +413,7 @@ e2 = App (App (Con "D") (Con "A")) (Con "C")
 -- Nothing
 
 -- >>> patternMatch p2 e2
--- Just [(0,A),(1,C)]
+-- Just [(0,C),(1,A)]
 
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for all of the variables
