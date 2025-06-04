@@ -1,4 +1,4 @@
-cabal-version:  2.2
+cabal-version:  3.0
 name:           rebound
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/sweirich/rebound>
@@ -71,9 +71,10 @@ library
     , Data.Scoped.Telescope
   hs-source-dirs: src
 
-library examples
+library rebound-examples
   import:
     common-stanza
+  visibility: private
   build-depends:
     base >=4.15
     , rebound
@@ -99,13 +100,13 @@ library examples
     , SystemF
   hs-source-dirs: examples
 
-test-suite tests
+test-suite rebound-tests
   import:
     common-stanza
   build-depends:
       base
     , rebound
-    , examples
+    , rebound-examples
     , tasty
     , tasty-hunit
   type:
