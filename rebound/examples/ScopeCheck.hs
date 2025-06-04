@@ -20,7 +20,7 @@ data Exp (a :: Type) where
   Lam :: a -> Exp a -> Exp a
   App :: Exp a -> Exp a -> Exp a
 
--- | Convert a named expression to deBruijn indicies, checking to make
+-- | Convert a named expression to deBruijn indices, checking to make
 -- sure that the expression is well scoped
 scopeCheck :: (Eq a) => Exp a -> Maybe (LC.Exp Z)
 scopeCheck = to []
@@ -50,11 +50,15 @@ idExp = Lam "x" (Var "x")
 trueExp :: Exp String
 trueExp = Lam "x" (Lam "y" (Var "x"))
 
+-- | An ill-scoped term (`y` is never bound)
+illScoped :: Exp String
+illScoped = Lam "x" (Var "y")
+
 -- >>> scopeCheck idExp
 -- Just (λ. 0)
 
 -- >>> scopeCheck trueExp
 -- Just (λ. (λ. 1))
 
--- >>> scopeCheck (Lam "x" (Var "y"))
+-- >>> scopeCheck illScoped
 -- Nothing

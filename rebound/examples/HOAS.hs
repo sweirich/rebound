@@ -2,8 +2,8 @@
 module HOAS where
 
 {-
-This module demonstrates how to layer a HOAS-based representation 
-on top of a de Bruijn representation, to make it easier to generate well scoped 
+This module demonstrates how to layer a HOAS-based representation
+on top of a de Bruijn representation, to make it easier to generate well scoped
 lambda terms.
 
 It is based on Conor McBride's "Classy Hack"
@@ -11,7 +11,7 @@ https://mazzo.li/epilogue/index.html%3Fp=773.html
 
 -}
 
-import LC qualified     
+import LC qualified
 import Data.Fin
 import Rebound.Bind.Single
 import Rebound
@@ -24,14 +24,14 @@ tru = Lam $ \x -> Lam $ \y -> Var x
 fls :: Tm Z
 fls = Lam $ \x -> Lam $ \y -> Var y
 
-app :: Tm Z 
+app :: Tm Z
 app = Lam $ \f -> Lam $ \x -> App (Var f) (Var x)
 
 omega :: Tm Z
 omega = App delta delta where
     delta = Lam $ \x -> App (Var x) (Var x)
 
--- We can convert them to a de Bruijn-indexed 
+-- We can convert them to a de Bruijn-indexed
 -- representation easily
 
 -- >>> cvt tru
@@ -40,10 +40,10 @@ omega = App delta delta where
 -- >>> cvt fls
 -- (λ. (λ. 0))
 
--- >>> cvt app 
+-- >>> cvt app
 -- (λ. (λ. (1 0)))
 
--- >>> cvt omega 
+-- >>> cvt omega
 -- ((λ. (0 0)) (λ. (0 0)))
 
 
@@ -71,11 +71,16 @@ instance Cvt Tm LC.Exp where
 class Cvt t u | t -> u where
   cvt :: t m -> u m
 
-class (b :: Nat) ⊆ (a :: Nat) where 
+class (b :: Nat) ⊆ (a :: Nat) where
     inj :: Fin b -> Fin a
 instance {-# OVERLAPPING #-} n ⊆ n where inj = id
 instance {-# OVERLAPPING #-} (o ~ S n, m ⊆ n) => m ⊆ o where inj = FS . inj
-    
+
+-- Note: you don't actually need overlapping instances for this example:
+--- instance n ⊆ n where inj = id
+--- instance n ⊆ S n where inj = FS
+-- would work just as well
+
 newtype Proxy b = P (Fin b)
 
 zeroVar :: Proxy (S b)
@@ -83,6 +88,6 @@ zeroVar = P FZ
 
 cvtVar :: (b ⊆ a) => Proxy b -> Fin a
 cvtVar (P x) = inj x
- 
+
 cvtBind :: (Subst v u, Cvt t u) => (Proxy (S a) -> t (S a)) -> Bind v u a
 cvtBind f = bind (cvt (f zeroVar))

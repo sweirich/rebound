@@ -88,6 +88,7 @@ library rebound-examples
     , Pat
     , DepMatch
     , ScopeCheck
+    , HOAS
     , SystemF
   hs-source-dirs: examples
 
@@ -100,6 +101,7 @@ test-suite rebound-tests
     , rebound-examples
     , tasty
     , tasty-hunit
+    , tasty-quickcheck
   type:
     exitcode-stdio-1.0
   hs-source-dirs:
