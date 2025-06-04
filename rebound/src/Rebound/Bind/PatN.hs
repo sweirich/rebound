@@ -50,6 +50,7 @@ import qualified Data.Vec as Vec
 import Rebound.Classes
 import qualified Rebound.Bind.Pat as Pat
 import Rebound.Env
+import Data.Type.Equality
 
 ----------------------------------------------------------------
 -- N-ary patterns
@@ -59,6 +60,11 @@ import Rebound.Env
 
 newtype PatN (p :: Nat) where
   PatN :: SNat p -> PatN p
+
+deriving instance (Eq (PatN p))
+deriving instance (TestEquality PatN)
+
+instance SNatI p => SizeIndex PatN p
 
 instance (SNatI p) => Sized (PatN p) where
   type Size (PatN p) = p
