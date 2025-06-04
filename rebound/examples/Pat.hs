@@ -34,10 +34,10 @@ import Data.Vec qualified as Vec
 
 ----------------------------------------------
 
--- The untyped lambda calculus extended with 
--- symbols ("con"stants) and pattern matching 
--- expression (case) 
--- A constant applied to any number of arguments 
+-- The untyped lambda calculus extended with
+-- symbols ("con"stants) and pattern matching
+-- expression (case)
+-- A constant applied to any number of arguments
 -- is a value
 data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
@@ -90,11 +90,11 @@ data PPat (m :: Nat) where
 
 -- Any type that is used as a pattern must be an
 -- instance of the `Sized` type class, so that the library
--- can determine the number of binding variables both 
+-- can determine the number of binding variables both
 -- statically and dynamically.
 
 -- The `Pat` type tells us how many variables are bound
--- the pattern with the index `n`. We can also recover 
+-- the pattern with the index `n`. We can also recover
 -- that number from the pattern itself by counting the number
 -- of occurrences of `PVar`.
 
@@ -103,14 +103,17 @@ instance Sized (Pat m) where
 
   size :: Pat m -> SNat (Size (Pat m))
   size PVar = s1
-  size (PHead p) = size p 
+  size (PHead p) = size p
 
 
 instance Sized (ConApp m) where
   type Size (ConApp m) = m
 
+
+  size :: ConApp m -> SNat (Size (ConApp m))
   size (PApp p1 p2) = sPlus (size p2) (size p1)
   size (PCon s) = s0
+
 
 instance Sized (PPat m) where
   type Size (PPat m) = m
@@ -118,6 +121,7 @@ instance Sized (PPat m) where
   size :: PPat m -> SNat (Size (PPat m))
   size PPVar = s1
   size (PPair p1 p2) = sPlus (size p2) (size p1)
+
 
 ----------------------------------------------
 
@@ -129,6 +133,9 @@ instance SubstVar Exp where
   var :: Fin n -> Exp n
   var = Var
 
+instance Shiftable Exp where
+  shift = shiftFromApplyE @Exp
+
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
   applyE r (Var x) = applyEnv r x
@@ -138,6 +145,10 @@ instance Subst Exp Exp where
   applyE r (Case e brs) = Case (applyE r e) (map (applyE r) brs)
   applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
   applyE r (LetPair e1 b) = LetPair (applyE r e1) (applyE r b)
+
+
+instance Shiftable Branch where
+  shift = shiftFromApplyE @Exp
 
 instance Subst Exp (Branch pat) where
   applyE :: Env Exp n m -> Branch pat n -> Branch pat m
@@ -259,7 +270,7 @@ instance Show (Pat m) where
   showsPrec :: Int -> Pat m -> String -> String
   showsPrec d PVar = showString "V"
   showsPrec d (PHead p) = showsPrec d p
-  
+
 instance Show (ConApp m) where
   showsPrec d (PApp p1 p2) =
     showParen (d > 0) $
@@ -393,7 +404,7 @@ e2 :: Exp N0
 e2 = App (App (Con "D") (Con "A")) (Con "C")
 
 -- >>> patternMatch p1 e1
--- Just [A,B]
+-- Just [(0,A),(1,B)]
 
 -- >>> patternMatch p2 e1
 -- Nothing
@@ -402,7 +413,7 @@ e2 = App (App (Con "D") (Con "A")) (Con "C")
 -- Nothing
 
 -- >>> patternMatch p2 e2
--- Just [A,C]
+-- Just [(0,A),(1,C)]
 
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for all of the variables

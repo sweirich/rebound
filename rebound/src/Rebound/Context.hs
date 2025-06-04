@@ -21,9 +21,6 @@ shiftCtx g = g .>> shift1E
 emptyC :: Ctx v N0
 emptyC = zeroE
 
-shift :: forall v n. (SubstVar v) => v n -> v (S n)
-shift = applyE @v shift1E
-
 -- | Append a new definition to the context
 -- All existing types in the context need to be shifted (lazily)
 (+++) :: forall v n. (SubstVar v) => Ctx v n -> v n -> Ctx v (S n)
@@ -56,3 +53,8 @@ f3 = FS (FS (FS FZ))
 -- >>> applyEnv c f1
 -- Var 3
 -}
+
+(++++) :: forall v n n' m. (SNatI n', SubstVar v) => Env v n m -> Env v n' (n' + m) -> Env v (n' + n) (n' + m)
+l ++++ r =
+  let p = snat @n'
+   in r .++ (l .>> shiftNE p)

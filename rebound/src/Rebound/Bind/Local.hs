@@ -1,21 +1,23 @@
 -- | single binder, but includes a name for pretty printing
 -- type synonym for Pat.Bind with an opaque name as the pattern
 module Rebound.Bind.Local
-   (module Rebound.Classes,
+  ( module Rebound.Classes,
     type Bind,
     bind,
     getLocalName,
     internalBind,
     getBody,
     unbind,
+    unbindl,
     instantiate,
-    applyUnder
-    ) where
+    applyUnder,
+  )
+where
 
 import Rebound
+import Rebound.Bind.Pat qualified as Pat
 import Rebound.Classes
 import Rebound.Env
-import qualified Rebound.Bind.Pat as Pat
 
 ---------------------------------------------------------------
 -- LocalBind operations (convenience wrappers)
@@ -37,6 +39,9 @@ getBody = Pat.getBody
 -- unbind, but also provide access to the local name
 unbind :: (Subst v c) => Bind v c n -> ((LocalName, c (S n)) -> d) -> d
 unbind b f = f (getLocalName b, getBody b)
+
+unbindl :: (Subst v c) => Bind v c n -> (LocalName, c (S n))
+unbindl b = (getLocalName b, getBody b)
 
 instantiate :: (Subst v c) => Bind v c n -> v n -> c n
 instantiate b e = Pat.instantiate b (oneE e)

@@ -16,6 +16,14 @@ import qualified Data.Set as Set
 import GHC.Generics hiding (S)
 
 ----------------------------------------------------------
+-- Indices/variables shifting
+----------------------------------------------------------
+class Shiftable t where
+  shift :: SNat k -> t n -> t (k + n)
+  -- default shift :: forall v k n. (SubstVar v, Subst v t) => SNat k -> t n -> t (k + n)
+  -- shift = shiftFromApplyE @v
+
+----------------------------------------------------------
 -- Free variables
 ----------------------------------------------------------
 
@@ -51,7 +59,7 @@ strengthenN m = strengthenRec s0 m (snat :: SNat n)
 class Strengthen t where
   -- generalize strengthening -- remove m variables from the middle of the scope
   strengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
-  default strengthenRec :: (Generic1 t, GStrengthen (Rep1 t)) => 
+  default strengthenRec :: (Generic1 t, GStrengthen (Rep1 t)) =>
      SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
   strengthenRec k m n t = to1 <$> gstrengthenRec k m n (from1 t)
 
@@ -85,8 +93,8 @@ rescope k = foldMap g where
 
 -- | Calculate the number of binding variables in the pattern
 -- This number does not need to be an explicit parameter of the type
--- so that we have flexibility about what types we can use as 
--- patterns. 
+-- so that we have flexibility about what types we can use as
+-- patterns.
 class Sized (t :: Type) where
   -- Retrieve size from the type (number of variables bound by the pattern)
   type Size t :: Nat
@@ -132,25 +140,25 @@ instance Sized (Vec n a) where
 
 instance Eq a => PatEq (Vec n1 a) (Vec n2 a) where
   patEq VNil VNil = Just Refl
-  patEq (x ::: xs) (y ::: ys) | x == y, 
+  patEq (x ::: xs) (y ::: ys) | x == y,
     Just Refl <- patEq xs ys
     = Just Refl
   patEq _ _ = Nothing
-    
+
 -- ** Unit (trivial)
 
 instance Sized () where { type Size () = N0 ;  size _ = SZ }
 
 instance PatEq () () where patEq _ _ = Just Refl
 
--- ** Pairs 
+-- ** Pairs
 
 instance (Sized a, Sized b) => Sized (a,b) where
    type Size (a,b) = Size a + Size b
    size (x,y) = sPlus (size x) (size y)
 
 instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where
-   patEq (x1,y1) (x2,y2) 
+   patEq (x1,y1) (x2,y2)
      | Just Refl <- patEq x1 x2
      , Just Refl <- patEq y1 y2
      = Just Refl
@@ -162,7 +170,7 @@ instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where
 
 
 
-                                
+
 --------------------------------------------
 -- Generic implementation of FV class
 --------------------------------------------

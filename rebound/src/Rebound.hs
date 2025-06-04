@@ -5,7 +5,6 @@
 module Rebound 
   (module Rebound.Classes,
    module Rebound.Env,
-   module Rebound.MonadScoped, 
    module Rebound.Lib,
    module Rebound.Context,
    Generic(..),
@@ -20,7 +19,6 @@ import Rebound.Classes
 import Rebound.Context
 import Rebound.Env
 import Rebound.Lib
-import Rebound.MonadScoped
 import GHC.Generics hiding (S)
 
 

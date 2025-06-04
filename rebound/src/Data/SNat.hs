@@ -3,9 +3,9 @@ module Data.SNat(
   Nat(..), toNatural, fromNatural,
   SNat(..),  snatToNat,
   SNatI(..), snat, withSNat, reify, reflect,
-  type (+), 
+  type (+),
   N0, N1, N2, N3,
-  s0, s1, s2, s3, 
+  s0, s1, s2, s3,
   sPlus,
   axiomPlusZ,
   axiomAssoc,
@@ -18,13 +18,11 @@ module Data.SNat(
 -- similar to https://hackage.haskell.org/package/fin-0.3.1/docs/Data-Nat.html#t:Nat
 -- Singleton nats are purely runtime
 
-import Prelude hiding (pred, succ)
-import Data.Type.Nat 
-
 import Data.Type.Equality
+import Data.Type.Nat
 import Test.QuickCheck
-
 import Unsafe.Coerce (unsafeCoerce)
+import Prelude hiding (pred, succ)
 
 -----------------------------------------------------
 -- axioms (use unsafeCoerce)

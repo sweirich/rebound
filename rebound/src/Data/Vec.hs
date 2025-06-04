@@ -1,5 +1,5 @@
-module Data.Vec(
-    module Data.Vec.Lazy,
+module Data.Vec
+  ( module Data.Vec.Lazy,
     vlength,
     append,
     setAt,
@@ -14,12 +14,12 @@ module Data.Vec(
 -- Should be imported qualified as it includes operations that
 -- conflict with list operations in the Prelude
 
-import Data.Type.Equality
-import Data.Fin (Fin(..))
-import qualified Data.Fin
-import Data.Vec.Lazy
+import Data.Fin (Fin (..))
+import Data.Fin qualified
 import Data.Nat
 import Data.SNat
+import Data.Type.Equality
+import Data.Vec.Lazy
 import Test.QuickCheck
 import Prelude hiding (lookup, repeat, zipWith)
 

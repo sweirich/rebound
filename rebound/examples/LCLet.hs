@@ -4,7 +4,7 @@
 -- Stability   : experimental
 --
 -- An implementation of the untyped lambda calculus including let, letrec,
--- mutual letrec and let* expressions. 
+-- mutual letrec and let* expressions.
 -- TODO: add example terms and fix Show instance
 module LCLet where
 
@@ -27,7 +27,7 @@ data Exp (n :: Nat) where
     (Bind Exp Exp n) ->
     Exp n
   LetRec ::
-    -- | "let rec x = e1 in e2" where x is bound in both e1 and e2  
+    -- | "let rec x = e1 in e2" where x is bound in both e1 and e2
     Rec n ->
     Exp n
   LetTele ::
@@ -37,22 +37,22 @@ data Exp (n :: Nat) where
     -- in e2, e3 ... and e, x2 is bound in e3 and e, etc.
     Tele n ->
     Exp n
-  LetMutRec :: 
+  LetMutRec ::
     -- | mutual recursive lets, where each one may depend on
     -- any other variable
-    -- "let x1 = e1 in x2 = e2 in ... in e" where x1 ... xn 
+    -- "let x1 = e1 in x2 = e2 in ... in e" where x1 ... xn
     -- are bound in e1, e2, e3 ... and e
     MutRec n ->
     Exp n
 
-data Rec n = 
+data Rec n =
   Rec { rec_rhs  :: Bind Exp Exp n,   -- single RHS
         rec_body :: Bind Exp Exp n }  -- body of let
-        
+
 data MutRec n = forall m. SNatI m =>
   MutRec { mutrec_rhss :: Vec m (BindN Exp Exp m n), -- Vector of RHSs
            mutrec_body :: BindN Exp Exp m n  -- body of let
-           }     
+           }
 
 data Tele n where
   LetStar :: Exp n -> Bind Exp Tele n -> Tele n
@@ -95,7 +95,7 @@ t0 = lam v0
 -- λ. λ. 1 ((λ. 0) 0))
 t1 :: Exp Z
 t1 = lam (lam (v1 @@ ((lam v0) @@ v0)))
-                
+
 -- >>> t1
 -- (λ. (λ. (1 ((λ. 0) 0))))
 
@@ -113,7 +113,7 @@ t3 = letrec (lam (v0 @@(v1 @@ v0))) v0
 -- (let rec (λ. (0 (1 0))) in 0)
 
 -- let* x1 = \x.x ; x2 = x1 x1 ; x3 = x2 s1 in x3 x2 x1
-t5 = LetTele
+t4 = LetTele
        (letstar t0
          (letstar (v0 @@ v0)
             (letstar (v0 @@ v1)
@@ -148,7 +148,7 @@ instance Eq (MutRec n) where
   (==) :: MutRec n -> MutRec n -> Bool
   MutRec { mutrec_rhss= (rhss1 :: Vec m1 t1), mutrec_body=body1} ==
     MutRec { mutrec_rhss= (rhss2 :: Vec m2 t2), mutrec_body=body2}
-    = case testEquality (snat @m1) (snat @m2) of 
+    = case testEquality (snat @m1) (snat @m2) of
        Just Refl -> Vec.all2 (==) rhss1 rhss2 && body1 == body2
        Nothing -> False
 ----------------------------------------------
@@ -178,25 +178,29 @@ instance SubstVar Exp where
 -- via recursion. The library includes a type class instance for
 -- the Bind type which handles the variable lifting needed under
 -- the binder.
+instance Shiftable Exp where
+  shift = shiftFromApplyE @Exp
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
   applyE r (Var x) = applyEnv r x
   applyE r (Lam b) = Lam (applyE r b)
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
   applyE r (Let e1 e2) = Let (applyE r e1) (applyE r e2)
-  applyE r (LetRec e) = LetRec (applyE r e) 
+  applyE r (LetRec e) = LetRec (applyE r e)
   applyE r (LetTele e) = LetTele (applyE r e)
   applyE r (LetMutRec e) = LetMutRec (applyE r e)
 
 instance Subst Exp Rec where
   applyE r (Rec rhs body) = Rec (applyE r rhs) (applyE r body)
 
+instance Shiftable Tele where
+  shift = shiftFromApplyE @Exp
 instance Subst Exp Tele where
   applyE r (Body e) = Body (applyE r e)
   applyE r (LetStar e1 e2) = LetStar (applyE r e1) (applyE r e2)
 
 instance Subst Exp MutRec where
-  applyE r (MutRec rhss body) = 
+  applyE r (MutRec rhss body) =
     MutRec (fmap (applyE r) rhss) (applyE r body)
 
 ----------------------------------------------
@@ -274,7 +278,7 @@ eval (LetRec e) =
   let v = instantiate (rec_rhs e) v
    in eval (instantiate (rec_body e) v)
 eval (LetTele e) = evalTele e
-eval (LetMutRec (MutRec { mutrec_rhss = rhss, mutrec_body = body})) = 
+eval (LetMutRec (MutRec { mutrec_rhss = rhss, mutrec_body = body})) =
   -- use a Haskell recursive definition
   let vs = fmap (\b -> instantiateN b vs) rhss
   in eval (instantiateN body vs)

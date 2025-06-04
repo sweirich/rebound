@@ -23,14 +23,14 @@ import Data.Vec qualified
 import GHC.Generics (Generic1)
 import Text.ParserCombinators.Parsec.Pos (SourcePos, newPos)
 
--- In this system, `Match` introduces a Pi type and generalizes 
+-- In this system, `Match` introduces a Pi type and generalizes
 -- dependent functions
 -- If the pattern is a single variable, or an annotated variable,
--- then the `Match` term is just a normal lambda expression. 
--- But the pattern could be more structured than that, supporting 
--- a general form of pattern matching. In this simple language, 
--- only type that supports pattern matching is a Sigma type. So 
--- every match expression should have a single branch. But, for 
+-- then the `Match` term is just a normal lambda expression.
+-- But the pattern could be more structured than that, supporting
+-- a general form of pattern matching. In this simple language,
+-- only type that supports pattern matching is a Sigma type. So
+-- every match expression should have a single branch. But, for
 -- generality, we pretend that more are possible.
 data Exp (n :: Nat)
   = Star
@@ -44,7 +44,7 @@ data Exp (n :: Nat)
 
 -- | A single branch in a match expression. Binds a pattern
 -- with expression variables, within some expression body
--- This data structure includes an "existential" size, so we 
+-- This data structure includes an "existential" size, so we
 -- cannot use GHC.Generics to derive any operations
 data Branch (n :: Nat)
   = forall p. Branch (Scoped.Bind Exp Exp (Pat p) n)
@@ -59,14 +59,14 @@ data Pat (p :: Nat) (n :: Nat) where
   -- In Pair pattern, we increase the scope so that variables
   -- bound in the left subterm can be referred to in the right subterm
   PPair :: Pat p1 n -> Pat p2 (p1 + n) -> Pat (p2 + p1) n
-  -- Patterns can also include type annotations. 
+  -- Patterns can also include type annotations.
   PAnnot :: Pat p n -> Exp n -> Pat p n
 
 
 -- This definitions support telescopes: variables bound earlier in the pattern
--- can appear later.  For example, the pattern for a type paired with 
--- a term of that type can look like this 
---     (x, (y :: x)) 
+-- can appear later.  For example, the pattern for a type paired with
+-- a term of that type can look like this
+--     (x, (y :: x))
 
 pat0 :: Pat N2 N0
 pat0 = PPair PVar (PAnnot PVar (Var f0))
@@ -106,7 +106,7 @@ tm0 = Pair Star ty0
 -- bound in the pattern
 patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
-patternMatch (PPair p1 p2) (Pair e1 e2) = 
+patternMatch (PPair p1 p2) (Pair e1 e2) =
   -- two append operations require implicit sizes in the context
   withSNat (Scoped.scopedSize p1) $ withSNat (Scoped.scopedSize p2) $ do
     env1 <- patternMatch p1 e1
@@ -132,6 +132,8 @@ findBranch e (Branch (bnd :: Scoped.Bind Exp Exp (Pat p) n) : brs) =
 instance SubstVar Exp where
   var = Var
 
+instance Shiftable Exp where
+  shift = shiftFromApplyE @Exp
 instance Subst Exp Exp where
   applyE r Star = Star
   applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
@@ -141,8 +143,10 @@ instance Subst Exp Exp where
   applyE r (Pair a b) = Pair (applyE r a) (applyE r b)
   applyE r (Match brs) = Match (map (applyE r) brs)
   applyE r (Annot a t) = Annot (applyE r a) (applyE r t)
-  
 
+
+instance Shiftable (Pat p) where
+  shift = shiftFromApplyE @Exp
 instance Subst Exp (Pat p) where
   applyE :: Env Exp n m -> Pat p n -> Pat p m
   applyE r PVar = PVar
@@ -150,6 +154,8 @@ instance Subst Exp (Pat p) where
   applyE r (PPair p1 p2) = PPair (applyE r p1) (applyE (upN (size p1) r) p2)
   applyE r (PAnnot p t) = PAnnot (applyE r p) (applyE r t)
 
+instance Shiftable Branch where
+  shift = shiftFromApplyE @Exp
 instance Subst Exp Branch where
   applyE :: forall n m. Env Exp n m -> Branch n -> Branch m
   applyE r (Branch b) = Branch (applyE r b)
@@ -225,10 +231,10 @@ weakenBind' m = applyE @Exp (weakenE' m)
 -- strengthening
 ----------------------------------------------
 
--- >>> strengthen' s1 s1 t00
+-- >>> strengthenRec s1 s1 snat t00
 -- Just (0 0)
 
--- >>> strengthen' s1 s1 t01
+-- >>> strengthenRec s1 s1 snat t01
 -- Nothing
 
 instance Strengthen Exp where
@@ -243,13 +249,13 @@ instance Strengthen Exp where
 
 instance Strengthen (Pat p) where
   strengthenRec k m n PVar = pure PVar
-  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (k + (m + n))) 
+  strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (PPair (p1 :: Pat p1 (k + (m + n)))
     (p2 :: Pat p2 (p1 + (k + (m + n))))) =
-      case (axiomAssoc @p1 @k @(m + n), 
+      case (axiomAssoc @p1 @k @(m + n),
             axiomAssoc @p1 @k @n) of
-       (Refl, Refl) -> 
+       (Refl, Refl) ->
          let r = strengthenRec (sPlus (Scoped.iscopedSize p1) k) m n p2 in
-         PPair <$> strengthenRec k m n p1 
+         PPair <$> strengthenRec k m n p1
                              <*> r
   strengthenRec k m n (PAnnot p1 e2) = PAnnot <$> strengthenRec k m n p1 <*> strengthenRec k m n e2
 
@@ -319,28 +325,28 @@ instance Show (Exp n) where
   showsPrec _ Star = showString "*"
   showsPrec d (Pi a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Pi "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " -> "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec d (Sigma a b)
     | appearsFree FZ (getBody1 b) =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showString "Sigma "
             . shows a
             . showString ". "
             . shows (getBody1 b)
     | otherwise =
-        showParen (d > 10) $
+        showParen (d > 9) $
           showsPrec 11 a
             . showString " * "
-            . showsPrec 10 (getBody1 b)
+            . showsPrec 9 (getBody1 b)
   showsPrec _ (Var x) = shows x
   showsPrec d (App e1 e2) =
     showParen (d > 0) $
@@ -353,9 +359,9 @@ instance Show (Exp n) where
         . showString ", "
         . showsPrec 11 e2
   showsPrec d (Match [b]) =
-    showParen (d > 10) $
+    showParen (d > 9) $
       showString "λ"
-        . showsPrec 10 b
+        . showsPrec 9 b
   showsPrec d (Match b) =
     showParen (d > 10) $
       showString "match"
@@ -446,10 +452,7 @@ deriving instance (Eq (Exp n))
 -- λ_. (λ_. (1 (λ_. (0 0))))
 
 -- >>> eval (t1 `App` t0)
--- λ_. (λ_. 0 (λ_. (0 0)))
-
--- OLD
--- λ. λ. 0 (λ. 0 0)
+-- λ_. ((λ_. 0) (λ_. (0 0)))
 
 eval :: (SNatI n) => Exp n -> Exp n
 eval (Var x) = Var x
@@ -599,12 +602,12 @@ checkPattern ::
   m (Ctx Exp (p + n), Exp (p + n))
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
-checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) = 
+checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) =
   -- The context for the recursive call on p2 needs a little preparation
   -- need to have implicit version of p1 + n
-  withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $ 
-  -- need to know that Plus is associative 
-  case axiomAssoc @p2 @p1 @n of 
+  withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $
+  -- need to know that Plus is associative
+  case axiomAssoc @p2 @p1 @n of
   Refl -> do
     (g', e1) <- checkPattern g p1 tyA
     let tyB' = weakenBind' (Scoped.scopedSize p1) tyB

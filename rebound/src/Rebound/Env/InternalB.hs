@@ -69,12 +69,12 @@ applyEnv (Cons _ty s) (FS x) = applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
 
--- | Build an optimized version of applyE. 
+-- | Build an optimized version of applyE.
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
 {- applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
-applyOpt f (WeakR SZ) (x :: c m) = 
+applyOpt f (WeakR SZ) (x :: c m) =
   case axiomPlusZ @m of Refl -> x -}
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
@@ -88,7 +88,7 @@ zeroE :: Env v Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
 
--- make the bound bigger, on the right, but do not change any indices. 
+-- make the bound bigger, on the right, but do not change any indices.
 -- this is an identity function
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
 weakenER = WeakR 
@@ -134,7 +134,7 @@ up e = var Fin.f0 .: (e :<> Inc s1)
 -- | mapping operation for range of the environment
 transform :: (SubstVar b) => (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f Zero = Zero
-transform f (Weak x) = Weak x 
+transform f (Weak x) = Weak x
 transform f (WeakR x) = WeakR x
 transform f (Inc x) = Inc x
 transform f (Cons a r) = Cons (f a) (transform f r)

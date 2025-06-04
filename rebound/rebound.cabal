@@ -1,9 +1,9 @@
 cabal-version:  2.2
 name:           rebound
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/project-cis5520#readme>
-homepage:       https://github.com/githubuser/project-cis5520#readme
-bug-reports:    https://github.com/githubuser/project-cis5520/issues
+description:    Please see the README on GitHub at <https://github.com/sweirich/rebound>
+homepage:       https://github.com/sweirich/rebound
+bug-reports:    https://github.com/sweirich/rebound/issues
 author:         Author name here
 maintainer:     example@example.com
 copyright:      2022 Author name here
@@ -15,25 +15,9 @@ extra-source-files:
     ChangeLog.md
 
 common common-stanza
-  ghc-options:         
-     -Wno-type-defaults 
+  ghc-options:
+     -Wno-type-defaults
      -fwarn-incomplete-patterns
-  build-depends:
-      base >=4.15
-    , HUnit 
-    , QuickCheck
-    , containers
-    , filepath
-    , parsec
-    , prettyprinter
-    , network
-    , directory
-    , random
-    , mtl
-    , brick
-    , vty
-    , fin >= 0.3
-    , vec
   default-language:
     GHC2021
   default-extensions:
@@ -48,43 +32,93 @@ common common-stanza
     , UndecidableInstances
     , FunctionalDependencies
     , ViewPatterns
-    
+
 
 library
   import:
       common-stanza
+  build-depends:
+      base >=4.15
+    , containers
+    , mtl
+    , QuickCheck
+    , fin >= 0.3
+    , vec
+    , mono-traversable
   exposed-modules:
-        Rebound
-      , Rebound.Classes
-      , Rebound.Context
-      , Rebound.Lib
-      , Rebound.Env
-      , Rebound.Env.Internal
-      , Rebound.Env.InternalStrict
-      , Rebound.Env.InternalLazy
-      , Rebound.Env.InternalA
-      , Rebound.Env.InternalB
-      , Rebound.Env.Functional
-      , Rebound.MonadScoped
-      , Rebound.Bind.Single
-      , Rebound.Bind.Local
-      , Rebound.Bind.PatN
-      , Rebound.Bind.Pat
-      , Rebound.Bind.Scoped
-      , Data.SNat
-      , Data.Fin
-      , Data.Vec
-      , Data.LocalName    
-      , LC
-      , LCQC
-      , LCLet
-      , PTS
-      , Pat
-      , DepMatch
-      , ScopeCheck
-      , SystemF
-      , HOAS
-  hs-source-dirs:
-      src
-      , examples
+      Rebound
+    , Rebound.Classes
+    , Rebound.Context
+    , Rebound.Lib
+    , Rebound.Env
+    , Rebound.Env.Internal
+    , Rebound.Env.InternalStrict
+    , Rebound.Env.InternalLazy
+    , Rebound.Env.InternalA
+    , Rebound.Env.InternalB
+    , Rebound.Env.Functional
+    , Rebound.MonadNamed
+    , Rebound.MonadScoped
+    , Rebound.Bind.Single
+    , Rebound.Bind.Local
+    , Rebound.Bind.PatN
+    , Rebound.Bind.Pat
+    , Rebound.Bind.Scoped
+    , Data.SNat
+    , Data.Fin
+    , Data.Vec
+    , Data.LocalName
+    , Data.Scoped.Telescope
+  hs-source-dirs: src
 
+library examples
+  import:
+    common-stanza
+  build-depends:
+    base >=4.15
+    , rebound
+    , mtl
+    , HUnit
+    , QuickCheck
+    , filepath
+    , parsec
+    , prettyprinter
+    , containers
+    , network
+    , directory
+    , random
+    , mtl
+  exposed-modules:
+      LC
+    , LCQC
+    , LCLet
+    , PTS
+    , Pat
+    , DepMatch
+    , ScopeCheck
+    , SystemF
+  hs-source-dirs: examples
+
+test-suite tests
+  import:
+    common-stanza
+  build-depends:
+      base
+    , rebound
+    , examples
+    , tasty
+    , tasty-hunit
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    All.hs
+  other-modules:
+    Utils
+    Examples.LC
+    Examples.LCLet
+    Examples.Pat
+    Examples.SystemF
+    Examples.PTS
+    Examples.DepMatch
