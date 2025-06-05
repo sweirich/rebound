@@ -70,7 +70,14 @@ class Strengthen t where
   strengthenOneRec k = strengthenRec k s1
 
 ----------------------------------------------------------
--- Fin and Strengthen instances for Fin
+-- FV and Strengthen instances for Data.Scoped.List
+---------------------------------------------------------
+
+instance FV t => FV (List t)
+instance Strengthen t => Strengthen (List t)
+
+----------------------------------------------------------
+-- FV and Strengthen instances for Fin
 ---------------------------------------------------------
 
 instance FV Fin where

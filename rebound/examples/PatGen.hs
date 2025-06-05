@@ -115,11 +115,6 @@ instance Sized (PairPat m) where
 -- we need this instance to use GHC.Generics
 deriving instance Generic1 Exp
 
--- maybe these should be in Rebound somewhere?
-instance Subst v t => Subst v (List t)
-instance FV t => FV (List t)
-instance Strengthen t => Strengthen (List t)
-
 instance SubstVar Exp where
   var :: Fin n -> Exp n
   var = Var
