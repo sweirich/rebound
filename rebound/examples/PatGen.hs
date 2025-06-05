@@ -1,33 +1,32 @@
--- \| The untyped lambda calculus with pattern matching
+-- \| The untyped lambda calculus with pattern matching, uses generic programming
 --
 
 -- |
--- Module      : Pat
+-- Module      : PatGen
 -- Description : Untyped lambda calculus, with pattern matching
 -- Stability   : experimental
 --
 -- An implementation of the untyped lambda calculus with pattern matching.
 --
--- This example extends the lambda calculus with constants (like 'nil and 'cons)
--- and arbitrary pattern matching. Case expressions include a list of branches,
--- where each branch is a pattern and a right-hand side. The pattern can bind
--- multiple variables and the index ensures that the rhs matches the number of
--- variables bound in the pattern.
--- 
--- This example also includes pairs and "irrefutable patterns" i.e. let binding
--- that can deeply deconstruct cons pairs (only).
-module Pat where
+-- This example demonstrates the use of generic programming to derive 
+-- Rebound's operations in the presence of an existential type and 
+-- in the presence of list in the syntax.
+
+{-# LANGUAGE OverloadedLists #-}
+module PatGen where
 
 import Rebound
 
 import Rebound.Bind.PatN as PatN
 import qualified Rebound.Bind.Pat as Pat
-import Rebound.Bind.Scoped qualified as Scoped
+
 import Data.Maybe qualified as Maybe
-import Data.Type.Equality
 import Data.Fin ( Fin, f0, f1 )
-import Data.Fin qualified as Fin
-import Data.Vec qualified as Vec
+
+-- Case expressions in Pat have a subexpression of type [Branch Pat n]
+-- For generic programming, we need to replace that with a scoped list
+import Data.Scoped.List (List(..))
+import Data.Scoped.List qualified as List
 
 ----------------------------------------------
 
@@ -35,40 +34,25 @@ import Data.Vec qualified as Vec
 
 ----------------------------------------------
 
--- The untyped lambda calculus extended with
--- symbols ("con"stants) and pattern matching
--- expression (case)
--- A constant applied to any number of arguments
--- is a value
+
 data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
   Lam :: Bind1 Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
   LetPair  :: Exp n -> Branch PairPat n -> Exp n
-  -- ^ deep pattern matching against pairs (only)
   Con :: String -> Exp n
-  -- ^ constant (or symbol) like 'cons or 'nil'
-  Case :: Exp n -> [Branch Pat n] -> Exp n
-  -- ^ deep pattern matching against any pattern
-   
+  Case :: Exp n -> List (Branch Pat) n -> Exp n
+  -- Compared to `Pat`, we need to use the type Data.Scoped.List 
+  -- so that the branches are stored in a data structure of kind 
+  -- Nat -> Type
 
--- Each branch in a case expression is a pattern binding,
--- i.e. a data structure that binds m variables in some
--- expression body with scope n
--- Here, the variable m does not appear
--- in the result type `Branch pat n`, so is an existential.
+   
+-- The existential itself is hidden in a common "Branch" datatype
+-- that also includes a runtime size for the pattern.
 data Branch pat (n :: Nat) where
   Branch :: SNatI m => Pat.Bind Exp Exp (pat m) n -> Branch pat n
 
--- Patterns for case expressions.
--- The index `m` in the pattern is the number of occurrences of
--- PVar, i.e. the number variables bound by the pattern.
--- These variables are ordered left to right.
--- For example (PCon "cons" `PApp` PVar `PApp` PVar) is the
--- representation of the pattern "cons x y", which binds two
--- variables.
--- To prevent patterns of the form "x y z", this type is split
--- into top level patterns (Pat) and applications of constants (ConApp)
+-- Patterns for arbitrary case expressions.
 data Pat (m :: Nat) where
   PVar :: Pat N1 -- binds exactly one variable
   PHead :: ConApp m -> Pat m
@@ -124,9 +108,17 @@ instance Sized (PairPat m) where
 
 ----------------------------------------------
 
--- * Substitution
+-- * Substitution (w/ generic programming)
 
 ----------------------------------------------
+
+-- we need this instance to use GHC.Generics
+deriving instance Generic1 Exp
+
+-- maybe these should be in Rebound somewhere?
+instance Subst v t => Subst v (List t)
+instance FV t => FV (List t)
+instance Strengthen t => Strengthen (List t)
 
 instance SubstVar Exp where
   var :: Fin n -> Exp n
@@ -136,22 +128,27 @@ instance Shiftable Exp where
   shift = shiftFromApplyE @Exp
 
 instance Subst Exp Exp where
-  applyE :: Env Exp n m -> Exp n -> Exp m
-  applyE r (Var x) = applyEnv r x
-  applyE r (Lam b) = Lam (applyE r b)
-  applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
-  applyE r (Con s) = Con s
-  applyE r (Case e brs) = Case (applyE r e) (map (applyE r) brs)
-  applyE r (LetPair e1 b) = LetPair (applyE r e1) (applyE r b)
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
 
+instance FV Exp 
+
+instance Strengthen Exp 
 
 instance Shiftable (Branch pat) where
   shift = shiftFromApplyE @Exp
 
+-- we cannot get this instance automatically
 instance Subst Exp (Branch pat) where
   applyE :: Env Exp n m -> Branch pat n -> Branch pat m
   applyE r (Branch bnd) = Branch (applyE r bnd)
 
+instance (forall m. Sized (pat m)) => FV (Branch pat) where
+  appearsFree x (Branch b) = appearsFree x b
+  freeVars (Branch b) = freeVars b
+
+instance (forall m. Sized (pat m)) => Strengthen (Branch pat) where
+  strengthenRec k m n (Branch b) = Branch <$> strengthenRec k m n b
 
 ----------------------------------------------
 -- Example terms
@@ -216,7 +213,7 @@ t3 = Con "cons" `App` Con "a" `App` (Con "cons" `App` Con "b" `App` Con "nil")
 -- λ. λ. 1 (λ. 0 0)
 
 -- >>> t2
--- λ. case 0 of [Nil => 0,(Cons V) V => 0]
+-- λ. case 0 of (:<) Nil => 0 ((:<) (Cons V) V => 0 Nil)
 
 -- >>> t3
 -- (cons a) ((cons b) nil)
@@ -287,29 +284,6 @@ instance Show (Branch Pat n) where
 
 --------------------------------------------------------------
 
--- We would like to derive equality for patterns, i.e. 
--- 
---     deriving instance (Eq (Pat m))
--- 
--- but because of the application case, this process fails.
--- We don't know that each subpattern binds the same
--- number of variables!
-
-
--- Therefore to compare Pats for equality, we generalize the
--- `testEquality` function from Data.Type.Equality. (This
--- class is often used for comparisons between indexed types.
--- but only works if the index is the last type parameter.
--- In our case, we need to produce an equality for the
--- first type parameter.)
--- This function can be applied, even if the number of
--- pattern-bound variables are not known to be equal.
--- (cf. m1 and m2 below). If the patterns are indeed equal,
--- then `patEq` *also* returns a proof that the indices
--- are equal. (The type `a :~: b` is a GADT with a single
--- constructor `Refl` that can only be used when a and be are
--- equal. Pattern matching on this GADT brings an equality
--- between a and b into the context of the term.)
 
 instance PatEq (Pat m1) (Pat m2) where
   patEq PVar PVar = Just Refl
@@ -437,9 +411,9 @@ patternMatchApp _ _ = Nothing
 
 -- Compare the scrutinee against multiple patterns and return 
 -- the matching branch
-findBranch :: Exp n -> [Branch Pat n] -> Maybe (Exp n)
-findBranch e [] = Nothing
-findBranch e (Branch bind : brs) =
+findBranch :: Exp n -> List (Branch Pat) n -> Maybe (Exp n)
+findBranch e Nil = Nothing
+findBranch e (Branch bind :< brs) =
   case patternMatch (Pat.getPat bind) e of
     Just r -> Just $ Pat.instantiate bind r
     Nothing -> findBranch e brs
@@ -461,9 +435,9 @@ findBranch e (Branch bind : brs) =
 t4 = t2 `App` t3
 
 -- >>> t4
--- λ. case 0 of [Nil => 0,(Cons V) V => 0] ((cons a) ((cons b) nil))
+-- λ. case 0 of (:<) Nil => 0 ((:<) (Cons V) V => 0 Nil) ((cons a) ((cons b) nil))
 -- >>> eval t4
--- case (cons a) ((cons b) nil) of [Nil => (cons a) ((cons b) nil),(Cons V) V => 0]
+-- case (cons a) ((cons b) nil) of (:<) Nil => ((cons a) ((cons b) nil)) ((:<) (Cons V) V => 0 Nil)
 eval :: Exp n -> Exp n
 eval (Var x) = Var x
 eval (Lam b) = Lam b
@@ -531,7 +505,7 @@ nf (Case e brs) =
   let v = nf e
    in case findBranch v brs of
         Just b -> nf b
-        Nothing -> Case e (map nfBr brs)
+        Nothing -> Case e (List.map nfBr brs)
 nf (LetPair e br@(Branch b)) = 
   let v = nf e in
   case ppatternMatch (Pat.getPat b) v of 

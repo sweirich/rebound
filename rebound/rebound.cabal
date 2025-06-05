@@ -67,6 +67,7 @@ library
     , Data.Vec
     , Data.LocalName
     , Data.Scoped.Telescope
+    , Data.Scoped.List
   hs-source-dirs: src
 
 library rebound-examples

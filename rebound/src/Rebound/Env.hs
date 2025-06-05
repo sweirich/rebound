@@ -51,6 +51,7 @@ import Rebound.Classes (Shiftable (..))
 import Rebound.Env.Internal
 import Rebound.Lib
 import Control.Monad
+import Data.Scoped.List(List)
 import Data.Fin (Fin (..))
 import Data.Fin qualified as Fin
 import Data.Map qualified as Map
@@ -264,6 +265,18 @@ instance (GSubst b f, GSubst b g) => GSubst b (f :+: g) where
 instance (Subst b g) => GSubst b (Rec1 g) where
   gsubst s (Rec1 f) = Rec1 (applyE s f)
 
+
+
+----------------------------------------------------------------
+-- Subst instances for List and Fin
+----------------------------------------------------------------
+
+-- Scoped List
+
+instance Subst v t => Subst v (List t)
+
+-- Fin
+
 instance Shiftable Fin where
   shift = Fin.shiftN
 
@@ -274,7 +287,7 @@ instance {-# OVERLAPS #-} Subst Fin Fin where
   applyE = applyEnv
 
 instance {-# OVERLAPPABLE #-} (SubstVar v) => Subst v Fin where
-  applyE = error "BUG: this case is impossible"
+  applyE = error "BUG: missing isVar definition?"
 
 instance GSubst b Fin where
-  gsubst s f = error "BUG: add a Var case to your definition of applyE"
+  gsubst s f = error "BUG: missing isVar definition?"

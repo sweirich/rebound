@@ -13,6 +13,8 @@ import Data.Fin
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Data.Scoped.List(List)
+
 import GHC.Generics hiding (S)
 
 ----------------------------------------------------------
