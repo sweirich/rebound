@@ -2,6 +2,7 @@
 -- This is an advanced usage of the binding library, demonstrating the use of Scoped patterns.
 -- It doesn't correspond to any current system, but has its own elegance
 
+{-# LANGUAGE OverloadedLists #-}
 module DepMatch where
 
 import Rebound
@@ -15,11 +16,12 @@ import Rebound.Bind.PatN as PN
 import Control.Monad (guard, zipWithM_)
 import Control.Monad.Except (ExceptT, MonadError (..), runExceptT)
 import Data.Fin
-import Data.List qualified as List
 import Data.Maybe qualified as Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vec qualified
+import Data.Scoped.List (List)
+import Data.Scoped.List as List
 import GHC.Generics (Generic1)
 
 -- In this system, `Match` introduces a Pi type and generalizes
@@ -35,16 +37,14 @@ data Exp (n :: Nat)
   = Star
   | Pi (Exp n) (Bind1 Exp Exp n)
   | Var (Fin n)
-  | Match [Branch n]  -- case lambda
+  | Match (List Branch n)  -- case lambda
   | App (Exp n) (Exp n)
   | Sigma (Exp n) (Bind1 Exp Exp n)
   | Pair (Exp n) (Exp n)
   | Annot (Exp n) (Exp n)
+      deriving (Generic1)
 
--- | A single branch in a match expression. Binds a pattern
--- with expression variables, within some expression body
--- This data structure includes an "existential" size, so we
--- cannot use GHC.Generics to derive any operations
+-- | A single branch in a match expression
 data Branch (n :: Nat)
   = forall p. Branch (Scoped.Bind Exp Exp (Pat p) n)
 
@@ -79,8 +79,6 @@ ty0 = Sigma Star (bind1 (Var f0))
 -- definitions for pattern matching
 -------------------------------------------------------
 
--- For any pattern type, we need to be able to calculate
--- the number of binding variables, both statically and dynamically
 instance Sized (Pat p n) where
   type Size (Pat p n) = p
   size :: Pat p n -> SNat p
@@ -88,10 +86,10 @@ instance Sized (Pat p n) where
   size (PPair p1 p2) = sPlus (size p2) (size p1)
   size (PAnnot p _) = size p
 
+-- Because Pat is a scope-indexed pattern, we need to also 
+-- instantiate the `ScopedSized` class
 instance Scoped.ScopedSized (Pat p) where
   type ScopedSize (Pat p) = p
-
-instance Scoped.IScopedSized Pat
 
 -- A term that matches the "(x,(y:x))" and has type exists x:*. x
 tm0 :: Exp Z
@@ -103,11 +101,11 @@ tm0 = Pair Star ty0
 -- | Compare a pattern with an expression, potentially
 -- producing a substitution for all of the variables
 -- bound in the pattern
-patternMatch :: forall p n. (SNatI n) => Pat p n -> Exp n -> Maybe (Env Exp p n)
+patternMatch :: Pat p n -> Exp n -> Maybe (Env Exp p n)
 patternMatch PVar e = Just $ oneE e
 patternMatch (PPair p1 p2) (Pair e1 e2) =
   -- two append operations require implicit sizes in the context
-  withSNat (Scoped.scopedSize p1) $ withSNat (Scoped.scopedSize p2) $ do
+  withSNat (size p1) $ withSNat (size p2) $ do
     env1 <- patternMatch p1 e1
     -- NOTE: substitute in p2 with env1 before pattern matching
     env2 <- patternMatch (applyE (env1 .++ idE) p2) e2
@@ -117,15 +115,14 @@ patternMatch (PAnnot p _) e = patternMatch p e
 patternMatch p (Annot e _) = patternMatch p e
 patternMatch _ _ = Nothing
 
-findBranch :: forall n. (SNatI n) => Exp n -> [Branch n] -> Maybe (Exp n)
-findBranch e [] = Nothing
-findBranch e (Branch (bnd :: Scoped.Bind Exp Exp (Pat p) n) : brs) =
+findBranch :: Exp n -> List Branch n -> Maybe (Exp n)
+findBranch e Nil = Nothing
+findBranch e (Branch (bnd :: Scoped.Bind Exp Exp (Pat p) n) :< brs) =
   case patternMatch (Scoped.getPat bnd) e of
     Just r -> Just $ Scoped.instantiate bnd r
     Nothing -> findBranch e brs
 
 ----------------------------------------------
-
 -- * Subst instances
 
 instance SubstVar Exp where
@@ -133,19 +130,26 @@ instance SubstVar Exp where
 
 instance Shiftable Exp where
   shift = shiftFromApplyE @Exp
+
 instance Subst Exp Exp where
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+
+  {-
   applyE r Star = Star
   applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
   applyE r (Var x) = applyEnv r x
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
   applyE r (Sigma a b) = Sigma (applyE r a) (applyE r b)
   applyE r (Pair a b) = Pair (applyE r a) (applyE r b)
-  applyE r (Match brs) = Match (map (applyE r) brs)
+  applyE r (Match brs) = Match (List.map (applyE r) brs)
   applyE r (Annot a t) = Annot (applyE r a) (applyE r t)
-
+  -}
 
 instance Shiftable (Pat p) where
   shift = shiftFromApplyE @Exp
+
+-- cannot be generic due to GADT
 instance Subst Exp (Pat p) where
   applyE :: Env Exp n m -> Pat p n -> Pat p m
   applyE r PVar = PVar
@@ -153,10 +157,13 @@ instance Subst Exp (Pat p) where
   applyE r (PPair p1 p2) = PPair (applyE r p1) (applyE (upN (size p1) r) p2)
   applyE r (PAnnot p t) = PAnnot (applyE r p) (applyE r t)
 
+
 instance Shiftable Branch where
   shift = shiftFromApplyE @Exp
+
+-- cannot be generic due to existential
 instance Subst Exp Branch where
-  applyE :: forall n m. Env Exp n m -> Branch n -> Branch m
+  applyE :: Env Exp n m -> Branch n -> Branch m
   applyE r (Branch b) = Branch (applyE r b)
 
 
@@ -177,13 +184,14 @@ t01 = App (Var f0) (Var f1)
 -- False
 
 instance FV Exp where
+  {-
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
   appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
   appearsFree n (App a b) = appearsFree n a || appearsFree n b
   appearsFree n (Sigma a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
   appearsFree n (Pair a b) = appearsFree n a || appearsFree n b
-  appearsFree n (Match b) = any (appearsFree n) b
+  appearsFree n (Match b) = List.any (appearsFree n) b
   appearsFree n (Annot a t) = appearsFree n a || appearsFree n t
 
   freeVars :: Exp n -> Set (Fin n)
@@ -193,14 +201,16 @@ instance FV Exp where
   freeVars (App a b) = freeVars a <> freeVars b
   freeVars (Sigma a b) = freeVars a <> rescope s1 (freeVars (getBody1 b))
   freeVars (Pair a b) = freeVars a <> freeVars b
-  freeVars (Match b) = foldMap freeVars b
+  freeVars (Match b) = List.foldMap freeVars b
   freeVars (Annot a t) = freeVars a <> freeVars t
+  -}
 
+-- cannot be generic
 instance FV Branch where
   appearsFree n (Branch bnd) = appearsFree n bnd
-
   freeVars (Branch bnd)= freeVars bnd
 
+-- cannot be generic
 instance FV (Pat p) where
   appearsFree n PVar = False
   appearsFree n (PPair p1 p2) = appearsFree n p1 || appearsFree (shiftN (size p1) n) p2
@@ -237,14 +247,16 @@ weakenBind' m = applyE @Exp (weakenE' m)
 -- Nothing
 
 instance Strengthen Exp where
+  {-
   strengthenRec k m n (Var x) = Var <$> strengthenRec k m n x
   strengthenRec k m n Star = pure Star
   strengthenRec k m n (Pi a b) = Pi <$> strengthenRec k m n a <*> strengthenRec k m n b
   strengthenRec k m n (App a b) = App <$> strengthenRec k m n a <*> strengthenRec k m n b
   strengthenRec k m n (Pair a b) = Pair <$> strengthenRec k m n a <*> strengthenRec k m n b
   strengthenRec k m n (Sigma a b) = Sigma <$> strengthenRec k m n a <*> strengthenRec k m n b
-  strengthenRec k m n (Match b) = Match <$> mapM (strengthenRec k m n) b
+  strengthenRec k m n (Match b) = Match <$> List.mapM (strengthenRec k m n) b
   strengthenRec k m n (Annot a t) = Annot <$> strengthenRec k m n a <*> strengthenRec k m n t
+  -}
 
 instance Strengthen (Pat p) where
   strengthenRec k m n PVar = pure PVar
@@ -253,13 +265,11 @@ instance Strengthen (Pat p) where
       case (axiomAssoc @p1 @k @(m + n),
             axiomAssoc @p1 @k @n) of
        (Refl, Refl) ->
-         let r = strengthenRec (sPlus (Scoped.iscopedSize p1) k) m n p2 in
-         PPair <$> strengthenRec k m n p1
-                             <*> r
+         let r = strengthenRec (sPlus (size p1) k) m n p2 in
+         PPair <$> strengthenRec k m n p1 <*> r
   strengthenRec k m n (PAnnot p1 e2) = PAnnot <$> strengthenRec k m n p1 <*> strengthenRec k m n e2
 
 instance Strengthen Branch where
-
   strengthenRec k m n (Branch bnd) = Branch <$> strengthenRec k m n bnd
 ----------------------------------------------
 -- Some Examples
@@ -396,7 +406,6 @@ instance Show (Pat p n) where
 
 --------------------------------------------------------
 
--- NOTE: this is not the same type as patEq
 instance PatEq (Pat p1 n) (Pat p2 n) where
   patEq :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
   patEq PVar PVar = Just Refl
@@ -415,8 +424,8 @@ instance Eq (Branch n) where
   (Branch (p1 :: Scoped.Bind Exp Exp (Pat m1) n))
     == (Branch (p2 :: Scoped.Bind Exp Exp (Pat m2) n)) =
       case testEquality
-        (Scoped.scopedSize (Scoped.getPat p1) :: SNat m1)
-        (Scoped.scopedSize (Scoped.getPat p2) :: SNat m2) of
+        (size (Scoped.getPat p1) :: SNat m1)
+        (size (Scoped.getPat p2) :: SNat m2) of
         Just Refl -> p1 == p2
         Nothing -> False
 
@@ -453,7 +462,7 @@ deriving instance (Eq (Exp n))
 -- >>> eval (t1 `App` t0)
 -- λ_. ((λ_. 0) (λ_. (0 0)))
 
-eval :: (SNatI n) => Exp n -> Exp n
+eval :: Exp n -> Exp n
 eval (Var x) = Var x
 eval (Match b) = Match b
 eval (App e1 e2) =
@@ -474,7 +483,7 @@ eval (Pair a b) = Pair a b
 -- >>> step (t1 `App` t0)
 -- Just (λ_. (λ_. 0 (λ_. (0 0))))
 
-step :: (SNatI n) => Exp n -> Maybe (Exp n)
+step :: Exp n -> Maybe (Exp n)
 step (Var x) = Nothing
 step (Match b) = Nothing
 step (App (Match bs) e2)
@@ -490,7 +499,7 @@ step (Sigma a b) = Nothing
 step (Pair a b) = Nothing
 step (Annot a t) = step a
 
-eval' :: (SNatI n) => Exp n -> Exp n
+eval' :: Exp n -> Exp n
 eval' e
   | Just e' <- step e = eval' e'
   | otherwise = e
@@ -512,7 +521,7 @@ data Err where
 deriving instance (Show Err)
 
 -- find the head form
-whnf :: (SNatI n) => Exp n -> Exp n
+whnf :: Exp n -> Exp n
 whnf (App a1 a2) = case whnf a1 of
   Match bs -> case findBranch (eval a2) bs of
     Just b -> whnf b
@@ -521,44 +530,45 @@ whnf (App a1 a2) = case whnf a1 of
 whnf (Annot a t) = whnf a
 whnf a = a
 
-equate :: (MonadError Err m, SNatI n) => Exp n -> Exp n -> m ()
+equate :: (MonadError Err m) => Exp n -> Exp n -> m ()
 equate t1 t2 = do
   let n1 = whnf t1
       n2 = whnf t2
   equateWHNF n1 n2
 
 equatePat ::
-  forall p1 p2 m n.
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Pat p1 n ->
   Pat p2 n ->
   m ()
 equatePat PVar PVar = pure ()
 equatePat (PPair p1 p1') (PPair p2 p2')
-  | Just Refl <- testEquality (Scoped.scopedSize p1) (Scoped.scopedSize p2) =
-      withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $
+  | Just Refl <- testEquality (size p1) (size p2) =
         equatePat p1 p2 >> equatePat p1' p2'
 equatePat (PAnnot p1 e1) (PAnnot p2 e2) =
   equatePat p1 p2 >> equate e1 e2
 equatePat p1 p2 = throwError (PatternMismatch p1 p2)
 
-equateBranch :: (MonadError Err m, SNatI n) => Branch n -> Branch n -> m ()
+equateBranch :: (MonadError Err m) => Branch n -> Branch n -> m ()
 equateBranch (Branch b1) (Branch b2) =
-  Scoped.unbind b1 $ \(p1 :: Pat p1 n) body1 ->
-    Scoped.unbind b2 $ \(p2 :: Pat p2 n) body2 ->
-      case testEquality (Scoped.scopedSize p1) (Scoped.scopedSize p2) of
+  let p1 = Scoped.getPat b1
+      p2 = Scoped.getPat b2
+      body1 = Scoped.getBody b1
+      body2 = Scoped.getBody b2 
+  in
+      case testEquality (size p1) (size p2) of
         Just Refl ->
           equatePat p1 p2 >> equate body1 body2
         Nothing ->
           throwError (PatternMismatch (Scoped.getPat b1) (Scoped.getPat b2))
 
-equateWHNF :: (SNatI n, MonadError Err m) => Exp n -> Exp n -> m ()
+equateWHNF :: (MonadError Err m) => Exp n -> Exp n -> m ()
 equateWHNF n1 n2 =
   case (n1, n2) of
     (Star, Star) -> pure ()
     (Var x, Var y) | x == y -> pure ()
     (Match b1, Match b2) ->
-      zipWithM_ equateBranch b1 b2
+      List.zipWithM_ equateBranch b1 b2
     (App a1 a2, App b1 b2) -> do
       equateWHNF a1 b1
       equate a2 b2
@@ -578,7 +588,7 @@ equateWHNF n1 n2 =
 
 
 inferPattern ::
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Ctx Exp n -> -- input context
   Pat p n -> -- pattern to check
   m (Ctx Exp (p + n), Exp (p + n), Exp n)
@@ -589,31 +599,24 @@ inferPattern g p = throwError (AnnotationNeededPat p)
 
 -- | type check a pattern and produce an extended typing context,
 -- plus expression form of the pattern (for dependent pattern matching)
-
--- TODO: do we need to pass in the context? Can we just make it an
--- output of the function?
 checkPattern ::
-  forall m n p.
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Ctx Exp n -> -- input context
   Pat p n -> -- pattern to check
   Exp n -> -- expected type of pattern (should be in whnf)
   m (Ctx Exp (p + n), Exp (p + n))
 checkPattern g PVar a = do
   pure (g +++ a, var f0)
-checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) =
-  -- The context for the recursive call on p2 needs a little preparation
-  -- need to have implicit version of p1 + n
-  withSNat (sPlus (Scoped.scopedSize p1) (snat @n)) $
+checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) = do
   -- need to know that Plus is associative
   case axiomAssoc @p2 @p1 @n of
-  Refl -> do
-    (g', e1) <- checkPattern g p1 tyA
-    let tyB' = weakenBind' (Scoped.scopedSize p1) tyB
-    let tyB'' = whnf (instantiate1 tyB' e1)
-    (g'', e2) <- checkPattern g' p2 tyB''
-    let e1' = weaken' (Scoped.scopedSize p2) e1
-    return (g'', Pair e1' e2)
+    Refl -> do
+      (g', e1) <- checkPattern g p1 tyA
+      let tyB' = weakenBind' (size p1) tyB
+      let tyB'' = whnf (instantiate1 tyB' e1)
+      (g'', e2) <- checkPattern g' p2 tyB''
+      let e1' = weaken' (size p2) e1
+      return (g'', Pair e1' e2)
 checkPattern g p ty = do
   (g', e, ty') <- inferPattern g p
   equate ty ty'
@@ -628,15 +631,15 @@ checkPattern g p ty = do
 --       G |- p => b : Pi x : A . B
 
 checkBranch ::
-  forall m n.
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Ctx Exp n ->
   Exp n ->
   Branch n ->
   m ()
-checkBranch g (Pi tyA tyB) (Branch bnd) =
-  Scoped.unbind bnd $ \(pat :: Pat p n) body -> do
-    let p = Scoped.scopedSize pat
+checkBranch g (Pi tyA tyB) (Branch bnd) = do
+    let pat  = Scoped.getPat bnd
+    let body = Scoped.getBody bnd
+    let p    = size pat
 
     -- find the extended context and pattern expression
     (g', a) <- checkPattern g pat tyA
@@ -651,8 +654,7 @@ checkBranch g t e = throwError (PiExpected t)
 
 -- should only check with a type in whnf
 checkType ::
-  forall n m.
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Ctx Exp n ->
   Exp n ->
   Exp n ->
@@ -666,7 +668,7 @@ checkType g (Pair a b) ty = do
       checkType g b (instantiate1 tyB a)
     _ -> throwError (SigmaExpected ty)
 checkType g (Match bs) ty = do
-  mapM_ (checkBranch g ty) bs
+  List.mapM_ (checkBranch g ty) bs
 checkType g e t1 = do
   t2 <- inferType g e
   equate (whnf t2) t1
@@ -674,8 +676,7 @@ checkType g e t1 = do
 -- | infer the type of an expression. This type may not
 -- necessarily be in whnf
 inferType ::
-  forall n m.
-  (MonadError Err m, SNatI n) =>
+  (MonadError Err m) =>
   Ctx Exp n ->
   Exp n ->
   m (Exp n)
@@ -710,6 +711,7 @@ inferType g a =
 
 -- >>> (checkType zeroE tmid tyid :: Either Err ())
 -- Right ()
+
 
 -- >>> (inferType zeroE (App tmid tyid) :: Either Err (Exp N0))
 -- Left (AnnotationNeeded (λ_. (λ_. 0)))
