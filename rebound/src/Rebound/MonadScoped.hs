@@ -3,6 +3,7 @@ module Rebound.MonadScoped
     ScopedReader (..),
     ScopedReaderT (..),
     asksS,
+    runScopedReader,
   )
 where
 
