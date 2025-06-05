@@ -285,7 +285,8 @@ iscopedPatEq = scopedPatEq
 -- We include the appropriate associativity property with ICons so
 -- that it is always available for pattern matching
 data TeleList (pat :: Nat -> Nat -> Type) p n where
-  TNil :: TeleList pat N0 n
+  TNil :: ( n + N0 ~ n) =>
+    TeleList pat N0 n
   TCons ::
     ( IScopedSized pat,
       p2 + (p1 + n) ~ (p2 + p1) + n
@@ -297,6 +298,10 @@ data TeleList (pat :: Nat -> Nat -> Type) p n where
 lengthTele :: TeleList pat p n -> Int
 lengthTele TNil = 0
 lengthTele (TCons _ ps) = 1 + lengthTele ps
+
+-- Smart constructor
+nil :: forall pat n. TeleList pat N0 n
+nil = case axiomPlusZ @n of Refl -> TNil
 
 -- Smart constructor
 (<:>) ::
@@ -354,7 +359,7 @@ instance
   (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) =>
   Subst v (TeleList pat p)
   where
-  applyE r TNil = TNil
+  applyE r TNil = nil
   applyE r (TCons p1 p2) =
     applyE r p1 <:> applyE (upN (iscopedSize p1) r) p2
 
@@ -373,7 +378,7 @@ instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
   freeVars (TCons p1 p2) = freeVars p1 <> rescope (iscopedSize p1) (freeVars p2)
 
 instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
-  strengthenRec k m n TNil = Just TNil
+  strengthenRec k m n TNil = Just nil
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (TCons (p1 :: pat p1 (k + (m + n))) p2) =
     case ( axiomAssoc @p1 @k @(m + n),
            axiomAssoc @p1 @k @n
