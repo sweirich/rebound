@@ -1,6 +1,6 @@
 #!/bin/bash
 
-branch="wip/phantom-snat-fin-vec"
+branch="vector"
 
 machine=`hostname`
 
