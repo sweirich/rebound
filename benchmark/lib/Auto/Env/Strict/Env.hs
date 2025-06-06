@@ -73,7 +73,6 @@ instance Subst DB DB where
   applyE s (DBool b) = DBool b
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE applyEnv :: Env DB n m -> Fin n -> DB m #-}
 
 {-# SPECIALIZE idE :: Env DB n n #-}
 

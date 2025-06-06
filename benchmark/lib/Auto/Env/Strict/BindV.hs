@@ -43,7 +43,7 @@ data DB n where
   DVar :: !(Fin n) -> DB n
   DLam :: !(Bind DB DB n) -> DB n
   DApp :: !(DB n) -> !(DB n) -> DB n
-  DBool :: {-# unpack #-}Bool ->DB n
+  DBool :: {-# unpack #-} !Bool ->DB n
   DIf :: !(DB n) -> !(DB n) -> !(DB n) -> DB n
 -- standalone b/c GADT
 -- alpha equivalence is (==)
@@ -76,7 +76,6 @@ instance Subst DB DB where
   applyE s (DBool b) = DBool b
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE applyEnv :: Env DB n m -> Fin n -> DB m #-}
 
 {-# SPECIALIZE idE :: Env DB n n #-}
 

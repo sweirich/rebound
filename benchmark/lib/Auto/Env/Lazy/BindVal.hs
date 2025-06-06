@@ -82,8 +82,6 @@ instance Subst Val Exp where
   applyE s (DIf a b c) = DIf (applyE s a) (applyE s b) (applyE s c)
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE applyEnv :: Env Val n m -> Fin n -> Val m #-}
-
 {-# SPECIALIZE idE :: Env Val n n #-}
 
 {-# SPECIALIZE (.>>) :: Env Val m n -> Env Val n p -> Env Val m p #-}
