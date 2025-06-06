@@ -48,7 +48,7 @@ module Rebound.Env
 where
 
 import Rebound.Classes (Shiftable (..))
-import Rebound.Env.Internal
+import Rebound.Env.Lazy
 import Rebound.Lib
 import Control.Monad
 import Data.Scoped.List(List)

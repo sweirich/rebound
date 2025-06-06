@@ -1,6 +1,6 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module Rebound.Env.Internal where
+module Rebound.Env.Strict where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy

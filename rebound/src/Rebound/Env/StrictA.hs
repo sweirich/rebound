@@ -1,12 +1,12 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module Rebound.Env.InternalLazy where
+module Rebound.Env.StrictA where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
 -- *rest* of the environment is strict
 -- Includes optimized composition (Inc and Cons cancel)
--- Includes Wadler's optimizations for the empty environment
+-- does not include Wadler's optimizations for the empty environment
 
 import Rebound.Lib
 import Data.Fin (Fin(..))
@@ -44,25 +44,25 @@ class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
 
 
+
 ------------------------------------------------------------------------------
 -- Environment representation
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: (SubstVar a) => (SNat m) -> Env a n (n + m) --  weaken values in range by m
-  Weak  :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  weaken values in range by m
-  Inc   :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
-  Cons  :: (a m) -> (Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
-  (:<>) :: (SubstVar a) => (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
+  WeakR :: (SubstVar a) =>  !(SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: (SubstVar a) =>  !(SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: (SubstVar a) =>  !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
+  Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
+  (:<>) :: (SubstVar a) => !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------
 -- Application
 ------------------------------------------------------------------------------
 
 -- | Value of the index x in the substitution s
-
 applyEnv :: Env a n m -> Fin n -> a m
-applyEnv Zero x = Fin.absurd x
+applyEnv Zero x = case x of {}
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
@@ -74,10 +74,10 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 -- | Build an optimized version of applyE.
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-applyOpt f (Inc SZ) x = x
+{- applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
 applyOpt f (WeakR SZ) (x :: c m) =
-  case axiomPlusZ @m of Refl -> x
+  case axiomPlusZ @m of Refl -> x -}
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 
@@ -103,7 +103,7 @@ weakenE' = Weak
 {-# INLINEABLE weakenE' #-}
 
 -- | increment all free variables by m
-shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
+shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
@@ -155,9 +155,9 @@ comp s1 s2 = s1 :<> s2
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
-up (Inc SZ) = Inc SZ
+{- up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
-up (WeakR SZ) = WeakR SZ
+up (WeakR SZ) = WeakR SZ  -}
 up e = var Fin.f0 .: comp e (Inc s1)
 {-# INLINEABLE up #-}
 
