@@ -17,7 +17,7 @@ import qualified Util.Syntax.Lambda as LC hiding (aeq)
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Unbound.NonUnboundGenericsV",
+    { impl_name = "Unbound.NonGenV",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = nf,

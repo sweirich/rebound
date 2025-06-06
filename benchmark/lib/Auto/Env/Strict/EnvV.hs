@@ -27,7 +27,7 @@ import Util.Syntax.Lambda (LC (..))
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Auto.Env.Strict.EnvV",
+    { impl_name = "Env.Strict.EnvV",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = nf,

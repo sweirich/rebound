@@ -29,7 +29,7 @@ import GHC.Generics hiding (S)
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Auto.Env.Strict.EnvGenV",
+    { impl_name = "Env.Strict.EnvGenV",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = nf,
