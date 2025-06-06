@@ -4,7 +4,7 @@
 # The script will revert the haskell file after running make eval
 
 # 
-valid_variables=("Lazy" "LazyA" "LazyB" "Functional"  "Strict")
+valid_variables=("Lazy" "LazyA" "LazyB" "Functional"  "Strict" "StrictA" "StrictB")
 
 source_dir="results/`hostname`/rebound_strict_envV"
 branch = "main"
