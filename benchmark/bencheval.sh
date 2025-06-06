@@ -6,7 +6,7 @@
 valid_variables=("Functional" "Lazy" "LazyA"  "LazyB" "Strict" "StrictA" "StrictB")
 # Move files.
 source_dir="results/`hostname`/rebound_strict_envV"
-branch="wip/phantom-snat-fin"
+branch="nat-word"
 
 # Define the file to modify.
 file="../rebound/src/Rebound/Env.hs"
