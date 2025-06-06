@@ -58,11 +58,6 @@ library
       , Rebound.Context
       , Rebound.Lib
       , Rebound.Env
-      , Rebound.Env.Internal
-      , Rebound.Env.InternalStrict
-      , Rebound.Env.InternalLazy
-      , Rebound.Env.InternalA
-      , Rebound.Env.InternalB
       , Rebound.Env.Functional
       , Rebound.Env.Vector
       , Rebound.MonadScoped
