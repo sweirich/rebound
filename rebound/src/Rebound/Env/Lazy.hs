@@ -1,15 +1,15 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-module Rebound.Env.Internal where
+module Rebound.Env.Lazy where
 
 -- "Defunctionalized" representation of environment
 -- stored values are lazy
--- *rest* of the environment is strict
+-- *rest* of the environment is lazy
 -- Includes optimized composition (Inc and Cons cancel)
 -- Includes Wadler's optimizations for the empty environment
 
 import Rebound.Lib
-import Data.Fin
+import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
@@ -21,7 +21,6 @@ import GHC.Generics hiding (S)
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
-
 
 -- | Apply the environment throughout a term of
 -- type `c n`, replacing variables with values
@@ -35,37 +34,39 @@ class (SubstVar v) => Subst v c where
   isVar _ = Nothing
   {-# INLINE isVar #-}
   
--- Generic programming
-class GSubst v (e :: Nat -> Type) where
-  gsubst :: Env v m n -> e m -> e n
-
 gapplyE :: forall c v m n. (Generic1 c, GSubst v (Rep1 c), Subst v c) => Env v m n -> c m -> c n
 gapplyE r e | Just (Refl, x) <- isVar @v @c e = applyEnv r x
 gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 {-# INLINEABLE gapplyE #-}
+
+-- Generic programming
+class GSubst v (e :: Nat -> Type) where
+  gsubst :: Env v m n -> e m -> e n
+
 
 ------------------------------------------------------------------------------
 -- Environment representation
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: (SubstVar a) => !(SNat m) -> Env a n (n + m) --  weaken values in range by m
-  Weak  :: (SubstVar a) => !(SNat m) -> Env a n (m + n) --  weaken values in range by m
-  Inc   :: (SubstVar a) => !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
-  Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
-  (:<>) :: (SubstVar a) => !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
+  WeakR :: (SubstVar a) => (SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: (SubstVar a) => (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
+  Cons  :: (a m) -> (Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
+  (:<>) :: (SubstVar a) => (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------
 -- Application
 ------------------------------------------------------------------------------
 
 -- | Value of the index x in the substitution s
+
 applyEnv :: Env a n m -> Fin n -> a m
 applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
-applyEnv (Cons ty s) f = case fin_ f of { FZ_ -> ty ; FS_ x -> applyEnv s x } 
+applyEnv (Cons ty s) f = case fin_ f of FZ_ -> ty ; FS_ x -> applyEnv s x
 applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
 
@@ -123,7 +124,6 @@ tail x = shiftNE s1 .>> x
 {-# INLINEABLE (.>>) #-}
 
 -- | smart constructor for composition
--- Names of some cases are taken from Abadi et. al "Explicit Substitutions"
 comp :: forall a m n p. SubstVar a => 
          Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
@@ -144,15 +144,10 @@ comp s (WeakR SZ) =
 comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  = 
   case axiomAssoc @m2 @m1 @m of
     Refl -> Inc (sPlus k2 k1)
--- (sort of) ShiftId
 comp s (Inc SZ) = s
--- IdL
 comp (Inc SZ) s = s
--- ShiftCons
 comp (Inc (snat_ -> SS_ p1)) (Cons _t p) = comp (Inc p1) p
--- Ass
 comp (s1 :<> s2) s3 = comp s1 (comp s2 s3)
--- Map
 comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
 comp s1 s2 = s1 :<> s2
 {-# INLINEABLE comp #-}
