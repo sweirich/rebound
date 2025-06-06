@@ -3,7 +3,7 @@ import Examples.LC qualified as LC
 import Examples.LCLet qualified as LCLet
 import Examples.PTS qualified as PTS
 import Examples.Pat qualified as Pat
-import Examples.SystemF qualified as SystemF
+import Examples.PureSystemF qualified as PureSystemF
 import Test.Tasty
 
 main :: IO ()
@@ -14,7 +14,11 @@ main = do
       [ LC.all,
         LCLet.all,
         Pat.all,
-        SystemF.all,
+        testGroup
+          "System F"
+          [ -- TODO: add System F tests
+            PureSystemF.all
+          ],
         PTS.all,
         DepMatch.all
       ]

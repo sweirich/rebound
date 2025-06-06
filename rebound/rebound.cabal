@@ -92,6 +92,7 @@ library rebound-examples
     , ScopeCheck
     , HOAS
     , SystemF
+    , PureSystemF
   hs-source-dirs: examples
 
 test-suite rebound-tests
@@ -115,6 +116,6 @@ test-suite rebound-tests
     Examples.LC
     Examples.LCLet
     Examples.Pat
-    Examples.SystemF
+    Examples.PureSystemF
     Examples.PTS
     Examples.DepMatch
