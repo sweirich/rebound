@@ -1,0 +1,114 @@
+-- Inspired from
+--- Certified Programming with Dependent Types: A Pragmatic Introduction to the Coq Proof Assistant
+--- By: Adam Chlipala
+--- https://doi.org/10.7551/mitpress/9153.001.0001
+--- ISBN (electronic): 9780262317870
+--- Publisher: The MIT Press
+--- Published: 2013
+
+module Compiler where
+
+import BoolLib
+import Nat
+import List
+import HList
+
+-- "Type" is a reserved keyword, so L33t it is
+data Typ3: Type where
+  N
+  B
+
+data BinOp (L: Typ3) (R: Typ3) (T: Typ3): Type where
+  Plus  of [L = N] [R = N] [T = N]
+  Times of [L = N] [R = N] [T = N]
+  Eq    of (S: Typ3) [L = S] [R = S] [T = B]
+  Lt    of [L = N] [R = N] [T = B]
+
+denoteType : (T: Typ3) -> Type
+denoteType = \ T . case T of
+  N -> Nat
+  B -> Bool
+
+denoteBinop :
+  [L: Typ3] -> [R: Typ3] -> [T: Typ3] -> BinOp L R T ->
+  denoteType L -> denoteType R -> denoteType T
+denoteBinop = \ [L] [R] [T] b . case b of
+  Plus -> plus
+  Times -> mult
+  Eq T -> case T of
+    N -> nat_eq
+    B -> eq_bool
+  Lt -> nat_leq
+
+--------------------------------------------------------------------------------
+--- The base language
+--------------------------------------------------------------------------------
+
+data Exp (T: Typ3): Type where
+  NConst  of (n: Nat) [T = N]
+  BConst  of (b: Bool) [T = B]
+  Binop   of [L: Typ3] (Exp L) [R: Typ3] (Exp R) (BinOp L R T)
+
+denoteExp :
+  [T: Typ3] -> Exp T -> denoteType T
+denoteExp = \ [T] t .
+  case t of
+    NConst n -> n
+    BConst b -> b
+    Binop [L] l [R] r op -> denoteBinop [L] [R] [T] op (denoteExp [L] l) (denoteExp [R] r)
+
+--------------------------------------------------------------------------------
+--- The stack language
+--------------------------------------------------------------------------------
+
+TypeStack : Type
+TypeStack = List Typ3
+
+data Instruction (input: TypeStack) (output: TypeStack): Type where
+  INat    of [output = Cons N input] (n: Nat)
+  IBool   of [output = Cons B input] (b: Bool)
+  IBinop  of [L: Typ3] [R: Typ3] [T: Typ3] (BinOp L R T) [base: TypeStack] [input = Cons R (Cons L base)] [output = Cons T base]
+
+data Program (input: TypeStack) (output: TypeStack): Type where
+  Done  of [output = input]
+  Instr of [intermediate: TypeStack] (Instruction input intermediate) (Program intermediate output)
+
+ValueStack : TypeStack -> Type
+ValueStack = \ s . HList (map [Typ3] [Type] denoteType s)
+
+denoteInstruction : [i: TypeStack] -> [o: TypeStack] -> Instruction i o -> ValueStack i -> ValueStack o
+denoteInstruction = \ [I] [O] ins . case ins of
+  INat n -> \ s . HCons [Nat] n [map [Typ3] [Type] denoteType I] s
+  IBool b -> \ s . HCons [Bool] b [map [Typ3] [Type] denoteType I] s
+  IBinop [L] [R] [T] bop [S] -> \ s . case s of
+    HCons [_] r [_] s' -> case s' of
+      HCons [_] l [S''] s'' -> HCons [denoteType T] (denoteBinop [L] [R] [T] bop l r) [S''] s''
+
+denoteProgram : [i: TypeStack] -> [o: TypeStack] -> Program i o -> ValueStack i -> ValueStack o
+denoteProgram = \ [I] [O] p . case p of
+  Done -> \ s . s
+  Instr M ins p' -> \ s . denoteProgram [M] [O] (p') (denoteInstruction [I] [M] ins s)
+
+--------------------------------------------------------------------------------
+--- The compiler
+--------------------------------------------------------------------------------
+
+programConcat :
+  [i: TypeStack] -> [m: TypeStack] -> [o: TypeStack]
+    -> Program i m -> Program m o -> Program i o
+programConcat = \ [I] [M] [O] p p' . case p of
+  Done -> p'
+  Instr I' ins p'' -> Instr [I'] ins (programConcat [I'] [M] [O] p'' p')
+
+compile : [T: Typ3] -> [S: TypeStack] -> Exp T -> Program S (Cons T S)
+compile = \ [T] [S] e . case e of
+  NConst n -> Instr [Cons N S] (INat n) Done
+  BConst b -> Instr [Cons B S] (IBool b) Done
+  Binop [L] l [R] r op ->
+    let pl = compile [L] [S] l in
+    let pr = compile [R] [Cons L S] r in
+    let pi = (Instr [Cons T S] (IBinop [L] [R] [T] op [S]) Done : Program (Cons R (Cons L S)) (Cons T S)) in
+    programConcat [S] [Cons R (Cons L S)]  [Cons T S]
+      (programConcat [S] [Cons L S] [Cons R (Cons L S)]
+        pl pr)
+      pi

@@ -1,0 +1,46 @@
+module Compile_benchmark where
+
+import Nat
+import List
+import HList
+import Compiler
+
+getResult : ValueStack (Cons N Nil) -> Nat
+getResult = \ s . case s of
+  HCons [_] h [_] _ -> h
+
+runInterpreter : Exp N -> Nat
+runInterpreter = \ e . denoteExp [N] e
+
+runCompiler : Exp N -> Nat
+runCompiler = \ e . getResult (denoteProgram [Nil] [Cons N Nil] (compile [N] [Nil] e) HNil)
+
+one : Nat
+one = Succ Zero
+two : Nat
+two = Succ one
+three : Nat
+three = Succ two
+four : Nat
+four = Succ three
+five : Nat
+five = Succ four
+six : Nat
+six = Succ five
+eight : Nat
+eight = plus two six
+nine : Nat
+nine = Succ eight
+ten : Nat
+ten = Succ nine
+
+factorial : Nat -> Exp N
+factorial = \ n . case n of
+  Zero -> NConst Zero
+  Succ n' -> Binop [N] (NConst n') [N] (factorial n') Times
+
+e : Exp N
+e = factorial eight
+
+kickFact : nat_eq (runInterpreter e) (runCompiler e) = True
+kickFact = Refl

@@ -1,0 +1,17 @@
+-- Check that when instantiating a constructor, the "evidences" it carries (i.e.
+-- equality constrains) are not assumed to hold, but are correctly checked.
+
+module ConstructorEvidence where
+
+import Nat
+
+data Empty: Type where
+  C of (n: Nat) [n = Succ n]
+
+fail emptyInfer = C 2
+
+emptyCheck : Empty
+fail emptyCheck = C 2
+
+eqEvidence : (n: Nat) -> n = Succ n
+fail eqEvidence = \n. Refl

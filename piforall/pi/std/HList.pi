@@ -1,0 +1,40 @@
+module HList where
+
+import Nat
+import List
+
+data HList (L: List Type): Type where
+  HNil of [L = Nil]
+  HCons of [H: Type] (H) [T: List Type] (HList T) [L = Cons H T]
+
+hmap : [F: Type -> Type] -> (f: [T: Type] -> T -> F T) -> [L: List Type] -> HList L -> HList (map [Type] [Type] F L)
+hmap = \ [F] f [L] l . case l of
+  HNil -> HNil
+  HCons [H] h [T] t -> HCons [F H] (f [H] h) [map [Type] [Type] F T] (hmap [F] f [T] t)
+
+happend : [L: List Type] -> HList L -> [R: List Type] -> HList R -> HList (append [Type] L R)
+happend = \ [L] l [R] r . case l of
+  HNil -> r
+  HCons [H] h [T] t -> HCons [H] h [append [Type] T R] (happend [T] t [R] r)
+
+hlength : [L: List Type] -> HList L -> Nat
+hlength = \ [L] l . case l of
+  HNil -> 0
+  HCons [H] h [T] t -> Succ (hlength [T] t)
+
+hbind : [F: Type -> List Type] -> [L: List Type] -> ([T: Type] -> T -> HList (F T)) -> HList L -> HList (bind [Type] [Type] F L)
+hbind = \ [F] [L] f x . case x of
+  HNil -> HNil
+  HCons [H] h [T] t -> happend [F H] (f [H] h) [bind [Type] [Type] F T] (hbind [F] [T] f t)
+
+--------------------------------------------------------------------------------
+
+--lemma_hlength_length_compat : (L: List Type) -> (l: HList L) ->
+--  (length [Type] L = hlength [L] l)
+--lemma_hlength_length_compat = \ L l . case l of
+--  HNil -> Refl
+--  HCons [H] h [T] t -> PRINTME
+--  --case L of
+--  --  Nil -> PRINTME
+--  --  Cons H' T' -> PRINTME --lemma_hlength_length_compat T t
+

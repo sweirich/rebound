@@ -1,0 +1,13 @@
+module Bug2 where
+
+data Nat: Type where
+  Zero
+  Succ of (Nat)
+
+data Eqs (n: Nat) (l: Nat) (r: Nat): Type where
+  Balanced of [n = Succ l] [l = r]
+
+f : [n': Nat] -> (l: Nat) -> (r: Nat) -> Eqs (Succ (Succ n')) l r -> Unit
+f = \ [n'] l r eqs . case eqs of
+    Balanced -> ()
+    v -> ()

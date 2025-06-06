@@ -1,0 +1,8 @@
+module Nats where
+
+import Nat
+
+one : Nat
+one = Succ Zero
+two : Nat
+two = Succ one
