@@ -59,8 +59,10 @@ library
       , Rebound.Context
       , Rebound.Lib
       , Rebound.Env
-      , Rebound.Env.Strict
       , Rebound.Env.Lazy
+      , Rebound.Env.LazyA
+      , Rebound.Env.LazyB
+      , Rebound.Env.Strict
       , Rebound.Env.StrictA
       , Rebound.Env.StrictB
       , Rebound.Env.Functional
