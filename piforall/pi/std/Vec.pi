@@ -2,8 +2,6 @@
 -- PI library for finite-length vectors
 --
 -- Some of these are adapted from Vec.agda
---
--- Author: Stephanie Weirich
 -----------------------------------------------------------------------
 
 module Vec where

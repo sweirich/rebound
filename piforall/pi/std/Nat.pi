@@ -1,9 +1,6 @@
 -- PI library for natural numbers
 --
 -- Some of these are adapted from Trellys examples
---
--- Author: Stephanie Weirich
---
 
 module Nat where
 
