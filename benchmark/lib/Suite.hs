@@ -157,9 +157,9 @@ well_scoped_strict :: [LambdaImpl]
 well_scoped_strict = [ 
                 NBE.KovacsScoped.impl,
                 --Named.FoilV.impl, -- too slow
-                Named.Foil.impl,
                 DeBruijn.BoundV.impl,
-                DeBruijn.Bound.impl
+                DeBruijn.Bound.impl,
+                Named.Foil.impl
                ]
 -- Well-scoped implmentations (unused)
 well_scoped_lazy :: [LambdaImpl]

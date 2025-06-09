@@ -15,7 +15,7 @@ import qualified Util.Syntax.Lambda as LC
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Unbound.UnboundGenerics",
+    { impl_name = "Unbound.Gen",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = nf,
