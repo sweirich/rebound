@@ -49,3 +49,47 @@ high-level overview:
   lambda-calculus, using different libraries and techniques. It also contains
   code to benchmark the normalization of lambda-terms in each of these
   implementations.
+
+## Benchmarks
+
+### Table 1
+
+**To run**: Consult this [file](./benchmark/README.md) for instructions.
+
+The implementations mentioned in the paper are:
+- [Env.Strict.BindV](benchmark/lib/Rebound/Env/Strict/BindV.hs)
+- [Env.Strict.EnvV](benchmark/lib/Rebound/Env/Strict/EnvV.hs)
+- [Env.Strict.EnvGenV](benchmark/lib/Rebound/Env/Strict/EnvGenV.hs)
+- [Env.Strict.Bind](benchmark/lib/Rebound/Env/Strict/Bind.hs)
+- [Env.Strict.Env](benchmark/lib/Rebound/Env/Strict/Env.hs)
+- [Env.Strict.EnvGen](benchmark/lib/Rebound/Env/Strict/EnvGen.hs)
+- [NBE.KovacsScoped](benchmark/lib/NBE/KovacsScoped.hs)
+- [DeBruijn.BoundV](benchmark/lib/DeBruijn/BoundV.hs)
+- [DeBruijn.Bound](benchmark/lib/DeBruijn/Bound.hs)
+- [Named.Foil](benchmark/lib/Named/Foil.hs)
+- [Unbound.Gen](benchmark/lib/Unbound/Gen.hs)
+- [Unbound.NonGen](benchmark/lib/Unbound/NonGen.hs)
+
+### Table 2 (partial)
+
+**To run**: Consult this [file](./benchmark/README.md) for instructions.
+
+The implementation of the main environments are:
+- [Functional](rebound/src/Rebound/Env/Functional.hs)
+- [Lazy](rebound/src/Rebound/Env/Lazy.hs)
+- [LazyA](rebound/src/Rebound/Env/LazyA.hs)
+- [LazyB](rebound/src/Rebound/Env/LazyB.hs)
+- [Strict](rebound/src/Rebound/Env/Strict.hs)
+- [StrictA](rebound/src/Rebound/Env/StrictA.hs)
+- [StrictB](rebound/src/Rebound/Env/StrictB.hs)
+
+### Table 3
+
+**To run**: Consult this [file](./piforall/README.md) for instructions.
+
+The pi-forall files used are:
+- [AVL](piforall/pi/examples/AVL_F.pi)
+- [DepAvl](piforall/pi/examples/AVL.pi)
+- [Compiler](piforall/pi/examples/Compiler.pi)
+- [Lennart](piforall/pi/examples/Lennart.pi)
+- [CompCk](piforall/pi/examples/cCompiler.pi)
