@@ -30,6 +30,8 @@ import qualified Data.Set as Set
 -- shouldn't depend on the scope. We manifest that with the
 -- associated type `ScopedSize :: Nat -> Type` and the constraint
 -- that it must be the same as Size for any number of bound variables.
+-- This technique is described by: 
+-- https://blog.poisson.chat/posts/2022-09-21-quantified-constraint-trick.html
 
 class (Sized (t p), Size (t p) ~ ScopedSize t) => EqSized t p
 
