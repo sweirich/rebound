@@ -1,7 +1,7 @@
 -- | Simplest use of the unbound-generics library
 --   uses generic programming for Alpha/Subst instances
 --   uses bind/subst during normalization
-module Unbound.UnboundGenerics (impl) where
+module Unbound.Gen (impl) where
 
 import qualified Control.DeepSeq as DS
 import Control.Monad.Trans (lift)
@@ -81,7 +81,7 @@ nfd (App f a) = do
 nfd e@(Bool _) = return e
 nfd (If a b c) = do
   a' <- whnfd a
-  case a' of 
+  case a' of
     Bool True -> nfd a
     Bool False -> nfd b
     a' -> If <$> (nfd a') <*> (nfd b) <*> (nfd c)
@@ -98,7 +98,7 @@ whnfd (App f a) = do
 whnfd e@(Bool b) = return $ Bool b
 whnfd (If a b c) = do
   a' <- whnfd a
-  case a' of 
+  case a' of
     Bool True -> whnfd b
     Bool False -> whnfd c
     a' -> return $ If a' b c

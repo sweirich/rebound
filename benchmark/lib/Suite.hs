@@ -120,10 +120,10 @@ import qualified Named.SimpleGH
 import qualified Named.SimpleH
 import qualified Named.SimpleM
 import qualified Named.Unique
-import qualified Unbound.UnboundGenerics
-import qualified Unbound.UnboundNonGenerics
-import qualified Unbound.UnboundGenericsV
-import qualified Unbound.UnboundNonGenericsV
+import qualified Unbound.Gen
+import qualified Unbound.NonGen
+import qualified Unbound.GenV
+import qualified Unbound.NonGenV
 import qualified Unbound.Lazy.UnboundGenerics
 import qualified Unbound.Lazy.UnboundNonGenerics
 -- allow newer GHCs
@@ -199,9 +199,9 @@ rebound_lazy = [
 unbound_strict :: [LambdaImpl]
 unbound_strict =
   [
-    -- Unbound.UnboundGenericsV.impl, -- applicative order, not normal order
-    Unbound.UnboundGenerics.impl, -- unbound-generics
-    Unbound.UnboundNonGenerics.impl -- no generic programming
+    -- Unbound.GenV.impl, -- applicative order, not normal order
+    Unbound.Gen.impl, -- unbound-generics
+    Unbound.NonGen.impl -- no generic programming
   ]
 
   -- these versions using "substBind/instantiate" for beta-reduction
@@ -446,7 +446,7 @@ hackage =
     -- https://hackage.haskell.org/package/nominal
     Named.Lazy.NominalG.impl,
     -- Unbound.UnboundRep.impl, -- unbound
-    Unbound.UnboundGenerics.impl, -- unbound-generics
+    Unbound.Gen.impl, -- unbound-generics
     DeBruijn.Bound.impl, -- bound
     DeBruijn.Lazy.Bound.impl, -- bound
     Named.Foil.impl,

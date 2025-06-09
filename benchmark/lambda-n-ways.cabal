@@ -146,10 +146,10 @@ library
     Support.SubstH
     Support.SubstOpt
     Support.TypedSubstOpt
-    Unbound.UnboundGenerics
-    Unbound.UnboundNonGenerics
-    Unbound.UnboundGenericsV
-    Unbound.UnboundNonGenericsV
+    Unbound.Gen
+    Unbound.NonGen
+    Unbound.GenV
+    Unbound.NonGenV
     Unbound.Lazy.UnboundGenerics
     Unbound.Lazy.UnboundNonGenerics
     Util.Id
