@@ -1,0 +1,55 @@
+module Regex where
+
+import BoolLib
+import Nat
+import Nats
+import Option
+import List
+
+-- Yes, chars are nats; sue me about it
+C : Type
+C = Nat
+
+data Regex: Type where
+  Char of (C)
+  Epsilon
+  Disjunction of (Regex) (Regex)
+  Sequence of (Regex) (Regex)
+  Kleene of (Regex)
+
+rinterpret_ : Regex -> List C -> Nat -> List Nat
+rinterpret_ = \ r str at . case r of
+  Char c -> if opt_eq [Nat] nat_eq (nth_opt C str at) (Some c) then singleton [Nat] (Succ at) else Nil
+  Epsilon -> singleton [Nat] at
+  Disjunction l r -> append [Nat] (rinterpret_ l str at) (rinterpret_ r str at)
+  Sequence l r -> bind Nat Nat (rinterpret_ r str) (rinterpret_ l str at)
+  Kleene r -> Cons at (rinterpret_ (Sequence r (Kleene r)) str at)
+
+rinterpret: Regex -> List C -> Bool
+rinterpret = \ r str .
+  let len = length Nat str in
+  let matches = rinterpret_ r str 0 in
+  not (is_zero (length Nat (filter Nat (\n . nat_eq n len) matches)))
+
+Label : Type
+Label = Nat
+
+data RIns: Type where
+  IChar of (C)
+  ISkip
+  IJmp of (Label)
+  ISplit of (Label) (Label)
+  IMatch
+
+iinterpret_ : List RIns -> Nat -> List C -> Nat -> Bool
+iinterpret_ = \ ins ip str sp . case nth_opt RIns ins ip of
+  None -> False
+  Some i -> case i of
+    IChar c -> if opt_eq [Nat] nat_eq (nth_opt C str sp) (Some c) then iinterpret_ ins (Succ ip) str (Succ sp) else False
+    ISkip -> iinterpret_ ins (Succ ip) str sp
+    IJmp l -> iinterpret_ ins l str sp
+    ISplit l l' -> orb (iinterpret_ ins l str sp) (iinterpret_ ins l' str sp)
+    IMatch -> nat_eq (length C str) sp
+
+kick : rinterpret (Sequence (Char Zero) (Char Zero)) (Cons Zero (Cons Zero Nil)) = True
+kick = Refl

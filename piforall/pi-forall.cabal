@@ -1,0 +1,98 @@
+cabal-version:  2.2
+name:           pi-forall
+version:        0.3
+license:        MIT
+license-file:   LICENSE
+copyright:      (c) 2013-2025 University of Pennsylvania
+description:    An implementation of a simple dependently typed language
+author:         Noe De Santo <ndesanto@seas.upenn.edu>, Stephanie Weirich <sweirich@seas.upenn.edu>, based on code by Trellys Team <trellys@...>
+maintainer:     Noe De Santo <ndesanto@seas.upenn.edu>, Stephanie Weirich <sweirich@seas.upenn.edu>
+build-type:     Simple
+tested-with:    GHC == 9.8.4
+category:       Compilers/Interpreters
+homepage:       https://github.com/Ef55/pi-forall
+synopsis:       Demo implementation of typechecker for dependently-typed language
+
+source-repository head
+  type: git
+  location: https://github.com/Ef55/pi-forall
+
+common common-stanza
+  ghc-options:
+     -Wno-type-defaults
+     -fwarn-incomplete-patterns
+  build-depends:
+      base >=4.15
+    , rebound
+    , QuickCheck
+    , containers
+    , filepath
+    , parsec
+    , prettyprinter
+    , network
+    , directory
+    , random
+    , mtl
+    , brick
+    , vty
+    , unbound-generics
+  default-language:
+    GHC2021
+  default-extensions:
+    KindSignatures
+    , DataKinds
+    , GADTs
+    , StandaloneDeriving
+    , LambdaCase
+    , QuantifiedConstraints
+    , TypeFamilies
+    , AllowAmbiguousTypes
+    , UndecidableInstances
+
+
+library
+  import:
+      common-stanza
+  exposed-modules:
+        PiForall.PrettyPrint
+      , PiForall.LayoutToken
+      , PiForall.Parser
+      , PiForall.Log
+      , PiForall.ConcreteSyntax
+      , PiForall.Arbitrary
+      , PiForall.Rebound.Syntax
+      , PiForall.Rebound.Environment
+      , PiForall.Rebound.Equal
+      , PiForall.Rebound.ScopeCheck
+      , PiForall.Rebound.Modules
+      , PiForall.Rebound.TypeCheck
+      , PiForall.Unbound.Syntax
+      , PiForall.Unbound.Environment
+      , PiForall.Unbound.Equal
+      , PiForall.Unbound.NameResolution
+      , PiForall.Unbound.Modules
+      , PiForall.Unbound.TypeCheck
+  hs-source-dirs:
+      src
+
+test-suite test-pi-forall
+  import: common-stanza
+  build-depends: pi-forall
+    , directory
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  other-modules:
+    ParseScopeRT
+    ParseResolveRT
+
+benchmark bench-pi-forall
+  import: common-stanza
+  build-depends: pi-forall
+    , criterion
+  type: exitcode-stdio-1.0
+  hs-source-dirs: benchmarks
+  main-is: Main.hs

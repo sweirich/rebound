@@ -1,0 +1,30 @@
+module Bug1 where
+
+data D: Type where
+  One
+  Two
+
+data Option (T: Type): Type where
+  Just of (T)
+  None
+
+-- Works just fine
+h: Option D -> Unit
+h = \ d . case d of
+  None -> ()
+  Just v -> ()
+
+-- "Type Error: [...] All sub-patterns must be variables in this version", as expected
+-- g : Option (Option D) -> Unit
+-- g = \ d . case d of
+--   None -> ()
+--   Just v -> ()
+--   Just (Just v) -> ()
+
+-- Incorrect "Type Error: [...] Wrong number of arguments to data constructor"
+-- Correct "All subpatterns must be variables in this version"
+f : Option D -> Unit
+fail f = \ d . case d of
+  None -> ()
+  Just One -> ()
+  Just Two -> ()

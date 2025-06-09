@@ -1,0 +1,11 @@
+module Fail where
+
+fail1 : Bool
+fail fail1 = ()
+
+fail fail fail1 = True
+
+fail1 = True
+
+fail fail1 = True
+fail fail1 = False

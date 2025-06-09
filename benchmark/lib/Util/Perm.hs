@@ -8,7 +8,6 @@
 -- |
 -- Module      :  Perm
 -- License     :  BSD-like (see LICENSE)
--- Maintainer  :  Stephanie Weirich <sweirich@cis.upenn.edu>
 -- Portability :  portable
 --
 -- A slow, but hopefully correct implementation of permutations.
@@ -79,7 +78,7 @@ instance Ord a => Semigroup (Perm a) where
 -- | Permutations form a monoid under composition.
 instance Ord a => Monoid (Perm a) where
   mempty  = empty
-#if !MIN_VERSION_base(4,11,0)  
+#if !MIN_VERSION_base(4,11,0)
   mappend = (Semigroup.<>)
 #endif
 
@@ -94,7 +93,7 @@ isid (Perm p) =
 join :: Ord a => Perm a -> Perm a -> Maybe (Perm a)
 join (Perm p1) (Perm p2) =
      let overlap = M.intersectionWith (==) p1 p2 in
-#if MIN_VERSION_containers(0,5,0)     
+#if MIN_VERSION_containers(0,5,0)
      if M.foldr (&&) True overlap then
 #else
      if M.fold (&&) True overlap then
@@ -139,7 +138,7 @@ foldr (uncurry M.insert) mfwd
         -- something in the forward direction but have no ancestor.
   where chainStarts = S.toList (M.keysSet mfwd `S.difference` M.keysSet mrev)
         findEnd x = maybe x findEnd (M.lookup x mfwd)
-                   
+
 
 -- | @mkPerm l1 l2@ creates a permutation that sends @l1@ to @l2@.
 --   Fail if there is no such permutation, either because the lists
@@ -158,7 +157,7 @@ class Swap a b where
   swap _p = id
   support :: Ord a => b -> S.Set a
   support = const S.empty
-  
+
 instance {-# OVERLAPPING #-} Swap a a where
   swap    = apply
   support = S.singleton
@@ -166,10 +165,10 @@ instance {-# OVERLAPPING #-} Swap a (Perm a) where
   swap p1 p2 = compose p1 p2
   support = supportPerm
 
-instance Swap a (Perm b) 
-instance Swap a () 
-instance Swap a Char 
-instance Swap a Bool 
+instance Swap a (Perm b)
+instance Swap a ()
+instance Swap a Char
+instance Swap a Bool
 instance (Swap c a, Swap c b) => Swap c (Either a b) where
   swap p (Left x) = Left (swap p x)
   swap p (Right x) = Right (swap p x)
@@ -194,7 +193,7 @@ instance (Ord a, Arbitrary a) => Arbitrary (Perm a) where
     where
       go []       p = p
       go [x]   p = p
-      go (x:y:xs) p 
+      go (x:y:xs) p
        | x `elem` support p || y `elem` support p = go xs p
        | otherwise  = go xs (single x y <> p)
 

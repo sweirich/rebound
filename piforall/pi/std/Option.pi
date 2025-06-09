@@ -1,0 +1,29 @@
+module Option where
+
+data Option (T: Type): Type where
+  None
+  Some of (T)
+
+opt_eq: [S: Type] -> (S -> S -> Bool) -> Option S -> Option S -> Bool
+opt_eq = \ [S] eq l r . case l of
+  None -> case r of
+    None -> True
+    Some _ -> False
+  Some l' -> case r of
+    None -> False
+    Some r' -> eq l' r'
+
+omap: [S: Type] -> [T: Type] -> (S -> T) -> Option S -> Option T
+omap = \ S T f o . case o of
+  None -> None
+  Some s -> Some (f s)
+
+obind: [S: Type] -> [T: Type] -> (S -> Option T) -> Option S -> Option T
+obind = \ S T f o . case o of
+  None -> None
+  Some s -> f s
+
+ozip: [T: Type] -> Option T -> Option T -> Option T
+ozip = \ [T] l r . case l of
+  None -> r
+  Some _ -> l

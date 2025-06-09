@@ -1,0 +1,13 @@
+module Sumbool where
+
+import Logic
+
+data Sumbool (S: Type) (T: Type) : Type where
+  STrue of (S)
+  SFalse of (T)
+
+Dec: Type -> Type
+Dec = \ T . Sumbool (T) (neg T)
+
+EqDec: [T: Type] -> Type
+EqDec = \ [T] . (l: T) -> (r: T) -> Dec (l = r)

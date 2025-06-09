@@ -1,0 +1,223 @@
+module AVL where
+
+import Logic
+import Sigma
+import Sumbool
+import Nat
+import List
+
+data Comparison: Type where
+  less
+  equal
+  greater
+
+data Comparable: Type where
+  comparable of
+    (T: Type)
+    (T -> T -> Comparison)
+
+T : Comparable -> Type
+T = \ C . case C of comparable T _ -> T
+compare : (C: Comparable) -> (l: T C) -> (r: T C) -> Comparison
+compare = \ C . case C of comparable _ comp -> comp
+leq : (C: Comparable) -> (l: T C) -> (r: T C) -> Bool
+leq = \ C . case C of
+  comparable _ comp -> \ l r . case comp l r of
+    less -> True
+    equal -> True
+    greater -> False
+eq : (C: Comparable) -> (l: T C) -> (r: T C) -> Bool
+eq = \ C . case C of
+  comparable _ comp -> \ l r . case comp l r of
+    less -> False
+    equal -> True
+    greater -> False
+
+data Bias: Type where
+  Balanced
+  LeftHeavy
+  RightHeavy
+  EXLeftHeavy
+  EXRightHeavy
+
+data AVL (T: Type): Type where
+  Leaf
+  Fork of (AVL T) (T) (AVL T) (Bias)
+
+bias : (T: Type) -> (t: AVL T) -> Bias
+bias = \ T t . case t of
+  Leaf -> Balanced
+  Fork _ _ _ bias -> bias
+
+isLeftHeavy : (T: Type) -> (t: AVL T) -> Bool
+isLeftHeavy = \ T t . case (bias T t) of
+  LeftHeavy -> True
+  EXLeftHeavy -> True
+  _ -> False
+
+isRightHeavy : (T: Type) -> (t: AVL T) -> Bool
+isRightHeavy = \ T t . case (bias T t) of
+  RightHeavy -> True
+  EXRightHeavy -> True
+  _ -> False
+
+data MAVL (T: Type): Type where
+  Stable of (AVL T)
+  Grow of (AVL T)
+  Shrink of (AVL T)
+
+preventLeftHeavy : (T: Type) -> AVL T -> AVL T
+preventLeftHeavy = \ T t . case t of
+  Leaf -> TRUSTME
+  Fork l v r b -> case b of
+    Balanced -> Fork l v r Balanced
+    LeftHeavy -> case l of
+      Leaf -> TRUSTME
+      Fork l v' m b -> case b of
+        Balanced -> Fork l v' (Fork m v r Balanced) RightHeavy
+        LeftHeavy -> Fork l v' (Fork m v r RightHeavy) RightHeavy
+        RightHeavy -> Fork l v' (Fork m v r Balanced) EXRightHeavy
+        _ -> TRUSTME
+    RightHeavy -> Fork l v r RightHeavy
+    _ -> TRUSTME
+
+preventRightHeavy : (T: Type) -> AVL T -> AVL T
+preventRightHeavy = \ T t . case t of
+  Leaf -> TRUSTME
+  Fork l v r b -> case b of
+    Balanced -> Fork l v r Balanced
+    LeftHeavy -> Fork l v r LeftHeavy
+    RightHeavy -> case r of
+      _ -> TRUSTME
+      Fork m v' r b -> case b of
+        Balanced -> Fork (Fork l v' m Balanced) v r LeftHeavy
+        LeftHeavy -> Fork (Fork l v' m Balanced) v r EXLeftHeavy
+        RightHeavy -> Fork (Fork l v' m LeftHeavy) v r LeftHeavy
+        _ -> TRUSTME
+    _ -> TRUSTME
+
+rotateLeft : (T: Type) -> AVL T -> T -> AVL T -> MAVL T
+rotateLeft = \ T l v r .
+  case r of
+    Leaf -> TRUSTME
+    Fork m v' r bias -> case bias of
+      Balanced ->
+        Grow (Fork (Fork l v' m RightHeavy) v r LeftHeavy)
+      RightHeavy ->
+        Stable (Fork (Fork l v' m Balanced) v r Balanced)
+      EXRightHeavy ->
+        Stable (Fork (Fork l v' m LeftHeavy) v r Balanced)
+      LeftHeavy -> TRUSTME
+      EXLeftHeavy -> TRUSTME
+
+rotateRight : (T: Type) -> AVL T -> T -> AVL T -> MAVL T
+rotateRight = \ T l v r .
+  case l of
+    Leaf -> TRUSTME
+    Fork l v' m bias -> case bias of
+      Balanced ->
+        Grow (Fork l v' (Fork m v r LeftHeavy) RightHeavy)
+      LeftHeavy ->
+        Stable (Fork l v' (Fork m v r Balanced) Balanced)
+      EXLeftHeavy ->
+        Stable (Fork l v' (Fork m v r RightHeavy) Balanced)
+      RightHeavy -> TRUSTME
+      EXRightHeavy -> TRUSTME
+
+insert_: (C: Comparable) -> AVL (T C) -> T C -> MAVL (T C)
+insert_ = \ C avl v . case avl of
+  Leaf -> Grow (Fork Leaf v Leaf Balanced)
+  Fork l m r b -> case leq C v m of
+    True -> case insert_ C l v of
+      Stable l' -> Stable (Fork l' v r b)
+      Grow l' ->
+        case b of
+          Balanced -> Grow (Fork l' v r LeftHeavy)
+          LeftHeavy -> rotateRight (T C) (preventRightHeavy (T C) l') m r
+          RightHeavy -> Stable (Fork l' v r Balanced)
+          _ -> TRUSTME
+      _ -> TRUSTME
+    False -> case insert_ C r v of
+      Stable r' -> Stable (Fork l v r' b)
+      Grow r' -> case b of
+        Balanced -> Grow (Fork l v r' RightHeavy)
+        LeftHeavy -> Stable (Fork l v r' Balanced)
+        RightHeavy -> rotateLeft (T C) l m (preventLeftHeavy (T C) r')
+        _ -> TRUSTME
+      _ -> TRUSTME
+
+mergeBackLeft: (T: Type) -> MAVL T -> T -> AVL T -> Bias -> MAVL T
+mergeBackLeft = \ T l m r b . case l of
+  Stable l -> Stable (Fork l m r b)
+  Shrink l -> case b of
+    Balanced -> Stable (Fork l m r RightHeavy)
+    LeftHeavy -> Shrink (Fork l m r Balanced)
+    RightHeavy -> case rotateLeft T l m (preventLeftHeavy T r) of
+      Stable t -> Shrink t
+      Grow t -> Stable t
+      _ -> TRUSTME
+    _ -> TRUSTME
+  _ -> TRUSTME
+
+mergeBackRight: (T: Type) -> AVL T -> T -> MAVL T -> Bias -> MAVL T
+mergeBackRight = \ T l m r b . case r of
+  Stable r -> Stable (Fork l m r b)
+  Shrink r -> case b of
+    Balanced -> Stable (Fork l m r LeftHeavy)
+    LeftHeavy -> case rotateRight T (preventRightHeavy T l) m r of
+      Stable t -> Shrink t
+      Grow t -> Stable t
+      _ -> TRUSTME
+    RightHeavy -> Shrink (Fork l m r Balanced)
+    _ -> TRUSTME
+  _ -> TRUSTME
+
+removeMin: (T: Type) -> AVL T -> (T * MAVL T)
+removeMin = \ T t . case t of
+  Leaf -> TRUSTME
+  Fork l m r b -> case l of
+    Leaf -> (m, Shrink r)
+    Fork _ _ _ _ ->
+      let (min, l') = removeMin T l in
+      (min, mergeBackLeft T l' m r b)
+
+remove_: (C: Comparable) -> AVL (T C) -> T C -> MAVL (T C)
+remove_ = \ C t v . case t of
+  Leaf -> Stable Leaf
+  Fork l m r b -> case compare C v m of
+    less -> mergeBackLeft (T C) (remove_ C l v) m r b
+    equal -> case r of
+      Leaf -> Shrink l
+      Fork _ _ _ _ ->
+        let (m', r') = removeMin (T C) r in
+        mergeBackRight (T C) l m' r' b
+    greater -> mergeBackRight (T C) l m (remove_ C r v) b
+
+linearize_ : (T: Type) -> AVL T -> List T -> List T
+linearize_ = \ T t acc . case t of
+  Leaf -> acc
+  Fork l v r _ -> linearize_ T l (Cons v (linearize_ T r acc))
+
+--------------------------------------------------------------------------------
+--- The actual AVL API
+--------------------------------------------------------------------------------
+
+empty : (T: Type) -> AVL T
+empty = \ T. Leaf
+
+insert : (C: Comparable) -> AVL (T C) -> T C -> AVL (T C)
+insert = \ C t v .
+  case insert_ C t v of
+    Stable t' -> t'
+    Grow t' -> t'
+    Shrink t' -> TRUSTME
+
+remove : (C: Comparable) -> AVL (T C) -> T C -> AVL (T C)
+remove = \ C t v .
+  case remove_ C t v of
+    Stable t' -> t'
+    Shrink t' -> t'
+    Grow _ -> TRUSTME
+
+linearize : (T: Type) -> AVL T -> List T
+linearize = \ T t . linearize_ T t Nil

@@ -1,0 +1,245 @@
+module AVL where
+
+import Logic
+import Sigma
+import Sumbool
+import Nat
+import List
+
+data POSet (T: Type) (R: T -> T -> Type): Type where
+  poset of
+    ((t: T) -> neg(R t t))                          -- Irreflexive
+    ((s: T) -> (t: T) -> R s t -> neg (R t s))      -- Asymmetric
+    ((s: T) -> (t: T) -> (u: T) ->
+      R s t -> R t u -> R s u)                      -- Transitive
+
+data Comparison (T: Type) (R: T -> T -> Type) (l: T) (r: T): Type where
+  less of [p: R l r]
+  equal of [l = r]
+  greater of [p: R r l]
+
+data Comparable: Type where
+  comparable of
+    (T: Type) (R: T -> T -> Type) (POSet T R)
+    ((l: T) -> (r: T) -> Comparison T R l r)
+
+T : Comparable -> Type
+T = \ C . case C of comparable T _ _ _ -> T
+R : (C: Comparable) -> T C -> T C -> Type
+R = \ C . case C of comparable _ R _ _ -> R
+compare : (C: Comparable) -> (l: T C) -> (r: T C) -> Comparison (T C) (R C) l r
+compare = \ C . case C of comparable _ _ _ comp -> comp
+leq : (C: Comparable) -> (l: T C) -> (r: T C) -> Bool
+leq = \ C . case C of
+  comparable _ _ _ comp -> \ l r . case comp l r of
+    less [_] -> True
+    equal -> True
+    greater [_] -> False
+eq : (C: Comparable) -> (l: T C) -> (r: T C) -> Bool
+eq = \ C . case C of
+  comparable _ _ _ comp -> \ l r . case comp l r of
+    less [_] -> False
+    equal -> True
+    greater [_] -> False
+
+data Bias (n: Nat) (l: Nat) (r: Nat) (excess: Bool): Type where
+  Balanced of [n = Succ l] [l = r]
+  LeftHeavy of [n = Succ l] [l = Succ r]
+  RightHeavy of [n = Succ r] [r = Succ l]
+  EXLeftHeavy of [n = Succ l] [l = Succ (Succ r)] [excess = True]
+  EXRightHeavy of [n = Succ r] [r = Succ (Succ l)] [excess = True]
+
+bias_Succ: (n: Nat) -> (l: Nat) -> (r: Nat) -> (b: Bool) -> Bias n l r b -> {n' : Nat | n = Succ n'}
+bias_Succ = \ n l r b bias . case bias of
+  Balanced -> (l, Refl)
+  LeftHeavy -> (l, Refl)
+  RightHeavy -> (r, Refl)
+  EXLeftHeavy -> (l, Refl)
+  EXRightHeavy -> (r, Refl)
+
+data AVL_ (C: Comparable) (n: Nat) (excess: Bool): Type where
+  Leaf of [n = Zero]
+  Fork of [lh: Nat] (AVL_ C lh False) (T C) [rh: Nat] (AVL_ C rh False) (Bias n lh rh excess)
+
+leftHeight: (C: Comparable) -> [n: Nat] -> AVL_ C (Succ n) True -> Nat
+leftHeight = \ C [n] t . case t of
+  Fork [lh] _ _ [_] _ _ -> lh
+
+rightHeight: (C: Comparable) -> [n: Nat] -> AVL_ C (Succ n) True -> Nat
+rightHeight = \ C [n] t . case t of
+  Fork [_] _ _ [rh] _ _ -> rh
+
+bias : (C: Comparable) -> [n: Nat] -> (t: AVL_ C (Succ n) True) -> Bias (Succ n) (leftHeight C [n] t) (rightHeight C [n] t) True
+bias = \ C [n] t . case t of
+  Fork [_] _ _ [_] _ bias -> bias
+
+isLeftHeavy : (C: Comparable) -> [n: Nat] -> (t: AVL_ C (Succ n) True) -> Bool
+isLeftHeavy = \ C [n] t . case (bias C n t) of
+  LeftHeavy -> True
+  EXLeftHeavy -> True
+  _ -> False
+
+isRightHeavy : (C: Comparable) -> [n: Nat] -> (t: AVL_ C (Succ n) True) -> Bool
+isRightHeavy = \ C [n] t . case (bias C n t) of
+  RightHeavy -> True
+  EXRightHeavy -> True
+  _ -> False
+
+data MAVL_ (C: Comparable) (n: Nat) (canGrow: Bool) (canShrink: Bool): Type where
+  Stable of (AVL_ C n False)
+  Grow of (AVL_ C (Succ n) False) [canGrow = True]
+  Shrink of [n': Nat] (AVL_ C n' False) [n = Succ n'] [canShrink = True]
+
+preventLeftHeavy : (C: Comparable) -> [n: Nat] -> AVL_ C (Succ n) False -> { t: AVL_ C (Succ n) True | isLeftHeavy C n t = False }
+preventLeftHeavy = \ C [n] t . case t of
+  Fork [lh] l v [rh] r b -> case b of
+    Balanced -> (Fork [lh] l v [rh] r Balanced, Refl)
+    LeftHeavy -> case l of
+      Fork [lh] l v' [mh] m b -> case b of
+        Balanced -> (Fork [lh] l v' [Succ mh] (Fork [mh] m v [rh] r Balanced) RightHeavy, Refl)
+        LeftHeavy -> (Fork [lh] l v' [Succ rh] (Fork [mh] m v [rh] r RightHeavy) RightHeavy, Refl)
+        RightHeavy -> (Fork [lh] l v' [Succ rh] (Fork [mh] m v [rh] r Balanced) EXRightHeavy, Refl)
+    RightHeavy -> (Fork [lh] l v [rh] r RightHeavy, Refl)
+
+preventRightHeavy : (C: Comparable) -> [n: Nat] -> AVL_ C (Succ n) False -> { t: AVL_ C (Succ n) True | isRightHeavy C n t = False }
+preventRightHeavy = \ C [n] t . case t of
+  Fork [lh] l v [rh] r b -> case b of
+    Balanced -> (Fork [lh] l v [rh] r Balanced, Refl)
+    LeftHeavy -> (Fork [lh] l v [rh] r LeftHeavy, Refl)
+    RightHeavy -> case r of
+      Fork [mh] m v' [rh] r b -> case b of
+        Balanced -> (Fork [Succ lh] (Fork [lh] l v' [mh] m Balanced) v [rh] r LeftHeavy, Refl)
+        LeftHeavy -> (Fork [Succ lh] (Fork [lh] l v' [mh] m Balanced) v [rh] r EXLeftHeavy, Refl)
+        RightHeavy -> (Fork [Succ lh] (Fork [lh] l v' [mh] m LeftHeavy) v [rh] r LeftHeavy, Refl)
+
+rotateLeft : (C: Comparable) -> [n: Nat] -> (l: AVL_ C n False) -> T C -> (r: {t: AVL_ C (Succ (Succ n)) True | isLeftHeavy C (Succ n) t = False}) -> MAVL_ C (Succ (Succ n)) True False
+rotateLeft = \ C [n] l v r .
+  let (r, RH) = r in
+  case r of
+    Fork [mh] m v' [rh] r bias -> case bias of
+      Balanced ->
+        Grow (Fork [Succ mh] (Fork [n] l v' [mh] m RightHeavy) v [rh] r LeftHeavy)
+      RightHeavy ->
+        Stable (Fork [Succ mh] (Fork [n] l v' [mh] m Balanced) v [rh] r Balanced)
+      EXRightHeavy ->
+        Stable (Fork [Succ n] (Fork [n] l v' [mh] m LeftHeavy) v [rh] r Balanced)
+      -- I hoped the exhaustivity checker would discard these...
+      LeftHeavy -> contra RH
+      EXLeftHeavy -> contra RH
+
+rotateRight : (C: Comparable) -> [n: Nat] -> (l: {t: AVL_ C (Succ (Succ n)) True | isRightHeavy C (Succ n) t = False}) -> T C -> (r: AVL_ C n False) -> MAVL_ C (Succ (Succ n)) True False
+rotateRight = \ C [n] l v r .
+  let (l, LH) = l in
+  case l of
+    Fork [lh] l v' [mh] m bias -> case bias of
+      Balanced ->
+        Grow (Fork [lh] l v' [Succ mh] (Fork [mh] m v [n] r LeftHeavy) RightHeavy)
+      LeftHeavy ->
+        Stable (Fork [lh] l v' [Succ mh] (Fork [mh] m v [n] r Balanced) Balanced)
+      EXLeftHeavy ->
+        Stable (Fork [lh] l v' [Succ n] (Fork [mh] m v [n] r RightHeavy) Balanced)
+      -- I hoped the exhaustivity checker would discard these...
+      RightHeavy -> contra LH
+      EXRightHeavy -> contra LH
+
+insert_: (C: Comparable) -> [n: Nat] -> AVL_ C n False -> T C -> MAVL_ C n True False
+insert_ = \ C [n] avl v . case avl of
+  Leaf -> Grow (Fork [Zero] Leaf v [Zero] Leaf Balanced)
+  Fork [lh] l m [rh] r b -> case leq C v m of
+    True -> case insert_ C [lh] l v of
+      Stable l' -> Stable (Fork [lh] l' v [rh] r b)
+      Grow l' ->
+        case b of
+          Balanced -> Grow (Fork [Succ lh] l' v [rh] r LeftHeavy)
+          LeftHeavy -> rotateRight C [rh] (preventRightHeavy C [Succ rh] l') m r
+          RightHeavy -> Stable (Fork [Succ lh] l' v [rh] r Balanced)
+    False -> case insert_ C [rh] r v of
+      Stable r' -> Stable (Fork [lh] l v [rh] r' b)
+      Grow r' -> case b of
+        Balanced -> Grow (Fork [lh] l v [Succ rh] r' RightHeavy)
+        LeftHeavy -> Stable (Fork [lh] l v [Succ rh] r' Balanced)
+        RightHeavy -> rotateLeft C [lh] l m (preventLeftHeavy C [Succ lh] r')
+
+mergeBackLeft: (C: Comparable) -> [n: Nat] -> [lh: Nat] -> MAVL_ C lh False True -> (T C) -> [rh: Nat] -> AVL_ C rh False -> Bias n lh rh False -> MAVL_ C n False True
+mergeBackLeft = \ C [n] [lh] l m [rh] r b . case l of
+  Stable l -> Stable (Fork [lh] l m [rh] r b)
+  Shrink lh' l -> case b of
+    Balanced -> Stable (Fork [lh'] l m [rh] r RightHeavy)
+    LeftHeavy -> Shrink [pred n] (Fork [lh'] l m [rh] r Balanced)
+    RightHeavy -> case rotateLeft C [lh'] l m (preventLeftHeavy C [pred rh] r) of
+      Stable t -> Shrink [Succ (Succ lh')] t
+      Grow t -> Stable t
+
+mergeBackRight: (C: Comparable) -> [n: Nat] -> [lh: Nat] -> AVL_ C lh False -> (T C) -> [rh: Nat] -> MAVL_ C rh False True -> Bias n lh rh False -> MAVL_ C n False True
+mergeBackRight = \ C [n] [lh] l m [rh] r b . case r of
+  Stable r -> Stable (Fork [lh] l m [rh] r b)
+  Shrink rh' r -> case b of
+    Balanced -> Stable (Fork [lh] l m [rh'] r LeftHeavy)
+    LeftHeavy -> case rotateRight C [rh'] (preventRightHeavy C [pred lh] l) m r of
+      Stable t -> Shrink [Succ (Succ rh')] t
+      Grow t -> Stable t
+    RightHeavy -> Shrink [pred n] (Fork [lh] l m [rh'] r Balanced)
+
+removeMin: (C: Comparable) -> [n: Nat] -> AVL_ C (Succ n) False -> (T C * MAVL_ C (Succ n) False True)
+removeMin = \ C [n] t . case t of
+  Fork [lh] l m [rh] r b -> case l of
+    Leaf -> case b of
+      Balanced -> (m, Shrink [rh] r)
+      RightHeavy -> (m, Shrink [rh] r)
+    Fork [lh'] _ _ [rh'] _ bias ->
+      let (lh', LH) = bias_Succ lh lh' rh' False bias in
+      subst
+        let (min, l') = removeMin C [lh'] l in
+        (min, mergeBackLeft C [Succ n] [Succ lh'] l' m [rh] r b)
+      by LH
+
+remove_: (C: Comparable) -> [n: Nat] -> AVL_ C n False -> T C -> MAVL_ C n False True
+remove_ = \ C n t v . case t of
+  Leaf -> Stable Leaf
+  Fork [lh] l m [rh] r b -> case compare C v m of
+    less [_] -> mergeBackLeft C [n] [lh] (remove_ C [lh] l v) m [rh] r b
+    equal -> case r of
+      Leaf -> case b of
+        Balanced -> Shrink [lh] l
+        LeftHeavy -> Shrink [lh] l
+      Fork [lh'] _ _ [rh'] _ bias ->
+        let (rh', RH) = bias_Succ rh lh' rh' False bias in
+        subst
+          let (m', r') = removeMin C [rh'] r in
+          mergeBackRight C [n] [lh] l m' [Succ rh'] r' b
+        by RH
+    greater [_] -> mergeBackRight C [n] [lh] l m [rh] (remove_ C [rh] r v) b
+
+linearize_ : (C: Comparable) -> [n: Nat] -> AVL_ C n False -> List (T C) -> List (T C)
+linearize_ = \ C [n] t acc . case t of
+  Leaf -> acc
+  Fork [lh] l v [rh] r _ -> linearize_ C [lh] l (Cons v (linearize_ C [rh] r acc))
+
+--------------------------------------------------------------------------------
+--- The actual AVL API
+--------------------------------------------------------------------------------
+
+AVL : (C: Comparable) -> Type
+AVL = \ C . { n: Nat | AVL_ C n False }
+
+empty : (C: Comparable) -> AVL C
+empty = \ C. (Zero, Leaf)
+
+insert : (C: Comparable) -> AVL C -> T C -> AVL C
+insert = \ C t v .
+  let (n, t) = t in
+  case insert_ C n t v of
+    Stable t' -> (n, t')
+    Grow t' -> (Succ n, t')
+
+remove : (C: Comparable) -> AVL C -> T C -> AVL C
+remove = \ C t v .
+  let (n, t) = t in
+  case remove_ C n t v of
+    Stable t' -> (n, t')
+    Shrink [_] t' -> (pred n, t')
+
+linearize : (C: Comparable) -> AVL C -> List (T C)
+linearize = \ C t .
+  let (n, t) = t in
+  linearize_ C [n] t Nil
