@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 
-# Based on https://github.com/sweirich/lambda-n-ways/blob/main/bencheval.sh
-
 usage() {
   echo "Usage:"
   echo "  $0 [options]"
   echo ""
   echo "A script to run pi-forall benchmarks using different representations"
-  echo "for autoenv's 'Env' type. Outputs will be located under './.results'."
-  echo "The environment variable 'AUTOENV' should contain a path to a local"
-  echo "clone of autoenv's repository."
+  echo "for Rebound's 'Env' type. Outputs will be located under './.results'."
+  echo "The environment variable 'REBOUND' should contain a path to a local"
+  echo "clone of Rebound's repository."
   echo ""
   echo "Options:"
   echo "  -h, --help      Display this help message."
@@ -30,9 +28,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Define the file to modify in autoenv.
-repository="${AUTOENV:-../autoenv}"
-file="${repository}/src/AutoEnv/Env.hs"
+# Define the file to modify in Rebound.
+repository="${REBOUND:-../Rebound}"
+file="${repository}/src/Rebound/Env.hs"
 dest_dir="./.results/"
 
 # Check if the file exists.
@@ -47,8 +45,8 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Use perl to replace the import methods for autoenv.
-perl -0777 -i.original -pe 's{- github:.*/autoenv\n.*}{- $ENV{repository}}' stack.yaml
+# Use perl to replace the import methods for Rebound.
+perl -0777 -i.original -pe 's{- github:.*/Rebound\n.*}{- $ENV{repository}}' stack.yaml
 restore_stack_yaml () {
   mv stack.yaml.original stack.yaml
 }
@@ -57,8 +55,8 @@ restore_stack_yaml () {
 valid_variables=("Internal" "InternalA" "Functional" "InternalB" "InternalLazy")
 
 for variable in "${valid_variables[@]}"; do
-  new_string="import AutoEnv.Env.$variable"
-  sed -i -e "s/import AutoEnv.Env.Internal/$new_string/" "$file"
+  new_string="import Rebound.Env.$variable"
+  sed -i -e "s/import Rebound.Env.Internal/$new_string/" "$file"
 
   if [ $? -ne 0 ]; then
     echo "Error: Failed to change line in '$file' for variable '$variable'."
@@ -69,18 +67,18 @@ for variable in "${valid_variables[@]}"; do
   fi
 
   # Run benchmark
-  stack bench --benchmark-arguments="--output=$dest_dir/$variable.html --match=glob **/AutoEnv"
+  stack bench --benchmark-arguments="--output=$dest_dir/$variable.html --match=glob **/Rebound"
   if [ $? -ne 0 ]; then
     echo "Error: benchmark failed for variable '$variable'."
     restore_stack_yaml
-    sed -i -e "s/import AutoEnv.Env.$variable/import AutoEnv.Env.Internal/" "$file"
+    sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Internal/" "$file"
     exit 1
   else
     echo "Benchmark executed successfully for variable '$variable'."
   fi
 
   # Revert file to its original state
-  sed -i -e "s/import AutoEnv.Env.$variable/import AutoEnv.Env.Internal/" "$file"
+  sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Internal/" "$file"
   if [ $? -ne 0 ]; then
     echo "Error: Failed to revert the Haskell file '$file' after processing variable '$variable'."
     exit 1

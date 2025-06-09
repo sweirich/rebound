@@ -1,4 +1,3 @@
--- A port of https://github.com/sweirich/pi-forall
 -- This version distinguishes between global and local names
 -- Global names are strings (which must be unique). Local names
 -- are represented by indices.
