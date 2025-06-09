@@ -85,3 +85,15 @@ to generate a comparison between the two type checkers.
 You can then open the generated HTML (`pi.html`) in your browser.
 
 ![Criterion report](doc/criterion.png)
+
+Here is a table matching the benchmarks in the report to the ones in table 3 of
+the paper:
+
+Report                                 | Paper
+---------------------------------------|---------
+`Compute/Lennart`                      | Lennart
+`Compute/Compiler`                     | CompCk
+`Typechecking/Compiler`                | Compiler
+`Typechecking/AVL (System F)`          | AVL
+`Typechecking/AVL (Dependently-typed)` | DepAVL
+
