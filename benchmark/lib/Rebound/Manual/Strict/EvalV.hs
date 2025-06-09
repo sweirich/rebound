@@ -5,7 +5,7 @@
 -- Only evaluation for closed terms
 -- environment-based interpreter
 -- environment represented by a function
-module Rebound.Manual.Strict.Eval (toDB, impl) where
+module Rebound.Manual.Strict.EvalV (toDB, impl) where
 
 import Control.DeepSeq (NFData (..))
 import Data.Maybe (fromJust)
@@ -27,7 +27,7 @@ import Util.Syntax.ScopedDeBruijn
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Rebound.Manual.Strict.Eval",
+    { impl_name = "Rebound.Manual.Strict.EvalV",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = error "NF unimpelemented",

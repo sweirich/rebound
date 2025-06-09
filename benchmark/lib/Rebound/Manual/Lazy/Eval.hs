@@ -3,6 +3,8 @@
 -- Uses well-scoped debruijn syntax
 -- Doesn't use Rebound library (or bind type)
 -- Only evaluation for closed terms
+-- explicitly delays evaluation of terms in the environment 
+-- using a Thunk
 -- environment-based interpreter
 -- environment represented by a function
 module Rebound.Manual.Lazy.Eval (toDB, impl) where
