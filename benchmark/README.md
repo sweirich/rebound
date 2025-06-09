@@ -9,9 +9,6 @@ History: The repo was inspired by and initially derived from Lennart
 Augustsson's unpublished draft paper "Lambda-calculus Cooked Four Ways" and was
 originally forked from https://github.com/steshaw/lennart-lambda.
 
-For an overview of the *n*-implementations available here, see
-[here](doc/Implementations.md).
-
 ## Compiling the library
 
 This library can be compiled using the stack tool.
