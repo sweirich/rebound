@@ -3,43 +3,43 @@
 {-# HLINT ignore "Use :" #-}
 module Suite where
 
-import qualified Auto.Env.Strict.Env
-import qualified Auto.Env.Strict.EnvGen
-import qualified Auto.Env.Strict.Bind
-import qualified Auto.Env.Strict.Subst
-import qualified Auto.Env.Strict.EnvV
-import qualified Auto.Env.Strict.EnvGenV
-import qualified Auto.Env.Strict.BindV
-import qualified Auto.Env.Lazy.EvalV
-import qualified Auto.Env.Lazy.Env
-import qualified Auto.Env.Lazy.EnvV
-import qualified Auto.Env.Lazy.EnvGenV
-import qualified Auto.Env.Lazy.Bind
-import qualified Auto.Env.Lazy.BindV
-import qualified Auto.Env.Lazy.BindVal
-import qualified Auto.Env.Lazy.Subst
-import qualified Auto.Env.Lazy.SubstV
-import qualified Auto.Env.Lazy.ExplicitSubstV
-import qualified Auto.Env.Lazy.ExplicitSubstEnvV
-import qualified Auto.Manual.Strict.Env
-import qualified Auto.Manual.Strict.Bind
-import qualified Auto.Manual.Strict.BindV
-import qualified Auto.Manual.Strict.Subst
-import qualified Auto.Manual.Strict.SubstV
-import qualified Auto.Manual.Strict.Eval
-import qualified Auto.Manual.Lazy.Env
-import qualified Auto.Manual.Lazy.EnvV
-import qualified Auto.Manual.Lazy.EnvVal
-import qualified Auto.Manual.Lazy.Bind
-import qualified Auto.Manual.Lazy.BindV
-import qualified Auto.Manual.Lazy.BindVal
-import qualified Auto.Manual.Lazy.Subst
-import qualified Auto.Manual.Lazy.SubstV
-import qualified Auto.Manual.Lazy.Eval
-import qualified Auto.Manual.Lazy.EvalV
-import qualified Auto.Manual.Lazy.EnvOnlyV
-import qualified Auto.Manual.Lazy.ExplicitSubstV
-import qualified Auto.Manual.Lazy.ExplicitSubstEnvV
+import qualified Rebound.Env.Strict.Env
+import qualified Rebound.Env.Strict.EnvGen
+import qualified Rebound.Env.Strict.Bind
+import qualified Rebound.Env.Strict.Subst
+import qualified Rebound.Env.Strict.EnvV
+import qualified Rebound.Env.Strict.EnvGenV
+import qualified Rebound.Env.Strict.BindV
+import qualified Rebound.Env.Lazy.EvalV
+import qualified Rebound.Env.Lazy.Env
+import qualified Rebound.Env.Lazy.EnvV
+import qualified Rebound.Env.Lazy.EnvGenV
+import qualified Rebound.Env.Lazy.Bind
+import qualified Rebound.Env.Lazy.BindV
+import qualified Rebound.Env.Lazy.BindVal
+import qualified Rebound.Env.Lazy.Subst
+import qualified Rebound.Env.Lazy.SubstV
+import qualified Rebound.Env.Lazy.ExplicitSubstV
+import qualified Rebound.Env.Lazy.ExplicitSubstEnvV
+import qualified Rebound.Manual.Strict.Env
+import qualified Rebound.Manual.Strict.Bind
+import qualified Rebound.Manual.Strict.BindV
+import qualified Rebound.Manual.Strict.Subst
+import qualified Rebound.Manual.Strict.SubstV
+import qualified Rebound.Manual.Strict.Eval
+import qualified Rebound.Manual.Lazy.Env
+import qualified Rebound.Manual.Lazy.EnvV
+import qualified Rebound.Manual.Lazy.EnvVal
+import qualified Rebound.Manual.Lazy.Bind
+import qualified Rebound.Manual.Lazy.BindV
+import qualified Rebound.Manual.Lazy.BindVal
+import qualified Rebound.Manual.Lazy.Subst
+import qualified Rebound.Manual.Lazy.SubstV
+import qualified Rebound.Manual.Lazy.Eval
+import qualified Rebound.Manual.Lazy.EvalV
+import qualified Rebound.Manual.Lazy.EnvOnlyV
+import qualified Rebound.Manual.Lazy.ExplicitSubstV
+import qualified Rebound.Manual.Lazy.ExplicitSubstEnvV
 import qualified Core.Nf
 import qualified DeBruijn.Bound
 import qualified DeBruijn.BoundV
@@ -133,7 +133,7 @@ import Util.Impl (LambdaImpl)
 -- | Implementations used in the benchmarking/test suite
 -- RHS must be a single variable name for Makefile
 impls :: [LambdaImpl]
-impls = rebound_comparison
+impls = rebound_strict_envV
 
 interleave :: [a] -> [a] -> [a]
 interleave (a1 : a1s) (a2 : a2s) = a1 : a2 : interleave a1s a2s
@@ -149,12 +149,12 @@ broken =
 -- using both lazy and strict datatype definitions
 -- This set generates Figure 1 of the rebound paper
 rebound_comparison :: [LambdaImpl]
-rebound_comparison = 
+rebound_comparison =
   rebound_strict ++ well_scoped_strict ++ unbound_strict
 
 -- Well-scoped implmentations, libraries plus baseline (Kovacs)
 well_scoped_strict :: [LambdaImpl]
-well_scoped_strict = [ 
+well_scoped_strict = [
                 NBE.KovacsScoped.impl,
                 --Named.FoilV.impl, -- too slow
                 DeBruijn.BoundV.impl,
@@ -163,7 +163,7 @@ well_scoped_strict = [
                ]
 -- Well-scoped implmentations (unused)
 well_scoped_lazy :: [LambdaImpl]
-well_scoped_lazy = [ 
+well_scoped_lazy = [
                 NBE.Lazy.KovacsScoped.impl,
                 Named.Lazy.Foil.impl,
                 DeBruijn.Lazy.Nested.impl,
@@ -174,31 +174,31 @@ unbound = unbound_strict ++ unbound_lazy
 rebound = rebound_strict ++ rebound_lazy
 
 rebound_strict :: [LambdaImpl]
-rebound_strict = [ 
-            Auto.Env.Strict.BindV.impl,
-            Auto.Env.Strict.EnvV.impl,
-            Auto.Env.Strict.EnvGenV.impl, 
-            Auto.Env.Strict.Bind.impl,
-            Auto.Env.Strict.Env.impl,
-            Auto.Env.Strict.EnvGen.impl
-            ] 
+rebound_strict = [
+            Rebound.Env.Strict.BindV.impl,
+            Rebound.Env.Strict.EnvV.impl,
+            Rebound.Env.Strict.EnvGenV.impl,
+            Rebound.Env.Strict.Bind.impl,
+            Rebound.Env.Strict.Env.impl,
+            Rebound.Env.Strict.EnvGen.impl
+            ]
 
 
 
 rebound_lazy :: [LambdaImpl]
-rebound_lazy = [ 
-            Auto.Env.Lazy.BindV.impl, 
-            Auto.Env.Lazy.EnvV.impl, 
-            Auto.Env.Lazy.EnvGenV.impl,
-            Auto.Env.Lazy.Bind.impl,
-            Auto.Env.Lazy.Env.impl
-            ] 
+rebound_lazy = [
+            Rebound.Env.Lazy.BindV.impl,
+            Rebound.Env.Lazy.EnvV.impl,
+            Rebound.Env.Lazy.EnvGenV.impl,
+            Rebound.Env.Lazy.Bind.impl,
+            Rebound.Env.Lazy.Env.impl
+            ]
 
 
 -- these versions using "substBind/instantiate" for beta-reduction
 unbound_strict :: [LambdaImpl]
 unbound_strict =
-  [ 
+  [
     -- Unbound.UnboundGenericsV.impl, -- applicative order, not normal order
     Unbound.UnboundGenerics.impl, -- unbound-generics
     Unbound.UnboundNonGenerics.impl -- no generic programming
@@ -207,92 +207,92 @@ unbound_strict =
   -- these versions using "substBind/instantiate" for beta-reduction
 unbound_lazy :: [LambdaImpl]
 unbound_lazy =
-  [ 
+  [
     Unbound.Lazy.UnboundGenerics.impl, -- unbound-generics
     Unbound.Lazy.UnboundNonGenerics.impl -- no generic programming
   ]
 
 -- this is for the "environment representation benchmark"
-rebound_strict_envV = [Auto.Env.Strict.EnvV.impl]
+rebound_strict_envV = [Rebound.Env.Strict.EnvV.impl]
 
 --------------------------------------------------------------------------
 -- evaluation only
 
-eval_subst = [ Auto.Manual.Lazy.BindV.impl, 
-               Auto.Manual.Strict.BindV.impl]
+eval_subst = [ Rebound.Manual.Lazy.BindV.impl,
+               Rebound.Manual.Strict.BindV.impl]
 
 eval_lazy = eval_manual_lazy ++ eval_auto_lazy
 
 eval_manual_lazy = [
-    --Auto.Manual.Lazy.Subst.impl, 
-    --Auto.Manual.Lazy.SubstV.impl, 
-    Auto.Manual.Lazy.Bind.impl,
-    Auto.Manual.Lazy.BindV.impl,
-    --Auto.Manual.Lazy.EvalV.impl, 
-    --Auto.Manual.Lazy.EvalV.impl,
-    --Auto.Manual.Lazy.EnvOnlyV.impl, -- loops
-    Auto.Manual.Lazy.Env.impl,
-    Auto.Manual.Lazy.EnvV.impl,
-    Auto.Manual.Lazy.ExplicitSubstV.impl,
-    Auto.Manual.Lazy.ExplicitSubstEnvV.impl
+    --Rebound.Manual.Lazy.Subst.impl,
+    --Rebound.Manual.Lazy.SubstV.impl,
+    Rebound.Manual.Lazy.Bind.impl,
+    Rebound.Manual.Lazy.BindV.impl,
+    --Rebound.Manual.Lazy.EvalV.impl,
+    --Rebound.Manual.Lazy.EvalV.impl,
+    --Rebound.Manual.Lazy.EnvOnlyV.impl, -- loops
+    Rebound.Manual.Lazy.Env.impl,
+    Rebound.Manual.Lazy.EnvV.impl,
+    Rebound.Manual.Lazy.ExplicitSubstV.impl,
+    Rebound.Manual.Lazy.ExplicitSubstEnvV.impl
   ]
 
 eval_auto_lazy = [
-    -- Auto.Env.Lazy.Subst.impl, 
-    -- Auto.Env.Lazy.SubstV.impl, -- much too slow
-    -- Auto.Env.Lazy.Bind.impl,
-    -- Auto.Env.Lazy.Eval.impl, 
-    -- Auto.Env.Lazy.EvalV.impl,
-    Auto.Env.Lazy.Bind.impl,
-    Auto.Env.Lazy.BindV.impl,
-    Auto.Env.Lazy.Env.impl, 
-    Auto.Env.Lazy.EnvV.impl,
-    Auto.Env.Lazy.ExplicitSubstV.impl,
-    Auto.Env.Lazy.ExplicitSubstEnvV.impl
+    -- Rebound.Env.Lazy.Subst.impl,
+    -- Rebound.Env.Lazy.SubstV.impl, -- much too slow
+    -- Rebound.Env.Lazy.Bind.impl,
+    -- Rebound.Env.Lazy.Eval.impl,
+    -- Rebound.Env.Lazy.EvalV.impl,
+    Rebound.Env.Lazy.Bind.impl,
+    Rebound.Env.Lazy.BindV.impl,
+    Rebound.Env.Lazy.Env.impl,
+    Rebound.Env.Lazy.EnvV.impl,
+    Rebound.Env.Lazy.ExplicitSubstV.impl,
+    Rebound.Env.Lazy.ExplicitSubstEnvV.impl
   ]
 
 
-all_eval = [  Auto.Manual.Strict.Subst.impl,
-             --Auto.Manual.Strict.SubstV.impl, -- runs out of memory(!)
-             Auto.Manual.Strict.Bind.impl,
-             Auto.Manual.Strict.BindV.impl,
-             Auto.Manual.Strict.Env.impl,
-             Auto.Manual.Strict.Eval.impl,
-             Auto.Manual.Lazy.Subst.impl, 
-             Auto.Manual.Lazy.SubstV.impl, 
-             Auto.Manual.Lazy.Bind.impl,
-             Auto.Manual.Lazy.BindV.impl,
-             --Auto.Manual.Lazy.BindVal.impl,
-             Auto.Manual.Lazy.Eval.impl, 
-             Auto.Manual.Lazy.Env.impl,
-             Auto.Manual.Lazy.EnvV.impl,
-             --Auto.Manual.Lazy.EnvVal.impl,
-             Auto.Env.Strict.Env.impl,
-             Auto.Env.Strict.Bind.impl,
-             Auto.Env.Strict.Subst.impl,
-             Auto.Env.Lazy.EvalV.impl, 
-             Auto.Env.Lazy.Env.impl,
-             Auto.Env.Lazy.EnvV.impl,
-             Auto.Env.Lazy.Bind.impl,
-             Auto.Env.Lazy.BindV.impl,
-             --Auto.Env.Lazy.BindVal.impl, 
-             Auto.Env.Lazy.Subst.impl 
-             -- Auto.Env.Lazy.SubstV.impl -- runs out of memory
-             ] 
+all_eval = [  Rebound.Manual.Strict.Subst.impl,
+             --Rebound.Manual.Strict.SubstV.impl, -- runs out of memory(!)
+             Rebound.Manual.Strict.Bind.impl,
+             Rebound.Manual.Strict.BindV.impl,
+             Rebound.Manual.Strict.Env.impl,
+             Rebound.Manual.Strict.Eval.impl,
+             Rebound.Manual.Lazy.Subst.impl,
+             Rebound.Manual.Lazy.SubstV.impl,
+             Rebound.Manual.Lazy.Bind.impl,
+             Rebound.Manual.Lazy.BindV.impl,
+             --Rebound.Manual.Lazy.BindVal.impl,
+             Rebound.Manual.Lazy.Eval.impl,
+             Rebound.Manual.Lazy.Env.impl,
+             Rebound.Manual.Lazy.EnvV.impl,
+             --Rebound.Manual.Lazy.EnvVal.impl,
+             Rebound.Env.Strict.Env.impl,
+             Rebound.Env.Strict.Bind.impl,
+             Rebound.Env.Strict.Subst.impl,
+             Rebound.Env.Lazy.EvalV.impl,
+             Rebound.Env.Lazy.Env.impl,
+             Rebound.Env.Lazy.EnvV.impl,
+             Rebound.Env.Lazy.Bind.impl,
+             Rebound.Env.Lazy.BindV.impl,
+             --Rebound.Env.Lazy.BindVal.impl,
+             Rebound.Env.Lazy.Subst.impl
+             -- Rebound.Env.Lazy.SubstV.impl -- runs out of memory
+             ]
 
 
 rebound_eval :: [LambdaImpl]
-rebound_eval = [Auto.Env.Lazy.Env.impl , 
-                Auto.Env.Lazy.Bind.impl ,
-                Auto.Env.Lazy.Subst.impl,
-                Auto.Env.Strict.Env.impl, 
-                Auto.Env.Strict.Bind.impl,
-                Auto.Env.Strict.Subst.impl ]
+rebound_eval = [Rebound.Env.Lazy.Env.impl ,
+                Rebound.Env.Lazy.Bind.impl ,
+                Rebound.Env.Lazy.Subst.impl,
+                Rebound.Env.Strict.Env.impl,
+                Rebound.Env.Strict.Bind.impl,
+                Rebound.Env.Strict.Subst.impl ]
 --------------------------------------------------------------------------
 -- divided by implementation strategy
 --
 all_impls :: [LambdaImpl]
-all_impls = 
+all_impls =
   all_debruijn ++ all_locallyNameless ++ all_named ++ nbe ++ [Lennart.HOAS.impl]
 
 all_debruijn :: [LambdaImpl]
@@ -492,14 +492,14 @@ fast =
     Named.SimpleGH.impl,
     Named.Lazy.SimpleGH.impl,
     Named.Foil.impl,
-    Auto.Env.Lazy.Bind.impl,
-    Auto.Manual.Lazy.Env.impl
+    Rebound.Env.Lazy.Bind.impl,
+    Rebound.Manual.Lazy.Env.impl
   ]
 
 -- fastest implementation in each category in the NF benchmark
 fast_nf :: [LambdaImpl]
-fast_nf = rebound ++ nbe 
-   ++ [ Auto.Manual.Lazy.Env.impl, Auto.Manual.Strict.Env.impl ]
+fast_nf = rebound ++ nbe
+   ++ [ Rebound.Manual.Lazy.Env.impl, Rebound.Manual.Strict.Env.impl ]
 {-  [ -- LocallyNameless.Opt.impl, -- 2.56 XXX
     -- LocallyNameless.SupportOpt.impl, -- 2.59  -- new version of GHC degraded performance
     DeBruijn.Par.Scoped.impl, -- 3.00

@@ -12,43 +12,43 @@ source-repository head
 library
   hs-source-dirs:     lib
   exposed-modules:
-    Auto.Env.Strict.Env
-    Auto.Env.Strict.Bind
-    Auto.Env.Strict.Subst
-    Auto.Env.Strict.EnvGen
-    Auto.Env.Strict.EnvGenV
-    Auto.Env.Strict.EnvV
-    Auto.Env.Strict.BindV
-    Auto.Env.Lazy.EvalV
-    Auto.Env.Lazy.Env
-    Auto.Env.Lazy.EnvGenV
-    Auto.Env.Lazy.EnvV
-    Auto.Env.Lazy.Bind
-    Auto.Env.Lazy.BindV
-    Auto.Env.Lazy.BindVal
-    Auto.Env.Lazy.Subst
-    Auto.Env.Lazy.SubstV
-    Auto.Env.Lazy.ExplicitSubstV
-    Auto.Env.Lazy.ExplicitSubstEnvV
-    Auto.Manual.Strict.Eval
-    Auto.Manual.Strict.Env
-    Auto.Manual.Strict.Bind
-    Auto.Manual.Strict.BindV
-    Auto.Manual.Strict.Subst
-    Auto.Manual.Strict.SubstV
-    Auto.Manual.Lazy.Eval
-    Auto.Manual.Lazy.EvalV
-    Auto.Manual.Lazy.Env
-    Auto.Manual.Lazy.EnvV
-    Auto.Manual.Lazy.EnvOnlyV
-    Auto.Manual.Lazy.EnvVal
-    Auto.Manual.Lazy.ExplicitSubstV
-    Auto.Manual.Lazy.ExplicitSubstEnvV
-    Auto.Manual.Lazy.Bind
-    Auto.Manual.Lazy.BindV
-    Auto.Manual.Lazy.BindVal
-    Auto.Manual.Lazy.Subst
-    Auto.Manual.Lazy.SubstV
+    Rebound.Env.Strict.Env
+    Rebound.Env.Strict.Bind
+    Rebound.Env.Strict.Subst
+    Rebound.Env.Strict.EnvGen
+    Rebound.Env.Strict.EnvGenV
+    Rebound.Env.Strict.EnvV
+    Rebound.Env.Strict.BindV
+    Rebound.Env.Lazy.EvalV
+    Rebound.Env.Lazy.Env
+    Rebound.Env.Lazy.EnvGenV
+    Rebound.Env.Lazy.EnvV
+    Rebound.Env.Lazy.Bind
+    Rebound.Env.Lazy.BindV
+    Rebound.Env.Lazy.BindVal
+    Rebound.Env.Lazy.Subst
+    Rebound.Env.Lazy.SubstV
+    Rebound.Env.Lazy.ExplicitSubstV
+    Rebound.Env.Lazy.ExplicitSubstEnvV
+    Rebound.Manual.Strict.Eval
+    Rebound.Manual.Strict.Env
+    Rebound.Manual.Strict.Bind
+    Rebound.Manual.Strict.BindV
+    Rebound.Manual.Strict.Subst
+    Rebound.Manual.Strict.SubstV
+    Rebound.Manual.Lazy.Eval
+    Rebound.Manual.Lazy.EvalV
+    Rebound.Manual.Lazy.Env
+    Rebound.Manual.Lazy.EnvV
+    Rebound.Manual.Lazy.EnvOnlyV
+    Rebound.Manual.Lazy.EnvVal
+    Rebound.Manual.Lazy.ExplicitSubstV
+    Rebound.Manual.Lazy.ExplicitSubstEnvV
+    Rebound.Manual.Lazy.Bind
+    Rebound.Manual.Lazy.BindV
+    Rebound.Manual.Lazy.BindVal
+    Rebound.Manual.Lazy.Subst
+    Rebound.Manual.Lazy.SubstV
     Core.Core
     Core.CoreFVs
     Core.FV
@@ -170,10 +170,10 @@ library
 
   -- DeBruijn.Par.FB
   --DeBruijn.Lazy.Par.FB
-  --    Named.Nom  
+  --    Named.Nom
   ghc-options:
     -O2 -funfolding-use-threshold=16
-    -fno-warn-unticked-promoted-constructors -fcross-module-specialise 
+    -fno-warn-unticked-promoted-constructors -fcross-module-specialise
     -fno-warn-missing-fields
 
   build-depends:
@@ -188,7 +188,7 @@ library
     , mtl
     , nominal
     , pretty
-    , rebound  
+    , rebound
     , QuickCheck        >=2.13.2
     , some              >=1.0
     , syb               >=0.7
@@ -196,7 +196,7 @@ library
     , tasty-hunit       >=0.10.0.2
     , tasty-quickcheck  >=0.10.1.1
     , unbound-generics  ==0.4.4
-    , free-foil     
+    , free-foil
 
 
   --                , RepLib >= 0.5.4.2
@@ -234,7 +234,7 @@ executable LC
     -O2 -funfolding-use-threshold=16
     -fno-warn-unticked-promoted-constructors -fcross-module-specialise
 
-  build-depends: 
+  build-depends:
       base              >=4.13
     , bound
     , containers

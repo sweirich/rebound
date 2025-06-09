@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Script to iterate through variables, change a line in a file, execute make, and move files.
 # The script will revert the haskell file after running make eval
 
-# 
+#
 valid_variables=("Lazy" "LazyA" "LazyB" "Functional"  "Strict" "StrictA" "StrictB")
 
 source_dir="results/`hostname`/rebound_strict_envV"
@@ -66,7 +66,7 @@ for variable in "${valid_variables[@]}"; do
     exit 1
   fi
 
-  # Move the files 
+  # Move the files
   mv $source_dir/* $dest_dir/
   if [ $? -ne 0 ]; then
     echo "Error: Failed to move files from '$source_dir' to '$dest_dir'."
