@@ -1,11 +1,12 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE LambdaCase #-}
--- doesn't use Rebound library
+-- Uses Rebound library
 -- explicit substitutions in arbitrary syntax nodes
 -- passes environment explicitly while evaluating
-module Rebound.Manual.Lazy.ExplicitSubstEnvV (toDB, impl) where
+module Rebound.Env.Lazy.ExpSubstEnvV (toDB, impl) where
 
+import Rebound
 import Data.SNat as Nat
 import Data.Fin
 import Control.DeepSeq (NFData (..))
@@ -17,7 +18,7 @@ import Util.Syntax.Lambda (LC (..))
 impl :: LambdaImpl
 impl =
   LambdaImpl
-    { impl_name = "Rebound.Manual.Lazy.ExplicitSubstEnvV",
+    { impl_name = "Rebound.Env.Lazy.ExpSubstEnvV",
       impl_fromLC = toDB,
       impl_toLC = fromDB,
       impl_nf = nf,
@@ -33,7 +34,7 @@ data Exp n where
   DApp :: (Exp n) -> (Exp n) -> Exp n
   DBool :: Bool -> Exp n
   DIf :: Exp n -> Exp n -> Exp n -> Exp n
-  Sub :: Env m n -> Exp m -> Exp n
+  Sub :: Env Exp m n -> Exp m -> Exp n
 
 
 instance Eq (Exp n) where
@@ -42,7 +43,7 @@ instance Eq (Exp n) where
   DApp t1 t2 == DApp u1 u2 = t1 == u1 && t2 == u2
   DBool x == DBool y = x == y
   DIf t1 t2 t3 == DIf u1 u2 u3 = t1 == u1 && t2 == u2 && t3 == u3
-  Sub s t == Sub r u = apply s t == apply r u
+  Sub s t == Sub r u = applyE s t == applyE r u
   _ == _ = False
 
 instance NFData (Exp a) where
@@ -51,45 +52,34 @@ instance NFData (Exp a) where
   rnf (DApp a b) = rnf a `seq` rnf b
   rnf (DIf a b c) = rnf a `seq` rnf b `seq` rnf c
   rnf (DBool b) = rnf b
-  rnf (Sub r t) = rnf r `seq` rnf t
-
+  rnf (Sub r t) = rnf (applyE r t)
 ----------------------------------------------------------
 
+{-
 type Env n m = Fin n -> Exp m
-
+-}
 -- Apply a substitution to a term; composing
 -- with any explicit substitutions and pushing
 -- them one level down the syntax tree
 -- Invariant: result of apply is *not* a Sub.
-apply :: Env n m -> Exp n -> Exp m
-apply s (DVar i) = s i
-apply s (DLam b) =
-  DLam (Sub (up s) b)
-apply s (DApp f a) =
-  DApp (Sub s f) (Sub s a)
-apply s (DIf a b c) = DIf (Sub s a) (Sub s b) (Sub s c)
-apply s (DBool b) = DBool b
-apply s (Sub r t) = apply (s .>> r) t
+instance SubstVar Exp where
+  var = DVar
+  {-# INLINEABLE var #-}
+instance Subst Exp Exp where
+  applyE :: Env Exp n m -> Exp n -> Exp m
+  applyE s (DVar i) = applyEnv s i
+  applyE s (DLam b) =
+    DLam (Sub (up s) b)
+  applyE s (DApp f a) =
+    DApp (Sub s f) (Sub s a)
+  applyE s (DIf a b c) = DIf (Sub s a) (Sub s b) (Sub s c)
+  applyE s (DBool b) = DBool b
+  applyE s (Sub r t) = applyE (r .>> s) t
+  {-# INLINEABLE applyE #-}
 
-idE :: Env m m
-idE = DVar
+{-# SPECIALIZE idE :: Env Exp n n #-}
 
-nil :: Fin Z -> a
-nil = absurd
-
-(.:) :: a -> (Fin m -> a) -> Fin (S m) -> a               -- extension
-v .: r = \case { FZ -> v ; FS y -> r y }
-
-(.>>) :: Env m n -> Env p m -> Env p n
-r .>> s = apply r . s
-
-up :: Env m n -> Env (S m) (S n)             -- shift
-up s = \case
-          FZ -> DVar  FZ                     -- leave index 0 alone
-          FS f -> apply (DVar . FS) (s f)    -- shift other indices
-
-singleton :: Exp m -> Env (S m) m
-singleton a = a .: idE
+{-# SPECIALIZE (.>>) :: Env Exp m n -> Env Exp n p -> Env Exp m p #-}
 ----------------------------------------------------
 
 -- result of nf is not a Sub
@@ -98,7 +88,7 @@ nf e@(DVar _) = e
 nf (DLam b) = DLam (nf b)
 nf (DApp f a) =
   case whnf' idE f of
-    DLam b -> nf (apply (singleton (whnf' idE a)) b)
+    DLam b -> nf (applyE (singletonE (whnf' idE a)) b)
     f' -> DApp (nf f') (nf a)
 nf (DIf a b c) =
   case whnf' idE a of
@@ -106,16 +96,16 @@ nf (DIf a b c) =
     DBool False -> nf c
     a' -> DIf (nf a') (nf b) (nf c)
 nf (DBool b) = DBool b
-nf (Sub r t) = nf (apply r t)
+nf (Sub r t) = nf (applyE r t)
 
 
-whnf' :: Env m n -> Exp m -> Exp n
-whnf' r e@(DVar x) = apply r e
-whnf' r e@(DLam _) = apply r e
+whnf' :: Env Exp m n -> Exp m -> Exp n
+whnf' r e@(DVar x) = applyE r e
+whnf' r e@(DLam _) = applyE r e
 whnf' r (DApp f a) =
   case whnf' r f of
     DLam b' ->
-        whnf' (singleton (whnf' r a)) b'
+        whnf' (singletonE (whnf' r a)) b'
     f' ->
       -- ok to leave Sub around a as top-level is App
       DApp f' (Sub r a)
@@ -124,7 +114,7 @@ whnf' r (DIf a b c) = case whnf' r a of
   DBool True -> whnf' r b
   DBool False -> whnf' r c
   a' -> DIf a' (Sub r b) (Sub r c)
-whnf' r (Sub s t) = whnf' (r .>> s) t
+whnf' r (Sub s t) = whnf' (s .>> r) t
 
 
 
@@ -161,7 +151,7 @@ fromDB = from firstBoundId
     from n (DApp f a) = App (from n f) (from n a)
     from n (DIf a b c) = If (from n a) (from n b) (from n c)
     from n (DBool b) = Bool b
-    from n (Sub s b) = from n (apply s b)
+    from n (Sub s b) = from n (applyE s b)
 
 mapSnd :: (a -> b) -> [(c, a)] -> [(c, b)]
 mapSnd f = map (\(v, i) -> (v, f i))

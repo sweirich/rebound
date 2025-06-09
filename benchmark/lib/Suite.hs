@@ -19,8 +19,8 @@ import qualified Rebound.Env.Lazy.BindV
 import qualified Rebound.Env.Lazy.BindVal
 import qualified Rebound.Env.Lazy.Subst
 import qualified Rebound.Env.Lazy.SubstV
-import qualified Rebound.Env.Lazy.ExplicitSubstV
-import qualified Rebound.Env.Lazy.ExplicitSubstEnvV
+import qualified Rebound.Env.Lazy.ExpSubstV
+import qualified Rebound.Env.Lazy.ExpSubstEnvV
 import qualified Rebound.Manual.Strict.Env
 import qualified Rebound.Manual.Strict.Bind
 import qualified Rebound.Manual.Strict.BindV
@@ -38,8 +38,8 @@ import qualified Rebound.Manual.Lazy.SubstV
 import qualified Rebound.Manual.Lazy.Eval
 import qualified Rebound.Manual.Lazy.EvalV
 import qualified Rebound.Manual.Lazy.EnvOnlyV
-import qualified Rebound.Manual.Lazy.ExplicitSubstV
-import qualified Rebound.Manual.Lazy.ExplicitSubstEnvV
+import qualified Rebound.Manual.Lazy.ExpSubstV
+import qualified Rebound.Manual.Lazy.ExpSubstEnvV
 import qualified Core.Nf
 import qualified DeBruijn.Bound
 import qualified DeBruijn.BoundV
@@ -133,7 +133,7 @@ import Util.Impl (LambdaImpl)
 -- | Implementations used in the benchmarking/test suite
 -- RHS must be a single variable name for Makefile
 impls :: [LambdaImpl]
-impls = rebound_strict_envV
+impls = rebound_comparison
 
 interleave :: [a] -> [a] -> [a]
 interleave (a1 : a1s) (a2 : a2s) = a1 : a2 : interleave a1s a2s
@@ -233,8 +233,8 @@ eval_manual_lazy = [
     --Rebound.Manual.Lazy.EnvOnlyV.impl, -- loops
     Rebound.Manual.Lazy.Env.impl,
     Rebound.Manual.Lazy.EnvV.impl,
-    Rebound.Manual.Lazy.ExplicitSubstV.impl,
-    Rebound.Manual.Lazy.ExplicitSubstEnvV.impl
+    Rebound.Manual.Lazy.ExpSubstV.impl,
+    Rebound.Manual.Lazy.ExpSubstEnvV.impl
   ]
 
 eval_auto_lazy = [
@@ -247,8 +247,8 @@ eval_auto_lazy = [
     Rebound.Env.Lazy.BindV.impl,
     Rebound.Env.Lazy.Env.impl,
     Rebound.Env.Lazy.EnvV.impl,
-    Rebound.Env.Lazy.ExplicitSubstV.impl,
-    Rebound.Env.Lazy.ExplicitSubstEnvV.impl
+    Rebound.Env.Lazy.ExpSubstV.impl,
+    Rebound.Env.Lazy.ExpSubstEnvV.impl
   ]
 
 

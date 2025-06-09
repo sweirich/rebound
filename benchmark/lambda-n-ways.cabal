@@ -28,8 +28,8 @@ library
     Rebound.Env.Lazy.BindVal
     Rebound.Env.Lazy.Subst
     Rebound.Env.Lazy.SubstV
-    Rebound.Env.Lazy.ExplicitSubstV
-    Rebound.Env.Lazy.ExplicitSubstEnvV
+    Rebound.Env.Lazy.ExpSubstV
+    Rebound.Env.Lazy.ExpSubstEnvV
     Rebound.Manual.Strict.Eval
     Rebound.Manual.Strict.Env
     Rebound.Manual.Strict.Bind
@@ -42,8 +42,8 @@ library
     Rebound.Manual.Lazy.EnvV
     Rebound.Manual.Lazy.EnvOnlyV
     Rebound.Manual.Lazy.EnvVal
-    Rebound.Manual.Lazy.ExplicitSubstV
-    Rebound.Manual.Lazy.ExplicitSubstEnvV
+    Rebound.Manual.Lazy.ExpSubstV
+    Rebound.Manual.Lazy.ExpSubstEnvV
     Rebound.Manual.Lazy.Bind
     Rebound.Manual.Lazy.BindV
     Rebound.Manual.Lazy.BindVal
