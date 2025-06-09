@@ -136,7 +136,7 @@ import Util.Impl (LambdaImpl)
 --    Table 1: rebound_comparison
 --    Table 2: rebound_strict_envV
 impls :: [LambdaImpl]
-impls = rebound_comparison
+impls = rebound_strict_envV
 
 ---------------------------------------------------------------------------------
 

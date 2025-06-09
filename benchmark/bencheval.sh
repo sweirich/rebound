@@ -7,7 +7,7 @@
 valid_variables=("Lazy" "LazyA" "LazyB" "Functional"  "Strict" "StrictA" "StrictB")
 
 source_dir="results/`hostname`/rebound_strict_envV"
-branch = "main"
+branch="main"
 
 # Define the file to modify.
 file="../rebound/src/Rebound/Env.hs"
