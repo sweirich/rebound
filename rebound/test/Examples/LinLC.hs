@@ -1,16 +1,16 @@
 module Examples.LinLC where
 
-import Data.Vec qualified as Vec
+import Data.Vec (Vec ((:::)), empty)
 import LinLC
 import Rebound (Nat (Z))
 import Test.Tasty
 import Test.Tasty.HUnit
 
 tcS :: Exp Z -> Ty -> Assertion
-tcS t ty = runTC Vec.empty (checkType t ty) @?= Right ()
+tcS t ty = runTC empty (checkType t ty) @?= Right ()
 
 tcF :: Exp Z -> Ty -> String -> Assertion
-tcF t ty msg = runTC Vec.empty (checkType t ty) @?= Left msg
+tcF t ty msg = runTC empty (checkType t ty) @?= Left msg
 
 all :: TestTree
 all =
@@ -34,5 +34,8 @@ all =
         tcF
           (lam $ lam v0)
           (TyUnit ~> (TyUnit ~> TyUnit) ~> TyUnit ~> TyUnit)
-          "Variable was not used."
+          "Variable was not used.",
+      testCase "Initial scope must be used" $
+        runTC (TyUnit ::: (TyUnit ~> TyUnit) ::: TyUnit ::: empty) (checkType (v1 @@ v0) TyUnit)
+          @?= Left "Some variables in the initial scope were not used."
     ]
