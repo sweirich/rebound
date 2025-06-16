@@ -93,6 +93,7 @@ library rebound-examples
     , HOAS
     , SystemF
     , PureSystemF
+    , LinLC
   hs-source-dirs: examples
 
 test-suite rebound-tests
