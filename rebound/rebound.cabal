@@ -120,3 +120,4 @@ test-suite rebound-tests
     Examples.PureSystemF
     Examples.PTS
     Examples.DepMatch
+    Examples.LinLC
