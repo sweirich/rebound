@@ -38,6 +38,8 @@ data Exp (n :: Nat) where
 -- Enable generic derivation for substitution
 deriving instance (Generic1 Exp)
 
+ 
+
 ----------------------------------------------
 -- Example lambda-calculus expressions
 ----------------------------------------------
@@ -116,6 +118,7 @@ instance SubstVar Exp where
 instance Subst Exp Exp where
   isVar (Var x) = Just (Refl, x)
   isVar _ = Nothing
+
 
 ----------------------------------------------
 -- Display (Show)

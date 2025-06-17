@@ -264,7 +264,7 @@ instance (GSubst b f, GSubst b g) => GSubst b (f :+: g) where
 
 instance (Subst b g) => GSubst b (Rec1 g) where
   gsubst s (Rec1 f) = Rec1 (applyE s f)
-
+  {-# INLINE gsubst #-}
 
 
 ----------------------------------------------------------------

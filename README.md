@@ -4,10 +4,14 @@
 and environments.
 
 This library is represents variables using the index type `Fin n`; a type of
-bounded natural numbers. The key way to manipulate these indices is using an
-*environment*, a simultaneous substitutions similar to a function of type `Fin n
--> Exp m`. Applying an environment converts an expression in scope `n` to one in
-scope `m`.
+(finite) bounded natural numbers. The key way to manipulate these indices is
+using an *environment*, a simultaneous substitution similar to a function of
+type `Fin n -> Exp m`. Applying an environment converts an expression that 
+contains indices in scope `n` to one in scope `m`.
+
+## Draft paper
+
+See: [rebound-paper.pdf](./rebound-paper.pdf)
 
 ## Design goals
 
@@ -29,8 +33,8 @@ prototype implementation quickly.
 
 3. *Efficiency*: Behind the scenes, the library uses explicit substitutions
     (environments) to delay the execution of operations such as shifting and
-    substitution. However, these environments are accessible to library users
-    who would like fine control over when these operations.
+    substitution. However, these environments are also accessible to library
+    users who would like fine control over these operations.
 
 4. *Accessibility*: This library comes with several examples demonstrating
     how to use it effectively. Many of these are also examples of programming
