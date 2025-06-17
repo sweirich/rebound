@@ -76,6 +76,11 @@ prototype implementation quickly.
    A dependent type system with nested, dependent pattern matching. Patterns may
    also include scoped terms.
 
+8. [Linear Lambda Calculus](examples/LinLC.hs)
+
+   A linear version of the (simply typed) lambda calculus. Demonstrates how to
+   thread a typing context using the `ScopedState` monad.
+
 ### Working with well-scoped expressions
 
 1. [Scope checking](examples/ScopeCheck.hs)
