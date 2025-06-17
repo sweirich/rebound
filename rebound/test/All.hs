@@ -4,6 +4,7 @@ import Examples.LCLet qualified as LCLet
 import Examples.PTS qualified as PTS
 import Examples.Pat qualified as Pat
 import Examples.PureSystemF qualified as PureSystemF
+import Examples.LinLC qualified as LinLC
 import Test.Tasty
 
 main :: IO ()
@@ -20,5 +21,6 @@ main = do
             PureSystemF.all
           ],
         PTS.all,
-        DepMatch.all
+        DepMatch.all,
+        LinLC.all
       ]
