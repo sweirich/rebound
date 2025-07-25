@@ -1,11 +1,10 @@
 # Rebound
 
-`Rebound` is a variable binding library based on well-scoped de Bruijn indices
-and environments.
+`Rebound` is a variable binding library based on well-scoped de Bruijn indices.
 
 This library is represents variables using the index type `Fin n`; a type of
 (finite) bounded natural numbers. The key way to manipulate these indices is
-using an *environment*, a simultaneous substitution similar to a function of
+using an *environment*, a parallel substitution similar to a function of
 type `Fin n -> Exp m`. Applying an environment converts an expression that 
 contains indices in scope `n` to one in scope `m`.
 
@@ -26,7 +25,7 @@ prototype implementation quickly.
     that can be used. If the scope is 0, then the term must be closed.
 
 2. *Convenience*: The library is based on a type-directed approach to binding,
-    where AST terms can indicate binding structure through the use of types
+    where AST terms indicate binding structure through the use of types
     defined in this library. As a result the library provides a clean, uniform,
     and automatic interface to common operations such as substitution,
     alpha-equality, and scope change.
@@ -36,8 +35,9 @@ prototype implementation quickly.
     substitution. However, these environments are also accessible to library
     users who would like fine control over these operations.
 
-4. *Accessibility*: This library comes with several examples demonstrating
-    how to use it effectively. Many of these are also examples of programming
+4. *Accessibility*: This library comes with examples demonstrating how to use
+    it effectively, for a number of different object languages that differ in
+    their binding structure. Many of these are also examples of programming
     with Dependent Haskell.
 
 ## Organization of this repository
@@ -49,7 +49,7 @@ high-level overview:
 - [`piforall`](./piforall/README.md) contains two implementations of the
   `pi-forall` language. These implementations are the original one (using
   `unbound-generics`) and new one based on `rebound`.
-- [`benchmark`](./benchmark/README.md) contains many implementation of the
+- [`benchmark`](./benchmark/README.md) contains many implementations of the
   lambda-calculus, using different libraries and techniques. It also contains
   code to benchmark the normalization of lambda-terms in each of these
   implementations.
