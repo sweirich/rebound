@@ -49,11 +49,11 @@ gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 ------------------------------------------------------------------------------
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: (SubstVar a) => !(SNat m) -> Env a n (n + m) --  weaken values in range by m
-  Weak  :: (SubstVar a) => !(SNat m) -> Env a n (m + n) --  weaken values in range by m
-  Inc   :: (SubstVar a) => !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
+  WeakR :: !(SNat m) -> Env a n (n + m) --  weaken values in range by m
+  Weak  :: !(SNat m) -> Env a n (m + n) --  weaken values in range by m
+  Inc   :: !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
   Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
-  (:<>) :: (SubstVar a) => !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
+  (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
 
 ------------------------------------------------------------------------------
 -- Application
@@ -61,7 +61,7 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
 
 -- | Value of the index x in the substitution s
 
-applyEnv :: Env a n m -> Fin n -> a m
+applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
 applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
