@@ -60,7 +60,7 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
 ------------------------------------------------------------------------------
 
 -- | Value of the index x in the substitution s
-applyEnv :: Env a n m -> Fin n -> a m
+applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
 applyEnv Zero x = Fin.absurd x
 applyEnv (Inc m) x = var (Fin.shiftN m x)
 applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
