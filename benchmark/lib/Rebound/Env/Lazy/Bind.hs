@@ -56,7 +56,7 @@ instance NFData (DB a) where
   rnf (DIf a b c) = rnf a `seq` rnf b `seq` rnf c
 
 instance (Subst v e, Subst v v, forall n. NFData (e n)) => NFData (Bind v e n) where
-  rnf b = unbindWith (\r a -> rnf r `seq` rnf a)
+  rnf b = rnf (getBody b)
 
 ----------------------------------------------------------
 -- uses the SubstScoped library
