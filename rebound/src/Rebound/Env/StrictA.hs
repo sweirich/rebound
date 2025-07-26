@@ -43,15 +43,7 @@ gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 -- Generic programming
 class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
-
-instance (forall n. NFData (a n)) => NFData (Env a n m) where
-  rnf Zero = ()
-  rnf (WeakR m) = rnf m
-  rnf (Weak m) = rnf m
-  rnf (Inc m) = rnf m
-  rnf (Cons x r) = rnf x `seq` rnf r
-  rnf (r1 :<> r2) = rnf r1 `seq` rnf r2
-
+  
 ------------------------------------------------------------------------------
 -- Environment representation
 ------------------------------------------------------------------------------
@@ -62,6 +54,14 @@ data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Inc   :: !(SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
   Cons  :: (a m) -> !(Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
   (:<>) :: !(Env a m n) -> !(Env a n p) -> Env a m p --  compose substitutions
+
+instance (forall n. NFData (a n)) => NFData (Env a n m) where
+  rnf Zero = ()
+  rnf (WeakR m) = rnf m
+  rnf (Weak m) = rnf m
+  rnf (Inc m) = rnf m
+  rnf (Cons x r) = rnf x `seq` rnf r
+  rnf (r1 :<> r2) = rnf r1 `seq` rnf r2
 
 ------------------------------------------------------------------------------
 -- Application
