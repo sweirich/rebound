@@ -368,14 +368,6 @@ instance (forall m. Eq (pat m),                    -- 1
         Nothing -> False
 
 
--- The instance above defers to the following instance for the binders themselves
--- To compare pattern binders, we need to unbind, but also
--- first make sure that the patterns are equal
-instance (Eq pat, Sized pat, Eq (Exp n)) => Eq (Pat.Bind Exp Exp pat n) where
-  b1 == b2 =
-    Pat.getPat b1 == Pat.getPat b2
-      && Pat.getBody b1 == Pat.getBody b2
-
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
 deriving instance (Eq (Exp n))

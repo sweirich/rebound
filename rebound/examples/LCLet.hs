@@ -126,16 +126,6 @@ t4 = LetTele
 -- (Alpha-)Equivalence
 ----------------------------------------------
 
--- | To compare binders, we need to `getBody` them
--- The `getBody` operation has type
--- `Bind Exp Exp n -> Exp (S n)`
--- as the body of the binder has one more free variable
---instance (Subst Exp t, Eq (t (S n))) => Eq (Bind Exp t n) where
---  b1 == b2 = getBody b1 == getBody b2
-
-instance (SNatI m, Subst Exp t, Eq (t (m + n))) => Eq (BindN Exp t m n) where
-  b1 == b2 = getBodyN b1 == getBodyN b2
-
 -- | The derivable equality instance
 -- is alpha-equivalence
 deriving instance (Eq (Exp n))

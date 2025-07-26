@@ -13,6 +13,7 @@
 -- in the presence of list in the syntax.
 
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE PatternSynonyms #-}
 module PatGen where
 
 import Rebound
@@ -25,8 +26,7 @@ import Data.Fin ( Fin, f0, f1 )
 
 -- Case expressions in Pat have a subexpression of type [Branch Pat n]
 -- For generic programming, we need to replace that with a scoped list
-import Data.Scoped.List (List(..))
-import Data.Scoped.List qualified as List
+import Data.Scoped.List as List
 
 ----------------------------------------------
 
@@ -336,14 +336,6 @@ instance (forall m. Eq (pat m),                    -- 1
         Just Refl -> p1 == p2
         Nothing -> False
 
-
--- The instance above defers to the following instance for the binders themselves
--- To compare pattern binders, we need to unbind, but also
--- first make sure that the patterns are equal
-instance (Eq pat, Sized pat, Eq (Exp n)) => Eq (Pat.Bind Exp Exp pat n) where
-  b1 == b2 =
-    Pat.getPat b1 == Pat.getPat b2
-      && Pat.getBody b1 == Pat.getBody b2
 
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence

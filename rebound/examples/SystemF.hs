@@ -19,9 +19,6 @@ data Ty (n :: Nat) where
     TArr :: Ty n -> Ty n -> Ty n
       deriving (Eq)
 
-instance Eq (Bind Ty Ty n) where
-    b1 == b2 = getBody b1 == getBody b2
-
 -- swap the order of the scopes so that we can talk about 
 -- substituting a type inside of an expression
 newtype TyExp n m = TyExp { unTyExp :: Exp m n }

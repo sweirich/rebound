@@ -34,9 +34,9 @@ data Exp (n :: Nat) where
   Var :: Fin n -> Exp n
   Lam :: Bind Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
-
+    deriving (Generic1)
 -- Enable generic derivation for substitution
-deriving instance (Generic1 Exp)
+-- deriving instance (Generic1 Exp)
 
  
 
@@ -85,16 +85,10 @@ t = lam ((v0 @@ ((lam v0) @@ v0)) @@ (lam v0))
 
 -- The nice thing about de Bruijn indices is that
 -- we can use structural equality as alpha equivalence.
-
+-- The built-in Eq instance for Bind, makes sure that 
+-- the delayed substitutions are not observable here.
 deriving instance Eq (Exp n)
 
--- To compare binders, we need to use `getBody` to
--- access the body of the binder
--- >>> :t getBody
--- getBody :: Subst v c => Bind v c n -> c ('S n)
-
-instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
-  b1 == b2 = getBody b1 == getBody b2
 
 ----------------------------------------------
 -- Substitution

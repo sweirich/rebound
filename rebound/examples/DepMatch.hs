@@ -136,6 +136,7 @@ instance Subst Exp Exp where
   isVar _ = Nothing
 
   {-
+  -- The generic definition above is equivalent to this code
   applyE r Star = Star
   applyE r (Pi a b) = Pi (applyE r a) (applyE r b)
   applyE r (Var x) = applyEnv r x
@@ -149,7 +150,7 @@ instance Subst Exp Exp where
 instance Shiftable (Pat p) where
   shift = shiftFromApplyE @Exp
 
--- cannot be generic due to GADT
+-- This definition cannot be generic because Pat is a GADT
 instance Subst Exp (Pat p) where
   applyE :: Env Exp n m -> Pat p n -> Pat p m
   applyE r PVar = PVar
@@ -161,7 +162,7 @@ instance Subst Exp (Pat p) where
 instance Shiftable Branch where
   shift = shiftFromApplyE @Exp
 
--- cannot be generic due to existential
+-- This definition also cannot be generic due to the existential
 instance Subst Exp Branch where
   applyE :: Env Exp n m -> Branch n -> Branch m
   applyE r (Branch b) = Branch (applyE r b)
@@ -185,6 +186,7 @@ t01 = App (Var f0) (Var f1)
 
 instance FV Exp where
   {-
+  -- Generic programming produces the following definitions:
   appearsFree n (Var x) = n == x
   appearsFree n Star = False
   appearsFree n (Pi a b) = appearsFree n a || appearsFree (FS n) (getBody1 b)
@@ -406,6 +408,10 @@ instance Show (Pat p n) where
 
 --------------------------------------------------------
 
+
+-- The derivable equality instance is alpha-equivalence
+deriving instance (Eq (Exp n))
+
 instance PatEq (Pat p1 n) (Pat p2 n) where
   patEq :: Pat p1 n -> Pat p2 n -> Maybe (p1 :~: p2)
   patEq PVar PVar = Just Refl
@@ -419,6 +425,7 @@ instance PatEq (Pat p1 n) (Pat p2 n) where
     return Refl
   patEq _ _ = Nothing
 
+-- This equality is not derivable
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
   (Branch (p1 :: Scoped.Bind Exp Exp (Pat m1) n))
@@ -429,23 +436,6 @@ instance Eq (Branch n) where
         Just Refl -> p1 == p2
         Nothing -> False
 
--- To compare pattern binders, we need to unbind, but also
--- make sure that the patterns are equal
-instance (Eq (Exp n)) => Eq (Scoped.Bind Exp Exp (Pat m) n) where
-  b1 == b2 =
-    Maybe.isJust (patEq (Scoped.getPat b1) (Scoped.getPat b2))
-      && Scoped.getBody b1 == Scoped.getBody b2
-
--- To compare binders, we only need to `unbind` them
-instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
-  b1 == b2 = getBody1 b1 == getBody1 b2
-
-instance (Eq (Exp n)) => Eq (PN.Bind2 Exp Exp n) where
-  b1 == b2 = getBody2 b1 == getBody2 b2
-
--- With the instance above the derivable equality instance
--- is alpha-equivalence
-deriving instance (Eq (Exp n))
 
 --------------------------------------------------------
 

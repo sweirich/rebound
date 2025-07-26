@@ -42,6 +42,16 @@ import qualified Data.Set as Set
 data Bind v c (pat :: Type) (n :: Nat) where
   Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
+
+
+-- The instance above defers to the following instance for the binders themselves
+-- To compare pattern binders, we need to unbind, but also
+-- first make sure that the patterns are equal
+instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat n) where
+  b1 == b2 = 
+    getPat b1 == getPat b2
+      && getBody b1 == getBody b2
+    
 -- | Create a `Bind` with an identity substitution.
 bind ::
   (Sized pat, Subst v c) =>

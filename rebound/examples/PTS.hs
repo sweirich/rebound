@@ -181,14 +181,6 @@ instance Show (Exp n) where
         . showString " in "
         . shows (getBody2 b)
 
--- To compare binders, we only need to `getBody1` them
-instance (Eq (Exp n)) => Eq (Bind1 Exp Exp n) where
-  b1 == b2 = getBody1 b1 == getBody1 b2
-
--- This is also true for double binders
-instance (Eq (Exp n)) => Eq (Bind2 Exp Exp n) where
-  b1 == b2 = getBody2 b1 == getBody2 b2
-
 -- With the instance above the derivable equality instance
 -- is alpha-equivalence
 deriving instance (Eq (Exp n))

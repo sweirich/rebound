@@ -51,9 +51,6 @@ data Exp (n :: Nat) where
 
 -- Some instances required by rebound. See LC.hs for more explanations.
 
-instance (Eq (Exp n)) => Eq (Bind Exp Exp n) where
-  l == r = getBody l == getBody r
-
 instance SubstVar Exp where var = Var
 
 instance Subst Exp Exp where

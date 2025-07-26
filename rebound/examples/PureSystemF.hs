@@ -38,9 +38,6 @@ type Ty = Exp
 --- Instances required by Rebound
 --------------------------------------------------------------------------------
 
-instance Eq (Bind Exp Exp n) where
-  l == r = getBody l == getBody r
-
 instance SubstVar Exp where
   var = Var
 

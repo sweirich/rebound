@@ -16,6 +16,7 @@ import Rebound.MonadNamed (Named (..))
 
 import Data.Set (Set)
 import qualified Data.Set as Set
+import qualified Data.Maybe as Maybe
 
 ----------------------------------------------------------
 -- Sized type class for patterns
@@ -88,6 +89,15 @@ data Bind v c (pat :: Nat -> Type) (n :: Nat) where
     Env v m n ->
     c (ScopedSize pat + m) ->
     Bind v c pat n
+
+instance (forall n. Eq (c n), 
+    PatEq (pat m n) (pat m n), 
+    ScopedSized (pat m), 
+    Subst v c) => Eq (Bind v c (pat m) n) where
+  b1 == b2 =
+    Maybe.isJust (patEq (getPat b1) (getPat b2))
+      && getBody b1 == getBody b2
+
 
 -- | Create a `Bind` with an identity substitution.
 bind ::
