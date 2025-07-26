@@ -27,6 +27,7 @@ import Data.Maybe qualified as Maybe
 import Data.Vec qualified as Vec
 import PiForall.ConcreteSyntax qualified as C
 import PiForall.Rebound.Syntax qualified as S
+import Rebound (LocalName(..))
 import Rebound qualified
 import Rebound.Bind.Local qualified as L
 import Rebound.Bind.Pat (PatList (..))

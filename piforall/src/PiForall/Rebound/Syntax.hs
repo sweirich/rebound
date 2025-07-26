@@ -378,21 +378,6 @@ instance Eq (Match n) where
         Pat.getBody p1 == Pat.getBody p2
       Nothing -> False
 
--- To compare pattern binders, we need to unbind, but also
--- make sure that the patterns are equal
-instance (SNatI m, Eq (Term n)) => Eq (Pat.Bind Term Term (Pattern m) n) where
-  b1 == b2 =
-    Maybe.isJust (patEq (Pat.getPat b1) (Pat.getPat b2))
-      && Pat.getBody b1 == Pat.getBody b2
-
--- To compare binders, we only need to `unbind` them
-instance (Eq (Term n)) => Eq (Local.Bind Term Term n) where
-  b1 == b2 = Local.getBody b1 == Local.getBody b2
-
--- With the instance above the derivable equality instance
--- is alpha-equivalence
--- deriving instance (Eq (Term n))
-
 -------------------------------------------------------
 -- Prelude datatypes
 -------------------------------------------------------

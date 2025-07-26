@@ -54,7 +54,8 @@ import Rebound qualified
 import Rebound.Bind.Local qualified as Local
 import Rebound.Bind.Pat qualified as Pat
 import Rebound.Bind.Scoped qualified as Scoped
-import Rebound.Env (Shiftable, fromRefinement)
+import Rebound.Env(Shiftable)
+import Rebound.Refinement (fromRefinement)
 import Rebound.MonadNamed (Named, Sized (..))
 import Rebound.MonadNamed qualified as MonadNamed
 import Rebound.MonadScoped (MonadScopedReader (..))
