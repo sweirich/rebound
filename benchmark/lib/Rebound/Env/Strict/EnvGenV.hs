@@ -44,15 +44,7 @@ data DB (n :: Nat) where
   DApp :: !(DB n) -> !(DB n) -> DB n
   DBool :: {-# unpack #-} !Bool -> DB n
   DIf :: !(DB n) -> !(DB n) -> !(DB n) -> DB n
-
-deriving instance Generic1 DB
-
--- standalone b/c GADT
--- alpha equivalence is (==)
-deriving instance Eq (DB n)
-
-instance Eq (Bind DB DB n) where
-  b1 == b2 = getBody b1 == getBody b2
+    deriving (Generic1, Eq)
 
 instance NFData (DB a) where
   rnf (DVar i) = rnf i

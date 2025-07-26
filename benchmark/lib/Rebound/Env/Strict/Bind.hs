@@ -47,8 +47,6 @@ data DB n where
 -- alpha equivalence is (==)
 deriving instance Eq (DB n)
 
-instance Eq (Bind DB DB n) where
-  b1 == b2 = getBody b1 == getBody b2
 
 instance NFData (DB a) where
   rnf (DVar i) = rnf i
@@ -57,8 +55,6 @@ instance NFData (DB a) where
   rnf (DBool b) = rnf b
   rnf (DIf a b c) = rnf a `seq` rnf b `seq` rnf c
 
--- TODO: this is a hack here. But I'm not sure
--- what we want to do about this
 instance (Subst v e, Subst v v, forall n. NFData (e n)) => NFData (Bind v e n) where
   rnf b = rnf (getBody b)
 

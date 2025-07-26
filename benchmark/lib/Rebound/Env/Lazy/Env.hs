@@ -48,9 +48,6 @@ data DB n where
 -- alpha equivalence is (==)
 deriving instance Eq (DB n)
 
-instance Eq (Bind DB DB n) where
-  b1 == b2 = getBody b1 == getBody b2
-
 instance NFData (DB a) where
   rnf (DVar i) = rnf i
   rnf (DLam d) = rnf d
