@@ -45,6 +45,7 @@ library
     , fin >= 0.3
     , vec
     , prettyprinter
+    , deepseq
   exposed-modules:
       Rebound
     , Rebound.Classes

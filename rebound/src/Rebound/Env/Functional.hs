@@ -12,6 +12,7 @@ import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
+
 ------------------------------------------------------------------------------
 -- Substitution class declarations
 ------------------------------------------------------------------------------

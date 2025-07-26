@@ -6,7 +6,7 @@ module Data.Vec
     all2
  ) where
 
---- replace with
+-- based on
 -- https://hackage.haskell.org/package/fin
 -- https://hackage.haskell.org/package/vec
 
