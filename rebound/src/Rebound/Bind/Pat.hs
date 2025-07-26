@@ -5,7 +5,8 @@
 -- The pattern type must have kind `Type`
 -- For more expressivity, see Rebound.Bind.Scoped.
 module Rebound.Bind.Pat
-  ( module Rebound.Classes,
+  ( module Rebound,
+    Named(..),
     type Bind,
     bind,
     unbind,
@@ -24,9 +25,8 @@ module Rebound.Bind.Pat
 where
 
 import Rebound
-import Rebound.Classes
 import Rebound.MonadNamed (Named (..))
-import Data.Fin (Fin)
+
 import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
 import Data.Set (Set)

@@ -1,7 +1,7 @@
 -- | single binder, but includes a name for pretty printing
 -- type synonym for Pat.Bind with an opaque name as the pattern
 module Rebound.Bind.Local
-  ( module Rebound.Classes,
+  ( module Rebound,
     type Bind,
     bind,
     getLocalName,
@@ -16,8 +16,6 @@ where
 
 import Rebound
 import Rebound.Bind.Pat qualified as Pat
-import Rebound.Classes
-import Rebound.Env
 
 ---------------------------------------------------------------
 -- LocalBind operations (convenience wrappers)

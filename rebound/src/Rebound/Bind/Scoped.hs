@@ -4,19 +4,45 @@
 -- This is useful for type annotations and telescopes.
 -- The pattern type must have kind `Nat -> Type`
 -- For a simpler interface, see Rebound.Bind.Pat
-module Rebound.Bind.Scoped (module Rebound.Bind.Scoped) where
+module Rebound.Bind.Scoped (
+    module Rebound,
+    Bind,
+    bind,
+    getPat,
+    getBody,
+    unbind,
+    unbindl,
+    instantiate,
+    unbindWith,
+    instantiateWith,
+    applyUnder,
+    instantiateWeakenEnv,
 
--- import Rebound.MonadScoped (WithData (..))
+    -- * Number of binding vars in pats
+    ScopedSized(..),
+    scopedSize,
+    scopedNames,
+    scopedPatEq,
+    
+    -- * Telescopes
+    IScopedSized,
+    iscopedSize,
+    iscopedNames,
+    iscopedPatEq,
+    TeleList(..),
+    lengthTele,
+    nil, (<:>),(<++>),
+  ) where
 
-import Data.Fin qualified as Fin
-import Data.Vec qualified as Vec
 import Rebound
 import Rebound.Bind.Pat qualified as Pat
 import Rebound.MonadNamed (Named (..))
 
 import Data.Set (Set)
-import qualified Data.Set as Set
-import qualified Data.Maybe as Maybe
+import Data.Set qualified as Set
+import Data.Maybe qualified as Maybe
+import Data.Fin qualified as Fin
+import Data.Vec qualified as Vec
 
 ----------------------------------------------------------
 -- Sized type class for patterns
@@ -53,16 +79,6 @@ scopedNames ::
   pat p ->
   Vec (ScopedSize pat) name
 scopedNames = names
-
--- scopedExtendWithData ::
---   forall v pat n p s.
---   (ScopedSized pat, WithData v (pat p) n, Scope v s) =>
---   pat p ->
---   s n ->
---   s (ScopedSize pat + n)
--- scopedExtendWithData =
---   case Refl :: Size (pat p) :~: ScopedSize pat of
---     Refl -> extendWithData @v @(pat p) @n
 
 scopedPatEq ::
   (ScopedSized pat1, ScopedSized pat2, PatEq (pat1 p1) (pat2 p2)) =>
@@ -130,7 +146,7 @@ instantiate ::
   Env v (ScopedSize pat) n ->
   c n
 instantiate b e =
-  unBindWith
+  unbindWith
     b
     (\p r t -> withSNat (scopedSize p) $ applyE (e .++ r) t)
 
@@ -141,7 +157,7 @@ instantiateWith ::
   (forall m n. Env v m n -> c m -> c n) ->
   c n
 instantiateWith b v f =
-  unBindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
+  unbindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
 
 unbind ::
   forall v c pat n d.
@@ -158,12 +174,12 @@ unbindl bnd = (getPat bnd, getBody bnd)
 
 -- | Apply a function to the pattern, suspended environment and body
 -- in a pattern binding
-unBindWith ::
+unbindWith ::
   (forall n. Sized (pat n), SubstVar v) =>
   Bind v c pat n ->
   (forall m. pat n -> Env v m n -> c (ScopedSize pat + m) -> d) ->
   d
-unBindWith (Bind pat r t) f = f pat r t
+unbindWith (Bind pat r t) f = f pat r t
 
 applyUnder ::
   forall pat v c n1 n2.
@@ -271,16 +287,6 @@ iscopedSize = scopedSize
 iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
 iscopedNames = scopedNames
 
--- iscopedExtendWithData ::
---   forall v pat p n s.
---   (IScopedSized pat, WithData v (pat p n) n, Scope v s) =>
---   pat p n ->
---   s n ->
---   s (p + n)
--- iscopedExtendWithData =
---   case Refl :: ScopedSize (pat p) :~: p of
---     Refl -> scopedExtendWithData @v @(pat p) @n
-
 iscopedPatEq ::
   (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
   pat1 p1 n1 ->
@@ -354,15 +360,6 @@ instance
   names TNil = VNil
   names (TCons p ps) =
     Vec.append (names ps) (iscopedNames p)
-
--- instance
---   forall v pat p n.
---   (forall p1 n. WithData v (pat p1 n) n, IScopedSized pat) =>
---   WithData v (TeleList pat p n) n
---   where
---   extendWithData TNil s = s
---   extendWithData (TCons (p :: pat p1 n) (ps :: TeleList pat p2 (p1 + n))) s =
---     extendWithData @v ps $ iscopedExtendWithData @v p s
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
   shift = shiftFromApplyE @v

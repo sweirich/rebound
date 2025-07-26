@@ -6,25 +6,26 @@
 module Rebound.Classes where
 
 import Rebound.Lib
+import Data.LocalName
+import Data.Scoped.List(List, pattern Nil, pattern (:<))
+import Data.Scoped.List qualified as List
 
 import Data.Foldable
 import Data.Vec qualified as Vec
-import Data.Fin
+import Data.Fin qualified as Fin
 import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.Set qualified as Set
 
-import Data.Scoped.List(List)
-
-import GHC.Generics hiding (S)
+import GHC.Generics (Generic1(..))
 
 ----------------------------------------------------------
 -- Indices/variables shifting
 ----------------------------------------------------------
 class Shiftable t where
   shift :: SNat k -> t n -> t (k + n)
-  -- default shift :: forall v k n. (SubstVar v, Subst v t) => SNat k -> t n -> t (k + n)
-  -- shift = shiftFromApplyE @v
-
+  -- a good default implementation of this is `shiftFromApply`. But the 
+  -- `Subst` class is not yet in scope.  
+  
 ----------------------------------------------------------
 -- Free variables
 ----------------------------------------------------------
@@ -41,6 +42,10 @@ class FV (t :: Nat -> Type) where
   default freeVars :: (Generic1 t, GFV (Rep1 t)) => t n -> Set (Fin n)
   freeVars e = gfreeVars (from1 e)
   {-# INLINE freeVars #-}
+
+class GFV (t :: Nat -> Type) where
+  gappearsFree :: Fin n -> t n -> Bool
+  gfreeVars :: t n -> Set (Fin n)
 
 ----------------------------------------------------------
 -- * Strengthening
@@ -69,12 +74,24 @@ class Strengthen t where
   strengthenOneRec :: forall k n. SNat k -> SNat n -> t (k + S n) -> Maybe (t (k + n))
   strengthenOneRec k = strengthenRec k s1
 
+class GStrengthen (t :: Nat -> Type) where
+  gstrengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
+
 ----------------------------------------------------------
 -- FV and Strengthen instances for Data.Scoped.List
 ---------------------------------------------------------
 
-instance FV t => FV (List t)
-instance Strengthen t => Strengthen (List t)
+instance FV t => FV (List t) where
+  appearsFree :: Fin n -> List t n -> Bool
+  appearsFree x = List.any (appearsFree x)
+
+  freeVars :: List t n -> Set (Fin n)
+  freeVars = List.foldr (\x s -> freeVars x `Set.union` s) Set.empty
+
+instance Strengthen t => Strengthen (List t) where
+  strengthenRec :: SNat k -> SNat m -> SNat n -> List t (k + (m + n)) -> Maybe (List t (k + n))
+  strengthenRec k m n Nil = Just Nil
+  strengthenRec k m n (x :< xs) = (:<) <$> strengthenRec k m n x <*> strengthenRec k m n xs
 
 ----------------------------------------------------------
 -- FV and Strengthen instances for Fin
@@ -86,15 +103,15 @@ instance FV Fin where
 
 instance Strengthen Fin where
   strengthenRec :: SNat k -> SNat m -> SNat n-> Fin (k + (m + n)) -> Maybe (Fin (k + n))
-  strengthenRec = strengthenRecFin
+  strengthenRec = Fin.strengthenRecFin
 
 -- | Update a set of free variables to a new scope through strengthening
 rescope :: forall n k. SNat k -> Set (Fin (k + n)) -> Set (Fin n)
 rescope k = foldMap g where
    g :: Fin (k + n) -> Set (Fin n)
-   g x = case strengthenRecFin s0 k (undefined :: SNat n) x of
-           Nothing -> Set.empty
-           Just f -> Set.singleton f
+   g x = maybe
+     Set.empty Set.singleton
+     (Fin.strengthenRecFin s0 k (undefined :: SNat n) x)
 
 ----------------------------------------------------------
 -- Type classes for patterns
@@ -176,94 +193,3 @@ instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where
 ------------------------------------------
 
 
-
-
-
-
---------------------------------------------
--- Generic implementation of FV class
---------------------------------------------
-
-class GFV (t :: Nat -> Type) where
-  gappearsFree :: Fin n -> t n -> Bool
-  gfreeVars :: t n -> Set (Fin n)
-
-instance (FV t) => GFV (Rec1 t) where
-  gappearsFree s (Rec1 f) = appearsFree s f
-  {-# INLINE gappearsFree #-}
-  gfreeVars (Rec1 f) = freeVars f
-  {-# INLINE gfreeVars #-}
-
--- Constant types
-instance GFV (K1 i c) where
-  gappearsFree s (K1 c) = False
-  {-# INLINE gappearsFree #-}
-  gfreeVars (K1 c) = Set.empty
-  {-# INLINE gfreeVars #-}
-
-instance GFV U1 where
-  gappearsFree _s U1 = False
-  {-# INLINE gappearsFree #-}
-  gfreeVars U1 = Set.empty
-
-instance GFV f => GFV (M1 i c f) where
-  gappearsFree s = gappearsFree s . unM1
-  {-# INLINE gappearsFree #-}
-  gfreeVars = gfreeVars . unM1
-  {-# INLINE gfreeVars #-}
-
-instance GFV V1 where
-  gappearsFree _s = error "BUG: void type"
-  {-# INLINE gappearsFree #-}
-  gfreeVars v = error "BUG: void type"
-  {-# INLINE gfreeVars #-}
-
-instance (GFV f, GFV g) => GFV (f :*: g) where
-  gappearsFree s (f :*: g) = gappearsFree s f && gappearsFree s g
-  {-# INLINE gappearsFree #-}
-  gfreeVars (f :*: g) = gfreeVars f <> gfreeVars g
-  {-# INLINE gfreeVars #-}
-
-instance (GFV f, GFV g) => GFV (f :+: g) where
-  gappearsFree s (L1 f) = gappearsFree s f
-  gappearsFree s (R1 g) = gappearsFree s g
-  {-# INLINE gappearsFree #-}
-
-  gfreeVars (L1 f) = gfreeVars f
-  gfreeVars (R1 g) = gfreeVars g
-  {-# INLINE gfreeVars #-}
-
-------------------------------------------------
--- Generic implementation of Strengthening class
-------------------------------------------------
-
-class GStrengthen (t :: Nat -> Type) where
-  gstrengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
-
-instance GStrengthen (K1 i c) where
-  gstrengthenRec m n k (K1 c) = pure (K1 c)
-  {-# INLINE gstrengthenRec #-}
-
-instance GStrengthen U1 where
-  gstrengthenRec m n k U1 = pure U1
-  {-# INLINE gstrengthenRec #-}
-
-instance GStrengthen f => GStrengthen (M1 i c f) where
-  gstrengthenRec m n k x = M1 <$> gstrengthenRec m n k (unM1 x)
-  {-# INLINE gstrengthenRec #-}
-
-instance GStrengthen V1 where
-  gstrengthenRec m n k = error "BUG: void type"
-  {-# INLINE gstrengthenRec #-}
-
-instance (GStrengthen f, GStrengthen g) => GStrengthen (f :*: g) where
-  gstrengthenRec m n k (f :*: g) = (:*:) <$> gstrengthenRec m n k f <*> gstrengthenRec m n k g
-  {-# INLINE gstrengthenRec #-}
-
-instance (GStrengthen f, GStrengthen g) => GStrengthen (f :+: g) where
-  gstrengthenRec m n k (L1 f) = L1 <$> gstrengthenRec m n k f
-  gstrengthenRec m n k (R1 g) = R1 <$> gstrengthenRec m n k g
-  {-# INLINE gstrengthenRec #-}
-
-instance Strengthen t => GStrengthen (Rec1 t) where
-  gstrengthenRec k m n (Rec1 t) = Rec1 <$> strengthenRec k m n t

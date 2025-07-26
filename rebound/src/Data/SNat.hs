@@ -1,5 +1,4 @@
 module Data.SNat(
-  -- module Data.Type.Nat,
   Nat(..), toNatural, fromNatural,
   SNat(..),  snatToNat,
   SNatI(..), snat, withSNat, reify, reflect,
@@ -15,7 +14,7 @@ module Data.SNat(
   ToInt(..),
  ) where
 
--- similar to https://hackage.haskell.org/package/fin-0.3.1/docs/Data-Nat.html#t:Nat
+
 -- Singleton nats are purely runtime
 
 import Data.Type.Equality

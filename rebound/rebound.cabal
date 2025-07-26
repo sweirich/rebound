@@ -32,6 +32,7 @@ common common-stanza
     , UndecidableInstances
     , FunctionalDependencies
     , ViewPatterns
+    , PatternSynonyms
 
 library
   import:
@@ -48,7 +49,6 @@ library
       Rebound
     , Rebound.Classes
     , Rebound.Context
-    , Rebound.Lib
     , Rebound.Env
     , Rebound.Env.Strict
     , Rebound.Env.Lazy
@@ -57,6 +57,8 @@ library
     , Rebound.Env.StrictA
     , Rebound.Env.StrictB
     , Rebound.Env.Functional
+    , Rebound.Generics
+    , Rebound.Lib
     , Rebound.MonadNamed
     , Rebound.MonadScoped
     , Rebound.Bind.Single
@@ -64,6 +66,7 @@ library
     , Rebound.Bind.PatN
     , Rebound.Bind.Pat
     , Rebound.Bind.Scoped
+    , Rebound.Refinement
     , Data.SNat
     , Data.Fin
     , Data.Vec

@@ -5,20 +5,22 @@
 module Rebound 
   (module Rebound.Classes,
    module Rebound.Env,
+   module Rebound.Refinement,
+   module Rebound.Generics,
    module Rebound.Lib,
    module Rebound.Context,
+   module Data.LocalName,
    Generic(..),
    Generic1(..))
 where
-  
-import Data.SNat (Nat(..))
-import Data.Fin
-import Data.Vec (Vec(..))
 
 import Rebound.Classes
 import Rebound.Context
 import Rebound.Env
+import Rebound.Refinement
+import Rebound.Generics
 import Rebound.Lib
-import GHC.Generics hiding (S)
+import Data.LocalName
+import GHC.Generics(Generic(..),Generic1(..))
 
 

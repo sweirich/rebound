@@ -1,5 +1,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 -- |
 -- Module      : Rebound.Env
@@ -31,14 +32,6 @@ module Rebound.Env
     shiftNE,
     fromVec,
     toVec,
-    Refinement (..),
-    emptyR,
-    joinR,
-    singletonR,
-    fromRefinement,
-    toRefinement,
-    refine,
-    domain,
     tabulate,
     fromTable,
     weakenE',
@@ -51,8 +44,8 @@ import Rebound.Classes (Shiftable (..))
 import Rebound.Env.Lazy
 import Rebound.Lib
 import Control.Monad
-import Data.Scoped.List(List)
-import Data.Fin (Fin (..))
+import Data.Scoped.List (List, pattern Nil, pattern (:<))
+
 import Data.Fin qualified as Fin
 import Data.Map qualified as Map
 import Data.Vec qualified as Vec
@@ -155,64 +148,6 @@ toVec SZ r = VNil
 toVec m@(snat_ -> SS_ m') r = head r ::: toVec m' (tail r)
 
 ----------------------------------------------------------------
--- Refinements
-----------------------------------------------------------------
-
--- A refinement is a special kind of substitution that does not
--- change the scope, it just replaces all uses of a particular variable
--- with some other term (which could mention that variable).
-newtype Refinement v n = Refinement (Map.Map (Fin n) (v n))
-
-emptyR :: Refinement v n
-emptyR = Refinement Map.empty
-
--- | Note, this operation fails when xs and ys have overlapping domains
-joinR ::
-  forall v n.
-  (SNatI n, Subst v v, Eq (v n)) =>
-  Refinement v n ->
-  Refinement v n ->
-  Maybe (Refinement v n)
-joinR (Refinement xs) (Refinement ys) =
-  Refinement <$> foldM f ys xs'
-  where
-    xs' = Map.toList xs
-    r = fromTable xs'
-    f :: Map.Map (Fin n) (v n) -> (Fin n, v n) -> Maybe (Map.Map (Fin n) (v n))
-    f m (k, v)
-      | Map.member k ys = Nothing
-      | otherwise =
-          let v' = applyE r v
-           in Just $ if v' == var k then m else Map.insert k (applyE r v) m
-
-singletonR :: (SubstVar v, Eq (v n)) => (Fin n, v n) -> Refinement v n
-singletonR (x, t) =
-  if t == var x then emptyR else Refinement (Map.singleton x t)
-
--- Move a refinement to a new scope
-instance (Shiftable v) => Shiftable (Refinement v) where
-  shift :: forall k n. SNat k -> Refinement v n -> Refinement v (k + n)
-  shift k (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g'
-    where
-      f' = Map.mapKeysMonotonic (Fin.shiftN @k @n k) r
-      g' = Map.map (shift k) f'
-
-fromRefinement :: (SNatI n, SubstVar v) => Refinement v n -> Env v n n
-fromRefinement (Refinement x) = fromTable (Map.toList x)
-
-toRefinement :: (SNatI n, SubstVar v) => Env v n n -> Refinement v n
-toRefinement r = Refinement (Map.fromList (tabulate r))
-
-refines :: forall n v. (SNatI n, Subst v v, Eq (v n)) => Refinement v n -> Fin n -> Bool
-refines r i = applyE (fromRefinement r) (var @v i) /= var @v i
-
-refine :: (SNatI n, Subst v c) => Refinement v n -> c n -> c n
-refine r = applyE (fromRefinement r)
-
-domain :: Refinement v n -> [Fin n]
-domain (Refinement m) = Map.keys m
-
-----------------------------------------------------------------
 -- show for environments
 ----------------------------------------------------------------
 
@@ -232,39 +167,6 @@ fromTable rho =
     Just t -> t
     Nothing -> var f
 
---------------------------------------------
--- Generic implementation of Subst class
---------------------------------------------
-
--- Constant types
-instance GSubst v (K1 i c) where
-  gsubst s (K1 c) = K1 c
-  {-# INLINE gsubst #-}
-
-instance GSubst v U1 where
-  gsubst _s U1 = U1
-  {-# INLINE gsubst #-}
-
-instance (GSubst b f) => GSubst b (M1 i c f) where
-  gsubst s = M1 . gsubst s . unM1
-  {-# INLINE gsubst #-}
-
-instance GSubst b V1 where
-  gsubst _s = error "BUG: void type"
-  {-# INLINE gsubst #-}
-
-instance (GSubst b f, GSubst b g) => GSubst b (f :*: g) where
-  gsubst s (f :*: g) = gsubst s f :*: gsubst s g
-  {-# INLINE gsubst #-}
-
-instance (GSubst b f, GSubst b g) => GSubst b (f :+: g) where
-  gsubst s (L1 f) = L1 $ gsubst s f
-  gsubst s (R1 g) = R1 $ gsubst s g
-  {-# INLINE gsubst #-}
-
-instance (Subst b g) => GSubst b (Rec1 g) where
-  gsubst s (Rec1 f) = Rec1 (applyE s f)
-  {-# INLINE gsubst #-}
 
 
 ----------------------------------------------------------------
@@ -273,7 +175,9 @@ instance (Subst b g) => GSubst b (Rec1 g) where
 
 -- Scoped List
 
-instance Subst v t => Subst v (List t)
+instance Subst v t => Subst v (List t) where
+  applyE r Nil = Nil
+  applyE r (x :< xs) = applyE r x :< applyE r xs
 
 -- Fin
 

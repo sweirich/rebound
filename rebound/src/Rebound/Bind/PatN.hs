@@ -2,7 +2,7 @@
 -- This file does not need to be qualified when imported. Instead, it postfixes
 -- all operations with 1/2/N to distinguish them.
 module Rebound.Bind.PatN
-  ( module Rebound.Classes,
+  ( module Rebound,
 
     -- * single binder --
     Bind1 (..),
@@ -39,18 +39,12 @@ module Rebound.Bind.PatN
 where
 
 import Rebound.Bind.Pat qualified as Pat
-import Rebound.Classes
-import Rebound.Env
-import Data.Fin (Fin)
+import Rebound
+
 import Data.Fin qualified as Fin
-import Data.Nat
-import Data.SNat
-import Data.Vec (Vec)
-import qualified Data.Vec as Vec
-import Rebound.Classes
-import qualified Rebound.Bind.Pat as Pat
-import Rebound.Env
-import Data.Type.Equality
+import Data.Vec qualified as Vec
+
+
 
 ----------------------------------------------------------------
 -- N-ary patterns

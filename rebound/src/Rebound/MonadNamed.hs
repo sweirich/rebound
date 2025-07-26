@@ -17,8 +17,7 @@ module Rebound.MonadNamed
   )
 where
 
-import Rebound.Classes
-import Rebound.Lib
+import Rebound
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Data.SNat as SNat
