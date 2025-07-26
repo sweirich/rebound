@@ -9,6 +9,7 @@ module Rebound.Bind.Single
     unbindl,
     getBody,
     instantiate,
+    bindWith,
     unbindWith,
     instantiateWith,
     applyUnder,
@@ -23,6 +24,9 @@ type Bind v c n = Bind1 v c n
 
 bind :: (Subst v c) => c (S n) -> Bind v c n
 bind = bind1
+
+bindWith :: forall v c m n. Env v m n -> c (S m) -> Bind v c n
+bindWith = bindWith1 
 
 unbind :: forall v c n d. (SNatI n, Subst v c) => Bind v c n -> ((SNatI (S n)) => c (S n) -> d) -> d
 unbind = unbind1

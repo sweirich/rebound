@@ -11,6 +11,9 @@ module Rebound.Bind.Local
     unbindl,
     instantiate,
     applyUnder,
+    bindWith,
+    unbindWith,
+    instantiateWith
   )
 where
 
@@ -24,6 +27,9 @@ type Bind v c n = Pat.Bind v c LocalName n
 
 bind :: (Subst v c) => LocalName -> c (S n) -> Bind v c n
 bind = Pat.bind
+
+bindWith :: forall v c m n. LocalName -> Env v m n -> c (S m) -> Bind v c n
+bindWith = Pat.bindWith 
 
 getLocalName :: Bind v c n -> LocalName
 getLocalName = Pat.getPat

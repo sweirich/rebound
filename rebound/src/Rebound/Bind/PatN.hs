@@ -11,6 +11,7 @@ module Rebound.Bind.PatN
     unbindl1,
     getBody1,
     instantiate1,
+    bindWith1,
     unbindWith1,
     instantiateWith1,
     applyUnder1,
@@ -21,6 +22,7 @@ module Rebound.Bind.PatN
     unbind2,
     getBody2,
     instantiate2,
+    bindWith2,
     unbindWith2,
     instantiateWith2,
     applyUnder2,
@@ -32,6 +34,7 @@ module Rebound.Bind.PatN
     unbindlN,
     getBodyN,
     instantiateN,
+    bindWithN,
     unbindWithN,
     instantiateWithN,
     applyUnderN,
@@ -68,6 +71,9 @@ type BindN v c m n = Pat.Bind v c (PatN m) n
 
 bindN :: forall m v c n. (Subst v c, SNatI m) => c (m + n) -> BindN v c m n
 bindN = Pat.bind (PatN (snat @m))
+
+bindWithN :: forall p v c m n. (SNatI p) => Env v m n -> c (p + m) -> BindN v c p n
+bindWithN = Pat.bindWith (PatN (snat @p))
 
 unbindN :: forall m v c n d. (Subst v c, SNatI n, SNatI m) => BindN v c m n -> ((SNatI (m + n)) => c (m + n) -> d) -> d
 unbindN bnd f = Pat.unbind bnd (const f)
@@ -117,6 +123,9 @@ type Bind1 v c n = Pat.Bind v c (PatN N1) n
 
 bind1 :: (Subst v c) => c (S n) -> Bind1 v c n
 bind1 = Pat.bind (PatN s1)
+
+bindWith1 :: forall v c m n. Env v m n -> c (S m) -> Bind1 v c n
+bindWith1 = Pat.bindWith (PatN s1)
 
 getBody1 ::
   forall v c n.
@@ -174,6 +183,9 @@ type Bind2 v c n = Pat.Bind v c (PatN N2) n
 
 bind2 :: (Subst v c) => c (S (S n)) -> Bind2 v c n
 bind2 = Pat.bind (PatN s2)
+
+bindWith2 :: forall v c m n. Env v m n -> c (S (S m)) -> Bind2 v c n
+bindWith2 = Pat.bindWith (PatN s2)
 
 getBody2 ::
   forall v c n.
