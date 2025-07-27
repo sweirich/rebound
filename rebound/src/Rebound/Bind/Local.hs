@@ -19,6 +19,7 @@ where
 
 import Rebound
 import Rebound.Bind.Pat qualified as Pat
+import Data.Fin qualified as Fin
 
 ---------------------------------------------------------------
 -- LocalBind operations (convenience wrappers)
@@ -63,3 +64,20 @@ unbindWith = Pat.unbindWith
 
 instantiateWith :: (SubstVar v) => Bind v c n -> v n -> (forall m n. Env v m n -> c m -> c n) -> c n
 instantiateWith b v = Pat.instantiateWith b (oneE v)
+
+
+-- Example
+
+data Exp n = Var (Fin n) | App (Exp n) (Exp n) | Lam (Bind Exp Exp n) 
+  deriving (Eq,Generic1)
+instance SubstVar Exp where var = Var
+instance Subst Exp Exp where 
+  isVar (Var x) = Just (Refl,x)
+  isVar _ = Nothing
+t1 :: Exp Z
+t1 = Lam (bind (LocalName "x") (Var Fin.f0))
+t2 :: Exp Z
+t2 = Lam (bind (LocalName "y") (Var Fin.f0))
+
+-- >>> t1 == t2
+-- True

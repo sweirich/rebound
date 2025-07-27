@@ -1,3 +1,5 @@
+-- | Singleton nats
+-- Runtime data that connects to type-level nats
 module Data.SNat(
   Nat(..), toNatural, fromNatural,
   SNat(..),  snatToNat,
@@ -27,10 +29,11 @@ import Prelude hiding (pred, succ)
 -- axioms (use unsafeCoerce)
 -----------------------------------------------------
 
--- Monoid properties for plus
+-- | Zero is identity element for +
 axiomPlusZ :: forall m. m + Z :~: m
 axiomPlusZ = unsafeCoerce Refl
 
+-- | Plus is associative
 axiomAssoc :: forall p m n. p + (m + n) :~: (p + m) + n
 axiomAssoc = unsafeCoerce Refl
 
@@ -38,12 +41,16 @@ axiomAssoc = unsafeCoerce Refl
 -- Nats (singleton nats and implicit singletons)
 -----------------------------------------------------
 
+-- | 0 
 type N0 = Z
 
+-- | 1
 type N1 = S N0
 
+-- | 2
 type N2 = S N1
 
+-- | 3
 type N3 = S N2
 
 ---------------------------------------------------------
