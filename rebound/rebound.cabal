@@ -34,7 +34,7 @@ common common-stanza
     , ViewPatterns
     , PatternSynonyms
     , PackageImports
-
+    , DerivingStrategies
 library
   import:
       common-stanza
@@ -73,9 +73,10 @@ library
     , Data.Fin
     , Data.Vec
     , Data.LocalName
-    , Data.IsListOps
     , Data.Scoped.Telescope
     , Data.Scoped.List
+    , Data.Scoped.Classes
+    , Data.Scoped.Maybe
   hs-source-dirs: src
 
 library rebound-examples

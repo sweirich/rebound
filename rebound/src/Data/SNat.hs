@@ -16,7 +16,6 @@ module Data.SNat(
   ToInt(..),
  ) where
 
-
 -- Singleton nats are purely runtime
 
 import Data.Type.Equality

@@ -20,8 +20,8 @@ import Data.Maybe qualified as Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vec qualified
-import Data.Scoped.List (List)
-import Data.Scoped.List as List
+import Data.Scoped.List (List, pattern Nil, pattern (:<))
+import Data.Scoped.List qualified as List
 import GHC.Generics (Generic1)
 
 -- In this system, `Match` introduces a Pi type and generalizes

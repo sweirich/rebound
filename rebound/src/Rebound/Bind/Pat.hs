@@ -216,7 +216,7 @@ data PatList (pat :: Nat -> Type) p where
     PatList pat p2 ->
     PatList pat (p2 + p1)
 
--- The length of a pattern list is the number of patterns,
+-- | The length of a pattern list is the number of patterns,
 -- not the number of variables that it binds
 lengthPL :: PatList pat p -> Int
 lengthPL PNil = 0
