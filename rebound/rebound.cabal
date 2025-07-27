@@ -33,6 +33,7 @@ common common-stanza
     , FunctionalDependencies
     , ViewPatterns
     , PatternSynonyms
+    , PackageImports
 
 library
   import:

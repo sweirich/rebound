@@ -2,6 +2,8 @@
 -- Module      : Rebound
 -- Description : Explicit substitutions
 -- Stability   : experimental
+-- This top level module reexports the core of the library. However, it should be used in 
+-- conjunction with one or more "Bind" types.
 module Rebound 
   (module Rebound.Classes,
    module Rebound.Env,

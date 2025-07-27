@@ -3,7 +3,7 @@
 -- In this (simple) version, patterns do not contain occurrences to
 -- free variables in scope (e.g. in a telescope or type annotation).
 -- The pattern type must have kind `Type`
--- For more expressivity, see Rebound.Bind.Scoped.
+-- For more expressivity, see `Rebound.Bind.Scoped`.
 module Rebound.Bind.Pat
   ( module Rebound,
     Named(..),
@@ -33,19 +33,17 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 ----------------------------------------------------------
--- Bind type
+-- * Bind type
 ----------------------------------------------------------
 
--- The `Bind` type binds `Size pat` variables.
+-- | The `Bind` type binds `Size pat` variables.
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
   Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 
-
--- The instance above defers to the following instance for the binders themselves
--- To compare pattern binders, we need to unbind, but also
+-- | To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
 instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat n) where
   b1 == b2 = 
@@ -60,6 +58,7 @@ bind ::
   Bind v c pat n
 bind pat = Bind pat idE
 
+-- | Create a 'Bind' with a provided substitution.
 bindWith :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 bindWith = Bind
 
@@ -175,7 +174,7 @@ instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
             bind p <$> strengthenRec (sPlus (size p) k) m n t'
 
 -----------------------------------------------------------------
--- Rebind type
+-- * Rebind type
 ---------------------------------------------------------------
 
 data Rebind pat p2 n where
@@ -204,7 +203,7 @@ instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
         Rebind p1 <$> strengthenRec (sPlus (size p1) k) m n p2
 
 --------------------------------------------------------------
--- Lists of patterns
+-- * Lists of patterns
 --------------------------------------------------------------
 
 -- | lists of patterns where variables at each position bind

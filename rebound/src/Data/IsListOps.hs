@@ -4,7 +4,6 @@
 -- have the same kinds. If the conversion to list is not 0-cost (i.e. a newtype)
 -- then these definitions will incur overhead when deferring to the list 
 -- operations.
-{-# LANGUAGE PatternSynonyms #-}
 module Data.IsListOps where
 
 import Prelude hiding ((++), concat, foldr) 
