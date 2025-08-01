@@ -147,7 +147,7 @@ lookup n = iter . Scoped.scope_names <$> Scoped.scope
   where
     iter :: Vec n LocalName -> Maybe (Fin n)
     iter Vec.VNil = Nothing
-    iter (h Vec.::: t) = if h == n then Just FZ else FS <$> iter t
+    iter (h Vec.::: t) = if name h == name n then Just FZ else FS <$> iter t
 
 instance Scoping n LocalName (ScopedName n) where
   scope' n = do
