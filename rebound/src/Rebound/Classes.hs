@@ -22,7 +22,7 @@ import GHC.Generics (Generic1(..))
 -- Indices/variables shifting
 ----------------------------------------------------------
 class Shiftable t where
-  shift :: SNat k -> t n -> t (k + n)
+  shift :: (SNatI n) => SNat k -> t n -> t (k + n)
   -- a good default implementation of this is `shiftFromApply`. But the 
   -- `Subst` class is not yet in scope.  
   
@@ -32,20 +32,20 @@ class Shiftable t where
 
 class FV (t :: Nat -> Type) where
   -- | Does a particular variable appear free?
-  appearsFree :: Fin n -> t n -> Bool
-  default appearsFree :: (Generic1 t, GFV (Rep1 t)) => Fin n -> t n -> Bool
+  appearsFree :: (SNatI n) => Fin n -> t n -> Bool
+  default appearsFree :: (Generic1 t, GFV (Rep1 t), SNatI n) => Fin n -> t n -> Bool
   appearsFree x e = gappearsFree x (from1 e)
   {-# INLINE appearsFree #-}
 
   -- | Calculate all of the free variables in a term
-  freeVars :: t n -> Set (Fin n)
-  default freeVars :: (Generic1 t, GFV (Rep1 t)) => t n -> Set (Fin n)
+  freeVars :: (SNatI n) => t n -> Set (Fin n)
+  default freeVars :: (Generic1 t, GFV (Rep1 t), SNatI n) => t n -> Set (Fin n)
   freeVars e = gfreeVars (from1 e)
   {-# INLINE freeVars #-}
 
 class GFV (t :: Nat -> Type) where
-  gappearsFree :: Fin n -> t n -> Bool
-  gfreeVars :: t n -> Set (Fin n)
+  gappearsFree :: (SNatI n) => Fin n -> t n -> Bool
+  gfreeVars :: (SNatI n) => t n -> Set (Fin n)
 
 ----------------------------------------------------------
 -- * Strengthening
@@ -82,10 +82,10 @@ class GStrengthen (t :: Nat -> Type) where
 ---------------------------------------------------------
 
 instance FV t => FV (List t) where
-  appearsFree :: Fin n -> List t n -> Bool
+  appearsFree :: (SNatI n) => Fin n -> List t n -> Bool
   appearsFree x = List.any (appearsFree x)
 
-  freeVars :: List t n -> Set (Fin n)
+  freeVars :: (SNatI n) => List t n -> Set (Fin n)
   freeVars = List.foldr (\x s -> freeVars x `Set.union` s) Set.empty
 
 instance Strengthen t => Strengthen (List t) where
@@ -121,7 +121,7 @@ rescope k = foldMap g where
 -- This number does not need to be an explicit parameter of the type
 -- so that we have flexibility about what types we can use as
 -- patterns.
-class Sized (t :: Type) where
+class (SNatI (Size t)) => Sized (t :: Type) where
   -- Retrieve size from the type (number of variables bound by the pattern)
   type Size t :: Nat
   -- Access size as a term
@@ -150,7 +150,7 @@ instance PatEq LocalName LocalName where
   patEq p1 p2 = Just Refl
 
 -- ** SNats
-instance Sized (SNat n) where
+instance (SNatI n) => Sized (SNat n) where
   type Size (SNat n) = n
   size n = n
 
@@ -160,16 +160,13 @@ instance PatEq (SNat n1) (SNat n2) where
 
 -- ** Vectors
 
-instance Sized (Vec n a) where
+instance (SNatI n) => Sized (Vec n a) where
   type Size (Vec n a) = n
   size = Vec.vlength
 
 instance Eq a => PatEq (Vec n1 a) (Vec n2 a) where
-  patEq VNil VNil = Just Refl
-  patEq (x ::: xs) (y ::: ys) | x == y,
-    Just Refl <- patEq xs ys
-    = Just Refl
-  patEq _ _ = Nothing
+  patEq :: Eq a => Vec n1 a -> Vec n2 a -> Maybe (Size (Vec n1 a) :~: Size (Vec n2 a))
+  patEq = Vec.veq
 
 -- ** Unit (trivial)
 
@@ -179,7 +176,7 @@ instance PatEq () () where patEq _ _ = Just Refl
 
 -- ** Pairs
 
-instance (Sized a, Sized b) => Sized (a,b) where
+instance (SNatI ((Size a) + (Size b)), Sized a, Sized b) => Sized (a,b) where
    type Size (a,b) = Size a + Size b
    size (x,y) = sPlus (size x) (size y)
 

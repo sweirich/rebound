@@ -48,7 +48,7 @@ singletonR (x, t) =
 
 -- Move a refinement to a new scope
 instance (Shiftable v) => Shiftable (Refinement v) where
-  shift :: forall k n. SNat k -> Refinement v n -> Refinement v (k + n)
+  shift :: forall k n. (SNatI n) => SNat k -> Refinement v n -> Refinement v (k + n)
   shift k (Refinement (r :: Map.Map (Fin n) (v n))) = Refinement g'
     where
       f' = Map.mapKeysMonotonic (Fin.shiftN @k @n k) r

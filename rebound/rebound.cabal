@@ -52,12 +52,7 @@ library
     , Rebound.Classes
     , Rebound.Context
     , Rebound.Env
-    , Rebound.Env.Strict
-    , Rebound.Env.Lazy
-    , Rebound.Env.LazyA
-    , Rebound.Env.LazyB
-    , Rebound.Env.StrictA
-    , Rebound.Env.StrictB
+    , Rebound.Env.Vector
     , Rebound.Env.Functional
     , Rebound.Generics
     , Rebound.Lib
@@ -67,43 +62,15 @@ library
     , Rebound.Bind.Local
     , Rebound.Bind.PatN
     , Rebound.Bind.Pat
-    , Rebound.Bind.Scoped
     , Rebound.Refinement
     , Data.SNat
     , Data.Fin
     , Data.Vec
     , Data.LocalName
-    , Data.Scoped.Telescope
     , Data.Scoped.List
     , Data.Scoped.Classes
     , Data.Scoped.Maybe
   hs-source-dirs: src
-
-library rebound-examples
-  import:
-    common-stanza
-  visibility: private
-  build-depends:
-    base >=4.15
-    , rebound
-    , mtl
-    , HUnit
-    , QuickCheck
-    , containers
-    , prettyprinter
-  exposed-modules:
-      LC
-    , LCQC
-    , LCLet
-    , PTS
-    , Pat
-    , DepMatch
-    , ScopeCheck
-    , HOAS
-    , SystemF
-    , PureSystemF
-    , LinLC
-  hs-source-dirs: examples
 
 test-suite rebound-tests
   import:

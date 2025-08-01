@@ -90,7 +90,7 @@ nil :: Fin Z -> a
 nil = \case
 
 (.:) :: a -> (Fin m -> a) -> Fin (S m) -> a               -- extension
-v .: r = \case { FZ -> v ; FS y -> r y }
+v .: r = \f -> case fin_ f of { FZ_ -> v ; FS_ y -> r y }
 
 (.>>) :: Env p m -> Env m n -> Env p n
 r .>> s = apply s . r
@@ -100,7 +100,7 @@ shift :: Env m (S m)
 shift = \x -> DVar (Fin.shiftN Nat.s1 x)
 
 up :: Env m n -> Env (S m) (S n)             -- shift
-up s = DVar FZ .: (s .>> shift)
+up s = DVar f0 .: (s .>> shift)
 
 instantiate :: Bind n -> Exp n -> Exp n
 instantiate (Bind r b) v = apply (v .: r) b
@@ -167,7 +167,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam (bind b')
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)
     to vs (Bool b) = DBool b

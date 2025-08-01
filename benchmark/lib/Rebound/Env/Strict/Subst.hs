@@ -73,7 +73,7 @@ instance Subst DB DB where
   {-# INLINEABLE applyE #-}
 
 
-{-# SPECIALIZE idE :: Env DB n n #-}
+{-# SPECIALIZE idE :: SNatI n => Env DB n n #-}
 
 {-# SPECIALIZE (.>>) :: Env DB m n -> Env DB n p -> Env DB m p #-}
 
@@ -85,7 +85,7 @@ instance Subst DB DB where
 
 -- Computing the normal form proceeds as usual.
 
-nf :: DB n -> DB n
+nf :: SNatI n => DB n -> DB n
 nf e@(DVar _) = e
 nf (DLam b) = DLam (nf b)
 nf (DApp f a) =
@@ -99,7 +99,7 @@ nf (DIf a b c) =
     DBool False -> nf b
     a' -> DIf (nf a) (nf b) (nf c)
 
-whnf :: DB n -> DB n
+whnf :: SNatI n => DB n -> DB n
 whnf e@(DVar _) = e
 whnf e@(DLam _) = e
 whnf (DApp f a) =
@@ -115,7 +115,7 @@ whnf (DIf a b c) =
 
 
 
-eval :: DB n -> DB n
+eval :: SNatI n => DB n -> DB n
 eval e@(DVar _) = e
 eval e@(DLam _) = e
 eval (DApp f a) =
@@ -143,7 +143,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam b'
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (Bool b)  = DBool b
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)

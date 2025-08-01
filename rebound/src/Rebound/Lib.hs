@@ -10,14 +10,17 @@ module Rebound.Lib
     Fin (..),
     Vec (..),
     ToInt (..),
-    module Data.Nat,
+    -- module Data.Nat,
+    -- module Data.SNat,
+    Nat(Z,S), 
     module Data.SNat,
+    Fin_(..), fin_, f0, f1, f2, fs,
+    Vec_(..), vec_, (|>),
   )
 where
 
-import Data.Fin (Fin (..))
 import Data.Kind (Type)
-import Data.Nat
 import Data.SNat
 import Data.Type.Equality
-import Data.Vec (Vec (..))
+import Data.Vec (Vec, Vec_(..), vec_, (|>))
+import Data.Fin (Fin, Fin_(..), fin_, f0, f1, f2, fs)

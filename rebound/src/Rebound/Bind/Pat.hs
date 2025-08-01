@@ -40,26 +40,26 @@ import qualified Data.Set as Set
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
-  Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+  Bind :: (SNatI m) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 
 
 -- | To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
-instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat n) where
+instance (Eq pat, Sized pat, forall n. SNatI n => Eq (c n), Subst v c, SNatI n) => Eq (Bind v c pat n) where
   b1 == b2 =
     getPat b1 == getPat b2
-      && getBody b1 == getBody b2
+      && (withSNat (sPlus (size $ getPat b1) (snat @n)) $ getBody b1 == getBody b2)
 
 -- | Create a `Bind` with an identity substitution.
 bind ::
-  (Sized pat, Subst v c) =>
+  (Sized pat, Subst v c, SNatI n) =>
   pat ->
   c (Size pat + n) ->
   Bind v c pat n
 bind pat = Bind pat idE
 
 -- | Create a 'Bind' with a provided substitution.
-bindWith :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
+bindWith :: (SNatI m, SNatI n) => pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 bindWith = Bind
 
 -- | Access the pattern of a pattern binding
@@ -71,7 +71,7 @@ getPat (Bind pat env t) = pat
 -- bound in the pattern
 getBody ::
   forall v c pat n.
-  (Sized pat, Subst v c) =>
+  (Sized pat, Subst v c, SNatI n) =>
   Bind v c pat n ->
   c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
@@ -110,7 +110,7 @@ unbind bnd f =
   withSNat (sPlus (size (getPat bnd)) (snat @n)) $
     f (getPat bnd) (getBody bnd)
 
-unbindl :: (Sized pat, Subst v c) => Bind v c pat n -> (pat, c (Size pat + n))
+unbindl :: (Sized pat, Subst v c, SNatI n) => Bind v c pat n -> (pat, c (Size pat + n))
 unbindl bnd = (getPat bnd, getBody bnd)
 
 -- | Apply a function to the pattern, suspended environment, and body
@@ -126,7 +126,7 @@ unbindWith (Bind pat (r :: Env v m n) t) f =
 -- | apply an environment-parameterized function & environment
 -- underneath a binder
 applyUnder ::
-  (Sized pat, Subst v c2) =>
+  (Sized pat, Subst v c2, SNatI n2) =>
   (forall m n. Env v m n -> c1 m -> c2 n) ->
   Env v n1 n2 ->
   Bind v c1 pat n1 ->
@@ -150,26 +150,22 @@ instance (SubstVar v) => Subst v (Bind v c p) where
   applyE env1 (Bind p env2 m) = Bind p (env2 .>> env1) m
 
 instance (Subst v c, Sized p, FV c) => FV (Bind v c p) where
-  appearsFree :: Fin n -> Bind v c p n -> Bool
-  appearsFree n b =
+  appearsFree :: forall n. (SNatI n) => Fin n -> Bind v c p n -> Bool
+  appearsFree n b = withSNat (sPlus (snat @(Size p)) (snat @n)) $
     appearsFree (Fin.shiftN (size (getPat b)) n) (getBody b)
-  freeVars :: forall n. Bind v c p n -> Set (Fin n)
-  freeVars b = rescope (size (getPat b)) (freeVars (getBody b))
-
+  freeVars :: forall n. (SNatI n) => Bind v c p n -> Set (Fin n)
+  freeVars b = withSNat (sPlus (snat @(Size p)) (snat @n)) $
+    rescope (size (getPat b)) (freeVars (getBody b))
 
 instance (Sized p, Subst v c, Strengthen c) => Strengthen (Bind v c p) where
-  strengthenRec ::
-    SNat k ->
-    SNat m ->
-    SNat n ->
-    Bind v c p (k + (m + n)) ->
-    Maybe (Bind v c p (k + n))
+  strengthenRec :: SNat k -> SNat m -> SNat n
+                -> Bind v c p (k + (m + n)) -> Maybe (Bind v c p (k + n))
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) bnd =
     withSNat (sPlus k (sPlus m n)) $
+    withSNat (sPlus k n) $
       unbind bnd $ \(p :: p) t' ->
-        case ( axiomAssoc @(Size p) @k @(m + n),
-               axiomAssoc @(Size p) @k @n
-             ) of
+        case (axiomAssoc @(Size p) @k @(m + n),
+              axiomAssoc @(Size p) @k @n)  of
           (Refl, Refl) ->
             bind p <$> strengthenRec (sPlus (size p) k) m n t'
 
@@ -185,11 +181,15 @@ instance (SubstVar v, Sized p1, Subst v p2) => Shiftable (Rebind p1 p2) where
 
 instance (SubstVar v, Sized p1, Subst v p2) => Subst v (Rebind p1 p2) where
   applyE :: Env v n m -> Rebind p1 p2 n -> Rebind p1 p2 m
-  applyE r (Rebind p1 p2) = Rebind p1 (applyE (upN (size p1) r) p2)
+  applyE r (Rebind p1 p2) =
+    withScope r $
+      Rebind p1 (applyE (upN (size p1) r) p2)
 
 instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
-  appearsFree :: (Sized p1, FV p2) => Fin n -> Rebind p1 p2 n -> Bool
-  appearsFree n (Rebind p1 p2) = appearsFree (Fin.shiftN (size p1) n) p2
+  appearsFree :: forall n. (Sized p1, FV p2, SNatI n) => Fin n -> Rebind p1 p2 n -> Bool
+  appearsFree n (Rebind p1 p2) =
+    withSNat (sPlus (size p1) (snat @n))
+    appearsFree (Fin.shiftN (size p1) n) p2
 
   freeVars :: (Sized p1, FV p2) => Rebind p1 p2 n -> Set (Fin n)
   freeVars = undefined
@@ -222,11 +222,11 @@ lengthPL :: PatList pat p -> Int
 lengthPL PNil = 0
 lengthPL (PCons _ ps) = 1 + lengthPL ps
 
-instance (forall n. Sized (pat n)) => Sized (PatList pat p) where
+instance (forall n. Sized (pat n), SNatI p) => Sized (PatList pat p) where
   type Size (PatList pat p) = p
   size PNil = s0
-  size (PCons (p1 :: pat p1) (p2 :: PatList pat p2)) =
-    sPlus @p2 @(Size (pat p1)) (size p2) (size p1)
+  size (PCons (p1 :: pat p1) (p2 :: PatList pat p2)) = undefined
+    -- sPlus @p2 @(Size (pat p1)) (size p2) (size p1)
 
 instance
   (forall p1 p2. PatEq (pat p1) (pat p2)) =>
@@ -240,11 +240,11 @@ instance
     return Refl
   patEq _ _ = Nothing
 
-instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
+instance (forall p. Named name (pat p), SNatI p) => Named name (PatList pat p) where
   names :: PatList pat p -> Vec p name
-  names PNil = VNil
-  names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
-    Vec.append @ps @p1 (names ps) (names p1)
+  names PNil = Vec.empty
+  names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) = undefined
+    -- Vec.append @ps @p1 (names ps) (names p1)
 
 -- instance
 --   (forall p n. WithData v (pat p) n) =>

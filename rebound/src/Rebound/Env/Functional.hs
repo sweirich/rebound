@@ -12,7 +12,6 @@ import Data.Fin (Fin(..))
 import qualified Data.Fin as Fin
 import GHC.Generics hiding (S)
 
-
 ------------------------------------------------------------------------------
 -- Substitution class declarations
 ------------------------------------------------------------------------------
@@ -47,8 +46,12 @@ gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 -- Environment representation as finite function
 ------------------------------------------------------------------------------
 
-newtype Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) =
-    Env { applyEnv :: Fin n -> a m }
+data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) = 
+  SNatI m =>
+    Env { applyEnv :: Fin n -> a m , size :: SNat n} 
+
+withScope :: Env a n m -> ((SNatI n, SNatI m) => c) -> c
+withScope e@(Env{}) c = withSNat (size e) c
 
 ------------------------------------------------------------------------------
 -- Application
@@ -64,38 +67,48 @@ applyOpt f = f
 ------------------------------------------------------------------------------
 
 -- | The empty environment (zero domain)
-zeroE :: Env v Z n
-zeroE = Env $ \ x -> case x of {}
+zeroE :: SNatI n => Env v Z n
+zeroE = Env Fin.absurd s0
 {-# INLINEABLE zeroE #-}
 
--- make the bound bigger, on the right, but do not change any indices.
+-- make the bound bigger, on the right, but do not change any indices. 
 -- this is an identity function
-weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER m = Env $ \x -> var (Fin.weakenFinRight m x)
+weakenER :: forall m v n. (SubstVar v, SNatI n) => SNat m -> Env v n (n + m)
+weakenER m = 
+  withSNat (sPlus (snat @n) m) $
+  Env (\x -> var (Fin.weakenFinRight m x)) (snat @n)
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.
 -- this is an identity function
-weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (m + n)
-weakenE' m = Env $ \x -> var (Fin.weakenFin m x)
+weakenE' :: forall m v n. (SubstVar v, SNatI n) => SNat m -> Env v n (m + n)
+weakenE' m = 
+  withSNat (sPlus m (snat @n)) $
+  Env (\x -> var (Fin.weakenFin m x)) (snat @n)
 {-# INLINEABLE weakenE' #-}
 
 -- | increment all free variables by m
-shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
-shiftNE m = Env $ \x -> var (Fin.shiftN m x)
+shiftNE :: forall v m n. (SubstVar v, SNatI n) => SNat m -> Env v n (m + n)
+shiftNE m = 
+  withSNat (sPlus m (snat @n)) $
+  Env (\x -> var (Fin.shiftN m x)) (snat @n)
 {-# INLINEABLE shiftNE #-}
 
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
-(.:) :: SubstVar v => v m -> Env v n m -> Env v (S n) m
-ty .: s = Env $ \y -> case y of
-                 FZ -> ty
-                 FS x -> applyEnv s x
+(.:) :: SNatI m => v m -> Env v n m -> Env v (S n) m
+ty .: s = 
+  Env (\y -> case fin_ y of 
+                 FZ_ -> ty 
+                 FS_ x -> applyEnv s x) (ss (size s))
 {-# INLINEABLE (.:) #-}
 
 -- | inverse of `cons` -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
-tail x = shiftNE s1 .>> x
+tail x = 
+  withScope x $
+  withSNat (prev (size x)) $
+  shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
 
 -- | composition: do f then g
@@ -106,15 +119,22 @@ tail x = shiftNE s1 .>> x
 -- | smart constructor for composition
 comp :: forall a m n p. SubstVar a =>
          Env a m n -> Env a n p -> Env a m p
-comp s1 s2 = Env $ \x -> applyE s2 (applyEnv s1 x)
+comp s1 s2 = 
+  withScope s1 $
+  withScope s2 $
+  Env (\x -> applyE s2 (applyEnv s1 x)) (size s1)
 {-# INLINEABLE comp #-}
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
-up e = var Fin.f0 .: comp e (shiftNE s1)
+up e = 
+  withScope e $
+  var Fin.f0 .: comp e (shiftNE s1)
 {-# INLINEABLE up #-}
 
 -- | mapping operation for range of the environment
 transform :: (forall m. a m -> b m) -> Env a n m -> Env b n m
-transform f g = Env $ \x -> f (applyEnv g x)
+transform f g = 
+  withScope g $
+  Env (\x -> f (applyEnv g x)) (size g)
 {-# INLINEABLE transform #-}

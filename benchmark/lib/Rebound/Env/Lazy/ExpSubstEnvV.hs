@@ -77,13 +77,13 @@ instance Subst Exp Exp where
   applyE s (Sub r t) = applyE (r .>> s) t
   {-# INLINEABLE applyE #-}
 
-{-# SPECIALIZE idE :: Env Exp n n #-}
+{-# SPECIALIZE idE :: SNatI n => Env Exp n n #-}
 
 {-# SPECIALIZE (.>>) :: Env Exp m n -> Env Exp n p -> Env Exp m p #-}
 ----------------------------------------------------
 
 -- result of nf is not a Sub
-nf :: Exp n -> Exp n
+nf :: SNatI n => Exp n -> Exp n
 nf e@(DVar _) = e
 nf (DLam b) = DLam (nf b)
 nf (DApp f a) =
@@ -99,7 +99,7 @@ nf (DBool b) = DBool b
 nf (Sub r t) = nf (applyE r t)
 
 
-whnf' :: Env Exp m n -> Exp m -> Exp n
+whnf' :: SNatI n => Env Exp m n -> Exp m -> Exp n
 whnf' r e@(DVar x) = applyE r e
 whnf' r e@(DLam _) = applyE r e
 whnf' r (DApp f a) =
@@ -132,7 +132,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam b'
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)
     to vs (Bool b) = DBool b

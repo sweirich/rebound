@@ -80,15 +80,15 @@ instance Eq (Bind n) where
 type Sub m n = Fin m -> Exp n
 
 (.:) :: a -> (Fin m -> a) -> Fin (S m) -> a            -- extension
-v .: r = \case { FZ -> v ; FS y -> r y }
+v .: r = \f -> case fin_ f of { FZ_ -> v ; FS_ y -> r y }
 
 (.>>) :: Sub m n -> Sub p m -> Sub p n
 r .>> s = apply r . s
 
 up :: Sub m n -> Sub (S m) (S n)                       -- shift
-up s = \case
-          FZ -> DVar  FZ                               -- leave index 0 alone
-          FS f -> apply (DVar . FS) (s f)              -- shift other indices
+up s = \f -> case fin_ f of
+          FZ_ -> DVar  f0                               -- leave index 0 alone
+          FS_ f -> apply (DVar . fs) (s f)              -- shift other indices
 
 apply :: Sub m n -> Exp m -> Exp n                    -- multi substitutions
 apply r (DVar x)      = r x
@@ -202,7 +202,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam (bind b')
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)
     to vs (Bool b) = DBool b

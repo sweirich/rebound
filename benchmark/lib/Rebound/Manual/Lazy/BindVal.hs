@@ -101,7 +101,7 @@ nil :: Fin Z -> a
 nil = \case
 
 (.:) :: a -> (Fin m -> a) -> Fin (S m) -> a               -- extension
-v .: r = \case { FZ -> v ; FS y -> r y }
+v .: r = \f -> case fin_ f of { FZ_ -> v ; FS_ y -> r y }
 
 (.>>) :: Env p m -> Env m n -> Env p n
 r .>> s = apply s . r
