@@ -91,7 +91,7 @@ unbindWithN ::
   d
 unbindWithN b f = Pat.unbindWith b (const f)
 
-instantiateN :: (Subst v c, SNatI m) => BindN v c m n -> Vec m (v n) -> c n
+instantiateN :: (Subst v c, SNatI m, SNatI n) => BindN v c m n -> Vec m (v n) -> c n
 instantiateN b v = Pat.instantiate b (fromVec v)
 
 instantiateWithN ::

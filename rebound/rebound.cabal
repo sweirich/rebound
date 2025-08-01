@@ -73,37 +73,10 @@ library
     , Data.Fin
     , Data.Vec
     , Data.LocalName
-    , Data.Scoped.Telescope
     , Data.Scoped.List
     , Data.Scoped.Classes
     , Data.Scoped.Maybe
   hs-source-dirs: src
-
-library rebound-examples
-  import:
-    common-stanza
-  visibility: private
-  build-depends:
-    base >=4.15
-    , rebound
-    , mtl
-    , HUnit
-    , QuickCheck
-    , containers
-    , prettyprinter
-  exposed-modules:
-      LC
-    , LCQC
-    , LCLet
-    , PTS
-    , Pat
-    , DepMatch
-    , ScopeCheck
-    , HOAS
-    , SystemF
-    , PureSystemF
-    , LinLC
-  hs-source-dirs: examples
 
 test-suite rebound-tests
   import:

@@ -3,7 +3,7 @@
 -- Uses well-scoped debruijn syntax
 -- Doesn't use Rebound library (or bind type)
 -- Only evaluation for closed terms
--- explicitly delays evaluation of terms in the environment 
+-- explicitly delays evaluation of terms in the environment
 -- using a Thunk
 -- environment-based interpreter
 -- environment represented by a function
@@ -50,7 +50,7 @@ nil :: Env Z
 nil x = case x of {}
 
 (.:):: Thunk -> Env n  -> Env (S n)
-v .: r = \x -> case x of { FZ -> v; FS y -> r y }
+v .: r = \case { FZ -> v; FS y -> r y }
 
 ---------------------------------------------------------
 

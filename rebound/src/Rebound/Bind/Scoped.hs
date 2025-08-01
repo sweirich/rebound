@@ -31,7 +31,7 @@ module Rebound.Bind.Scoped (
     iscopedPatEq,
     TeleList(..),
     lengthTele,
-    nil, (<:>),(<++>),
+    nil, (<|>),(<++>),
   ) where
 
 import Rebound
@@ -322,13 +322,13 @@ nil :: forall pat n. TeleList pat N0 n
 nil = case axiomPlusZ @n of Refl -> TNil
 
 -- Smart constructor
-(<:>) ::
+(<|>) ::
   forall p1 p2 pat n.
   (IScopedSized pat) =>
   pat p1 n ->
   TeleList pat p2 (p1 + n) ->
   TeleList pat (p2 + p1) n
-e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
+e <|> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
 
 (<++>) ::
   forall p1 p2 pat n.
@@ -337,9 +337,9 @@ e <:> t = case axiomAssoc @p2 @p1 @n of Refl -> TCons e t
   TeleList pat p2 (p1 + n) ->
   TeleList pat (p2 + p1) n
 TNil <++> t = case axiomPlusZ @p2 of Refl -> t
-(TCons @_ @p12 @p11 h t) <++> t' = case axiomAssoc @p2 @p12 @p11 of Refl -> h <:> (t <++> t')
+(TCons @_ @p12 @p11 h t) <++> t' = case axiomAssoc @p2 @p12 @p11 of Refl -> h <|> (t <++> t')
 
-infixr 9 <:>
+infixr 9 <|>
 
 instance IScopedSized (TeleList pat)
 
@@ -357,7 +357,7 @@ instance
   ) =>
   Named name (TeleList pat p n)
   where
-  names TNil = VNil
+  names TNil = Vec.empty
   names (TCons p ps) =
     Vec.append (names ps) (iscopedNames p)
 
@@ -370,7 +370,7 @@ instance
   where
   applyE r TNil = nil
   applyE r (TCons p1 p2) =
-    applyE r p1 <:> applyE (upN (iscopedSize p1) r) p2
+    applyE r p1 <|> applyE (upN (iscopedSize p1) r) p2
 
 instance (IScopedSized pat, forall p. FV (pat p)) => FV (TeleList pat p) where
   appearsFree ::
@@ -393,7 +393,7 @@ instance (forall p1. Strengthen (pat p1)) => Strengthen (TeleList pat p) where
            axiomAssoc @p1 @k @n
          ) of
       (Refl, Refl) ->
-        (<:>)
+        (<|>)
           <$> strengthenRec k m n p1
           <*> strengthenRec (sPlus (iscopedSize p1) k) m n p2
 

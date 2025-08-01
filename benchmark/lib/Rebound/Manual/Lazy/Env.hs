@@ -87,18 +87,18 @@ idE :: Env m m
 idE = DVar
 
 nil :: Fin Z -> a
-nil = \case
+nil = \f -> case fin_ f of
 
 (.:) :: a -> (Fin m -> a) -> Fin (S m) -> a               -- extension
-v .: r = \case { FZ -> v ; FS y -> r y }
+v .: r = \f -> case fin_ f of { FZ_ -> v ; FS_ y -> r y }
 
 (.>>) :: Env m n -> Env p m -> Env p n
 r .>> s = apply r . s
 
 up :: Env m n -> Env (S m) (S n)             -- shift
-up s = \case
-          FZ -> DVar  FZ                     -- leave index 0 alone
-          FS f -> apply (DVar . FS) (s f)    -- shift other indices
+up s = \f -> case fin_ f of
+          FZ_ -> DVar  f0                     -- leave index 0 alone
+          FS_ f -> apply (DVar . fs) (s f)    -- shift other indices
 
 instantiate :: Bind n -> Exp n -> Exp n
 instantiate (Bind r b) v = apply (v .: r) b
@@ -179,7 +179,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam (bind b')
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)
     to vs (Bool b) = DBool b

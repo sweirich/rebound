@@ -47,7 +47,7 @@ instance Subst Exp Exp where
 
 -- c :: Ctx Exp N4
 -- x : * , y : x, z : x , w : *
-c = emptyC +++ Star +++ Var FZ +++ Var (FS FZ) +++ Star
+c = emptyC +++ Star +++ Var f0 +++ Var (f1) +++ Star
 
 -- >>> applyEnv c (FS FZ)
 -- Var 3

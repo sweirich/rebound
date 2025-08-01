@@ -1,6 +1,6 @@
 module Examples.LinLC where
 
-import Data.Vec (Vec ((:::)), empty)
+import Data.Vec (Vec ((|>)), empty)
 import LinLC
 import Rebound (Nat (Z))
 import Test.Tasty
@@ -36,6 +36,6 @@ all =
           (TyUnit ~> (TyUnit ~> TyUnit) ~> TyUnit ~> TyUnit)
           "Variable was not used.",
       testCase "Initial scope must be used" $
-        runTC (TyUnit ::: (TyUnit ~> TyUnit) ::: TyUnit ::: empty) (checkType (v1 @@ v0) TyUnit)
+        runTC (TyUnit |> (TyUnit ~> TyUnit) |> TyUnit |> empty) (checkType (v1 @@ v0) TyUnit)
           @?= Left "Some variables in the initial scope were not used."
     ]

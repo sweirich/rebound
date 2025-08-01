@@ -4,7 +4,7 @@
 # The script will revert the haskell file after running make eval
 
 #
-valid_variables=("Lazy" "LazyA" "LazyB" "Functional"  "Strict" "StrictA" "StrictB")
+valid_variables=("Lazy")
 
 source_dir="results/`hostname`/rebound_strict_envV"
 branch="main"
@@ -43,6 +43,15 @@ for variable in "${valid_variables[@]}"; do
 
   echo "'make normalize' executed successfully for variable '$variable'."
 
+  make normalize_mem
+  if [ $? -ne 0 ]; then
+    echo "Error: 'make normalize_mem' failed for variable '$variable'."
+    # Revert the file even if make eval fails
+    sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Lazy/" "$file"
+    exit 1
+  fi
+
+  echo "'make normalize_mem' executed successfully for variable '$variable'."
 
   # Check if the source directory exists.
   if [ ! -d "$source_dir" ]; then
@@ -53,7 +62,7 @@ for variable in "${valid_variables[@]}"; do
   fi
 
   # Move files.
-  dest_dir="results/ablate/rebound_strict_envV/main/$variable"
+  dest_dir="results/ablate/nat-word/$variable"
 
   echo $dest_dir
 

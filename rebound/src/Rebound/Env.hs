@@ -49,6 +49,7 @@ import Data.Scoped.List (List, pattern Nil, pattern (:<))
 import Data.Fin qualified as Fin
 import Data.Map qualified as Map
 import Data.Vec qualified as Vec
+import Data.SNat qualified as SNat
 import GHC.Generics hiding (S)
 import Prelude hiding (head, tail)
 
@@ -57,7 +58,7 @@ import Prelude hiding (head, tail)
 ----------------------------------------------
 
 -- TODO: do we want to replace uses of this operation with something else?
-env :: forall m v n. (SubstVar v, SNatI m) => (Fin m -> v n) -> Env v m n
+env :: forall m v n. (SubstVar v, SNatI m, SNatI n) => (Fin m -> v n) -> Env v m n
 env f = fromVec v
   where
     v :: Vec m (v n)
@@ -96,9 +97,11 @@ appendE ::
   Env v p n ->
   Env v m n ->
   Env v (p + m) n
-appendE SZ e1 e2 = e2
-appendE (snat_ -> SS_ p1) e1 e2 =
-  head e1 .: appendE p1 (tail e1) e2
+appendE p = getAppendE (withSNat p (induction base step)) where
+  base = MkAppendE $ \e1 e2 -> e2
+  step :: SubstVar v => AppendE v m n p -> AppendE v m n (S p)
+  step (MkAppendE r) = MkAppendE $ \e1 e2 -> 
+       head e1 .: r (tail e1) e2
 
 newtype AppendE v m n p = MkAppendE
   { getAppendE ::
@@ -109,7 +112,7 @@ newtype AppendE v m n p = MkAppendE
 
 -- | access value at index 0
 head :: (SubstVar v) => Env v (S n) m -> v m
-head f = applyEnv f FZ
+head f = applyEnv f f0
 
 -- | increment all free variables by 1
 shift1E :: (SubstVar v) => Env v n (S n)
@@ -139,13 +142,27 @@ shiftFromApplyE k = applyE @v (shiftNE k)
 -- Create an environment from a length-indexed
 -- vector of scoped values
 
-fromVec :: (SubstVar v) => Vec m (v n) -> Env v m n
-fromVec VNil = zeroE
-fromVec (x ::: vs) = x .: fromVec vs
+fromVec :: (SubstVar v, SNatI n) => Vec m (v n) -> Env v m n
+fromVec v = getEnv (Vec.induction v base step) where
+  base :: SNatI n => EnvN v n Z
+  base = EnvN zeroE
+  step :: (SubstVar v, SNatI n) => v n -> EnvN v n m -> EnvN v n (S m)
+  step x (EnvN r) = EnvN (x .: r)
 
-toVec :: (SubstVar v) => SNat m -> Env v m n -> Vec m (v n)
-toVec SZ r = VNil
-toVec m@(snat_ -> SS_ m') r = head r ::: toVec m' (tail r)
+newtype EnvN v n m = EnvN { getEnv :: Env v m n } 
+
+toVec :: forall v m n. (SubstVar v) => SNat m -> Env v m n -> Vec m (v n)
+toVec m = getVec ind
+  where
+    ind :: VecN v n m
+    ind = withSNat m $ SNat.induction @_ @(VecN v n) base indS
+
+    base :: VecN v n Z
+    base = VecN (\_ -> Vec.empty)
+    indS :: forall m. VecN v n m -> VecN v n (S m)
+    indS (VecN t') = VecN (\r -> head r |> t' (tail r))
+
+newtype VecN v n m = VecN { getVec :: Env v m n -> Vec m (v n) }
 
 ----------------------------------------------------------------
 -- show for environments

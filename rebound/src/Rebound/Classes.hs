@@ -165,11 +165,8 @@ instance Sized (Vec n a) where
   size = Vec.vlength
 
 instance Eq a => PatEq (Vec n1 a) (Vec n2 a) where
-  patEq VNil VNil = Just Refl
-  patEq (x ::: xs) (y ::: ys) | x == y,
-    Just Refl <- patEq xs ys
-    = Just Refl
-  patEq _ _ = Nothing
+  patEq :: Eq a => Vec n1 a -> Vec n2 a -> Maybe (Size (Vec n1 a) :~: Size (Vec n2 a))
+  patEq = Vec.veq
 
 -- ** Unit (trivial)
 

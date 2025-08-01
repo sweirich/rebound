@@ -167,7 +167,7 @@ toDB = to []
     to vs (Var v) = DVar (fromJust (lookup v vs))
     to vs (Lam v b) = DLam (bind b')
       where
-        b' = to ((v, FZ) : mapSnd FS vs) b
+        b' = to ((v, f0) : mapSnd fs vs) b
     to vs (App f a) = DApp (to vs f) (to vs a)
     to vs (If a b c) = DIf (to vs a) (to vs b) (to vs c)
     to vs (Bool b) = DBool b

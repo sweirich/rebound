@@ -46,7 +46,7 @@ emptyScope :: Scope name Z
 emptyScope =
   Scope
     { scope_size = SZ,
-      scope_names = VNil
+      scope_names = Vec.empty
     }
 
 extendScope ::
@@ -168,7 +168,7 @@ push p = withSNat (size p) $ pushVec (names p)
 
 instance Named LocalName LocalName where
   names :: LocalName -> Vec N1 LocalName
-  names ln = ln ::: VNil
+  names ln = ln |> Vec.empty
 
 instance Named name (Vec p name) where
   names :: Vec p name -> Vec p name
@@ -176,10 +176,10 @@ instance Named name (Vec p name) where
 
 -- TODO: this isn't isn't very good... it doesn't try to
 -- "freshen" the names in any way
-instance Named LocalName (SNat p) where
+instance SNatI p => Named LocalName (SNat p) where
   names :: SNat p -> Vec p LocalName
-  names = go
-    where
-      go :: forall p. SNat p -> Vec p LocalName
-      go SZ = VNil
-      go (snat_ -> SS_ q) = LocalName ("_" <> show (SNat.next q)) ::: go q
+  names p = fmap toLocalName vec where
+    vec :: Vec p Int
+    vec = Vec.iterateN p Prelude.succ 0
+    toLocalName :: Int -> LocalName 
+    toLocalName i = LocalName ("_" <> show i)
