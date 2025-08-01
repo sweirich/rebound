@@ -43,6 +43,15 @@ for variable in "${valid_variables[@]}"; do
 
   echo "'make normalize' executed successfully for variable '$variable'."
 
+  make normalize_mem
+  if [ $? -ne 0 ]; then
+    echo "Error: 'make normalize_mem' failed for variable '$variable'."
+    # Revert the file even if make eval fails
+    sed -i -e "s/import Rebound.Env.$variable/import Rebound.Env.Lazy/" "$file"
+    exit 1
+  fi
+
+  echo "'make normalize_mem' executed successfully for variable '$variable'."
 
   # Check if the source directory exists.
   if [ ! -d "$source_dir" ]; then
