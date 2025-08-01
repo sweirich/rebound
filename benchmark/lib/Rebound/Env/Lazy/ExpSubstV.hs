@@ -64,14 +64,18 @@ instance SubstVar Exp where
   {-# INLINEABLE var #-}
 instance Subst Exp Exp where
   applyE :: Env Exp n m -> Exp n -> Exp m
-  applyE s (DVar i) = applyEnv s i
-  applyE s (DLam b) =
-    DLam (Sub (up s) b)
-  applyE s (DApp f a) =
-    DApp (Sub s f) (Sub s a)
-  applyE s (DIf a b c) = DIf (Sub s a) (Sub s b) (Sub s c)
-  applyE s (DBool b) = DBool b
-  applyE s (Sub r t) = applyE (r .>> s) t
+  applyE = applyOpt aux
+    where
+      aux :: Env Exp n m -> Exp n -> Exp m
+      aux s (DVar i) = applyEnv s i
+      aux s (DLam b) =
+        DLam (Sub (up s) b)
+      aux s (DApp f a) =
+        DApp (Sub s f) (Sub s a)
+      aux s (DIf a b c) = DIf (Sub s a) (Sub s b) (Sub s c)
+      aux s (DBool b) = DBool b
+      aux s (Sub r t) = aux (r .>> s) t
+      {-# INLINEABLE aux #-}
   {-# INLINEABLE applyE #-}
 
 {-# SPECIALIZE idE :: Env Exp n n #-}

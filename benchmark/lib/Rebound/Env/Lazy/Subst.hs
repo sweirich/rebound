@@ -61,11 +61,15 @@ instance SubstVar DB where
   {-# INLINEABLE var #-}
 
 instance Subst DB DB where
-  applyE s (DVar i) = applyEnv s i
-  applyE s (DLam b) = DLam (applyE (up s) b)
-  applyE s (DApp f a) = DApp (applyE s f) (applyE s a)
-  applyE s (DIf a b c) = DIf (applyE s a) (applyE s b) (applyE s c)
-  applyE s (DBool b) = DBool b
+  applyE = applyOpt aux
+    where
+      aux :: Env DB n m -> DB n -> DB m
+      aux s (DVar i) = applyEnv s i
+      aux s (DLam b) = DLam (aux (up s) b)
+      aux s (DApp f a) = DApp (aux s f) (aux s a)
+      aux s (DIf a b c) = DIf (aux s a) (aux s b) (aux s c)
+      aux s (DBool b) = DBool b
+      {-# INLINEABLE aux #-}
   {-# INLINEABLE applyE #-}
 
 {-# SPECIALIZE idE :: Env DB n n #-}
