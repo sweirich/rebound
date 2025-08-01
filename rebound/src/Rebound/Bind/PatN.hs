@@ -65,7 +65,6 @@ instance SNatI p => SizeIndex PatN p
 
 instance (SNatI p) => Sized (PatN p) where
   type Size (PatN p) = p
-  size (PatN sn) = sn
 
 type BindN v c m n = Pat.Bind v c (PatN m) n
 

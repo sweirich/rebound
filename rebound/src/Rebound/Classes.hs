@@ -125,7 +125,8 @@ class (SNatI (Size t)) => Sized (t :: Type) where
   -- Retrieve size from the type (number of variables bound by the pattern)
   type Size t :: Nat
   -- Access size as a term
-  size :: t -> SNat (Size t)
+  size :: SNat (Size t)
+  size = snat
 
 -- | Pairs of types that can be compared with each other as patterns
 class PatEq (t1 :: Type) (t2 :: Type) where
@@ -144,7 +145,6 @@ class (Sized (t p), Size (t p) ~ p) => SizeIndex t p
 
 instance Sized LocalName where
   type Size LocalName = N1
-  size _ = s1
 
 instance PatEq LocalName LocalName where
   patEq p1 p2 = Just Refl
@@ -152,7 +152,6 @@ instance PatEq LocalName LocalName where
 -- ** SNats
 instance (SNatI n) => Sized (SNat n) where
   type Size (SNat n) = n
-  size n = n
 
 instance PatEq (SNat n1) (SNat n2) where
   patEq = testEquality
@@ -162,7 +161,6 @@ instance PatEq (SNat n1) (SNat n2) where
 
 instance (SNatI n) => Sized (Vec n a) where
   type Size (Vec n a) = n
-  size = Vec.vlength
 
 instance Eq a => PatEq (Vec n1 a) (Vec n2 a) where
   patEq :: Eq a => Vec n1 a -> Vec n2 a -> Maybe (Size (Vec n1 a) :~: Size (Vec n2 a))
@@ -170,7 +168,7 @@ instance Eq a => PatEq (Vec n1 a) (Vec n2 a) where
 
 -- ** Unit (trivial)
 
-instance Sized () where { type Size () = N0 ;  size _ = SZ }
+instance Sized () where { type Size () = N0 ;  size = SZ }
 
 instance PatEq () () where patEq _ _ = Just Refl
 
@@ -178,7 +176,6 @@ instance PatEq () () where patEq _ _ = Just Refl
 
 instance (SNatI ((Size a) + (Size b)), Sized a, Sized b) => Sized (a,b) where
    type Size (a,b) = Size a + Size b
-   size (x,y) = sPlus (size x) (size y)
 
 instance (PatEq a1 a2, PatEq b1 b2) => PatEq (a1, b1) (a2, b2) where
    patEq (x1,y1) (x2,y2)

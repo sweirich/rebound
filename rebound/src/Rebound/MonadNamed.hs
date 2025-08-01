@@ -63,8 +63,6 @@ extendScope v s =
 
 instance (SNatI n) => Sized (Scope name n) where
   type Size (Scope name n) = n
-  size :: Scope name n -> SNat n
-  size = scope_size
 
 instance (SNatI n) => Named name (Scope name n) where
   names :: Scope name n -> Vec n name
@@ -160,11 +158,12 @@ class (Sized pat) => Named name pat where
 
 -- Add new names to the current scope
 push ::
+  forall name m n a pat.
   (MonadScoped name m, Named name pat) =>
   pat ->
   m (Size pat + n) a ->
   m n a
-push p = withSNat (size p) $ pushVec (names p)
+push p = withSNat (size @pat) $ pushVec (names p)
 
 instance Named LocalName LocalName where
   names :: LocalName -> Vec N1 LocalName
