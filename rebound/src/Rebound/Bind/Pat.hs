@@ -46,10 +46,10 @@ data Bind v c (pat :: Type) (n :: Nat) where
 -- | To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
 instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat n) where
-  b1 == b2 = 
+  b1 == b2 =
     getPat b1 == getPat b2
       && getBody b1 == getBody b2
-    
+
 -- | Create a `Bind` with an identity substitution.
 bind ::
   (Sized pat, Subst v c) =>
@@ -75,7 +75,7 @@ getBody ::
   Bind v c pat n ->
   c (Size pat + n)
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
-  applyE @v @c @(Size pat + m) (upN (size pat) env) t
+  applyOpt applyE (upN (size pat) env) t
 
 -- | instantiate the body with terms for each variable in the pattern
 instantiate ::
@@ -87,7 +87,7 @@ instantiate ::
 instantiate b e =
   unbindWith
     b
-    (\p r t -> withSNat (size p) $ applyE (e .++ r) t)
+    (\p r t -> applyOpt applyE (withSNat (size p) $ e .++ r) t)
 
 -- | apply an environment-parameterized function while instantiating
 instantiateWith ::
