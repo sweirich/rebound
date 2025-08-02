@@ -62,7 +62,7 @@ for variable in "${valid_variables[@]}"; do
   fi
 
   # Move files.
-  dest_dir="results/ablate/rebound_strict_envV/main/$variable"
+  dest_dir="results/ablate/main/$variable"
 
   echo $dest_dir
 
