@@ -34,7 +34,7 @@ class (SubstVar v) => Subst v c where
   isVar :: c n -> Maybe (v :~: c, Fin n)
   isVar _ = Nothing
   {-# INLINE isVar #-}
-  
+
 gapplyE :: forall c v m n. (Generic1 c, GSubst v (Rep1 c), Subst v c) => Env v m n -> c m -> c n
 gapplyE r e | Just (Refl, x) <- isVar @v @c e = applyEnv r x
 gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
@@ -80,10 +80,10 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 -- | Build an optimized version of applyE.
 -- Checks to see if we are applying the identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-{- applyOpt f (Inc SZ) x = x
+applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
 applyOpt f (WeakR SZ) (x :: c m) =
-  case axiomPlusZ @m of Refl -> x -}
+  case axiomPlusZ @m of Refl -> x
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 
@@ -99,7 +99,7 @@ zeroE = Zero
 -- make the bound bigger, on the right, but do not change any indices.
 -- this is an identity function
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = WeakR 
+weakenER = WeakR
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.
@@ -116,7 +116,7 @@ shiftNE = Inc
 -- | `cons` -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: (SubstVar v) => v m -> Env v n m -> Env v (S n) m
-(.:) = Cons 
+(.:) = Cons
 {-# INLINEABLE (.:) #-}
 
 
@@ -133,9 +133,9 @@ tail x = shiftNE s1 .>> x
 
 -- | modify an environment so that it can go under a binder
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
-{- up (Inc SZ) = Inc SZ
+up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
-up (WeakR SZ) = WeakR SZ  -}
+up (WeakR SZ) = WeakR SZ
 up e = var Fin.f0 .: (e :<> Inc s1)
 {-# INLINEABLE up #-}
 
