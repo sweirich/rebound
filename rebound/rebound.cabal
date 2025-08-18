@@ -4,10 +4,10 @@ version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/sweirich/rebound>
 homepage:       https://github.com/sweirich/rebound
 bug-reports:    https://github.com/sweirich/rebound/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2022 Author name here
-license:        BSD-3-Clause
+author:         Stephanie Weirich, Noe De Santo
+maintainer:     sweirich@seas.upenn.edu, ndesanto@seas.upenn.edu
+copyright:      2025 Stephanie Weirich, Noe De Santo
+license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
