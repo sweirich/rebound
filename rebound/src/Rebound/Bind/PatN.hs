@@ -99,17 +99,17 @@ instantiateWithN ::
   (SubstVar v, SNatI n, SNatI m) =>
   BindN v c m n ->
   Vec m (v n) ->
-  (forall m n. Env v m n -> c m -> d n) ->
+  (forall m. Env v m n -> c m -> d n) ->
   d n
 instantiateWithN b v f =
   unbindWithN b (f . appendE (snat @m) (fromVec v))
 
 applyUnderN ::
-  (Subst v c2, SNatI m) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  (Subst v c2, SNatI k) =>
+  (forall m. Env v m (k + n2) -> c1 m -> c2 (k + n2)) ->
   Env v n1 n2 ->
-  BindN v c1 m n1 ->
-  BindN v c2 m n2
+  BindN v c1 k n1 ->
+  BindN v c2 k n2
 applyUnderN = Pat.applyUnder
 
 ----------------------------------------------------------------
@@ -159,14 +159,14 @@ instantiateWith1 ::
   (SubstVar v) =>
   Bind1 v c n ->
   v n ->
-  (forall m n. Env v m n -> c m -> d n) ->
+  (forall m. Env v m n -> c m -> d n) ->
   d n
 instantiateWith1 b v1 f =
   unbindWith1 b (\r e -> f (v1 .: r) e)
 
 applyUnder1 ::
   (Subst v c2) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  (forall m. Env v m (S n2) -> c1 m -> c2 (S n2)) ->
   Env v n1 n2 ->
   Bind1 v c1 n1 ->
   Bind1 v c2 n2
@@ -217,14 +217,14 @@ instantiateWith2 ::
   Bind2 v c n ->
   v n ->
   v n ->
-  (forall m n. Env v m n -> c m -> d n) ->
+  (forall m. Env v m n -> c m -> d n) ->
   d n
 instantiateWith2 b v1 v2 f =
   unbindWith2 b (\r e -> f (v1 .: (v2 .: r)) e)
 
 applyUnder2 ::
   (Subst v c2) =>
-  (forall m n. Env v m n -> c1 m -> c2 n) ->
+  (forall m. Env v m (S (S n2)) -> c1 m -> c2 (S (S n2))) ->
   Env v n1 n2 ->
   Bind2 v c1 n1 ->
   Bind2 v c2 n2

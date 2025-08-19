@@ -154,7 +154,7 @@ instantiateWith ::
   (ScopedSized pat, SubstVar v) =>
   Bind v c pat n ->
   Env v (ScopedSize pat) n ->
-  (forall m n. Env v m n -> c m -> c n) ->
+  (forall m. Env v m n -> c m -> c n) ->
   c n
 instantiateWith b v f =
   unbindWith b (\p r e -> withSNat (scopedSize p) $ f (v .++ r) e)
@@ -184,7 +184,7 @@ unbindWith (Bind pat r t) f = f pat r t
 applyUnder ::
   forall pat v c n1 n2.
   (ScopedSized pat, Subst v v, Subst v c, Subst v pat) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (forall m. Env v m (ScopedSize pat + n2) -> c m -> c (ScopedSize pat + n2)) ->
   Env v n1 n2 ->
   Bind v c pat n1 ->
   Bind v c pat n2

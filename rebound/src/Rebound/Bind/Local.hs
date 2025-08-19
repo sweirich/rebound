@@ -53,7 +53,7 @@ instantiate b e = Pat.instantiate b (oneE e)
 
 applyUnder ::
   (Subst v c) =>
-  (forall m n. Env v m n -> c m -> c n) ->
+  (forall m. Env v m (S n2) -> c m -> c (S n2)) ->
   Env v n1 n2 ->
   Bind v c n1 ->
   Bind v c n2
@@ -62,7 +62,7 @@ applyUnder = Pat.applyUnder
 unbindWith :: (SubstVar v) => Bind v c n -> (forall m. LocalName -> Env v m n -> c (S m) -> d) -> d
 unbindWith = Pat.unbindWith
 
-instantiateWith :: (SubstVar v) => Bind v c n -> v n -> (forall m n. Env v m n -> c m -> c n) -> c n
+instantiateWith :: (SubstVar v) => Bind v c n -> v n -> (forall m. Env v m n -> c m -> c n) -> c n
 instantiateWith b v = Pat.instantiateWith b (oneE v)
 
 
