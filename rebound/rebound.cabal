@@ -13,6 +13,8 @@ build-type:     Simple
 extra-source-files:
     README.md
     ChangeLog.md
+category:       Language
+synopsis:       A variable binding library based on well-scoped de Bruijn indices.
 
 common common-stanza
   ghc-options:
@@ -39,7 +41,7 @@ library
   import:
       common-stanza
   build-depends:
-      base >=4.15
+      base >=4.15, base < 5.0
     , containers
     , mtl
     , QuickCheck
@@ -84,7 +86,7 @@ library rebound-examples
     common-stanza
   visibility: private
   build-depends:
-    base >=4.15
+    base >=4.15, base < 5.0
     , rebound
     , mtl
     , HUnit
