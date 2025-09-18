@@ -10,7 +10,7 @@ copyright:      2025 Stephanie Weirich, Noe De Santo
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
-extra-source-files:
+extra-doc-files:
     README.md
     ChangeLog.md
 category:       Language
@@ -37,17 +37,18 @@ common common-stanza
     , PatternSynonyms
     , PackageImports
     , DerivingStrategies
+
 library
   import:
       common-stanza
   build-depends:
-      base >=4.15, base < 5.0
-    , containers
-    , mtl
-    , QuickCheck
-    , fin >= 0.3
-    , vec
-    , deepseq
+      base >= 4.15 && < 5.0
+    , containers >= 0.6.7 && < 0.7
+    , deepseq >= 1.4.8 && < 1.5
+    , fin >= 0.3 && < 0.4
+    , mtl >= 2.3.1 && < 2.4
+    , QuickCheck >= 2.14.3 && < 2.15
+    , vec >= 0.5 && < 0.6
   exposed-modules:
       Rebound
     , Rebound.Classes
@@ -80,49 +81,37 @@ library
     , Data.Scoped.Maybe
   hs-source-dirs: src
 
-library rebound-examples
-  import:
-    common-stanza
-  visibility: private
-  build-depends:
-    base >=4.15, base < 5.0
-    , rebound
-    , mtl
-    , HUnit
-    , QuickCheck
-    , containers
-    , prettyprinter
-  exposed-modules:
-      LC
-    , LCQC
-    , LCLet
-    , PTS
-    , Pat
-    , DepMatch
-    , ScopeCheck
-    , HOAS
-    , SystemF
-    , PureSystemF
-    , LinLC
-  hs-source-dirs: examples
-
 test-suite rebound-tests
   import:
     common-stanza
   build-depends:
       base
     , rebound
-    , rebound-examples
+    , containers
+    , mtl
+    , QuickCheck
     , tasty
     , tasty-hunit
     , tasty-quickcheck
   type:
     exitcode-stdio-1.0
   hs-source-dirs:
+    examples
     test
   main-is:
     All.hs
   other-modules:
+    LC
+    LCQC
+    LCLet
+    PTS
+    Pat
+    DepMatch
+    ScopeCheck
+    HOAS
+    SystemF
+    PureSystemF
+    LinLC
     Utils
     Examples.LC
     Examples.LCLet
