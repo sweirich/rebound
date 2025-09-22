@@ -1,12 +1,16 @@
 -- |
 -- Module      : Data.Fin
 -- Description : Bounded natural numbers
--- Stability   : experimental
 --
--- This file re-exports definitions from fin's Data.Fin, while adding a few more
--- that are relevant to this context. Like Data.Fin, is meant to be used qualified.
---       import Fin (Fin (..))
---       import qualified Fin as Fin
+-- This file re-exports definitions from [fin](https://hackage.haskell.org/package/fin)'s
+-- [Data.Fin](https://hackage.haskell.org/package/fin-0.3.2/docs/Data-Fin.html), while adding a few more
+-- that are relevant to this context. Like [Data.Fin](https://hackage.haskell.org/package/fin-0.3.2/docs/Data-Fin.html),
+-- it is meant to be used qualified.
+--
+-- @
+-- import 'Fin' ('Fin' (..))
+-- import qualified 'Fin' as 'Fin'
+-- @
 {-# LANGUAGE PackageImports #-}
 module Data.Fin(
   Nat(..), SNat(..),
@@ -15,7 +19,7 @@ module Data.Fin(
   mirror,
   absurd,
   universe,
-  f0,f1,f2,
+  f0,f1,f2,f3,
   invert,
   shiftN,
   shift1,
@@ -49,11 +53,11 @@ instance ToInt (Fin n) where
 -- >>> [minBound .. maxBound] :: [Fin N3]
 -- [0,1,2]
 
--- | list all numbers up to some size
+-- | List all numbers up to some size
 -- >>> universe :: [Fin N3]
 -- [0,1,2]
 
--- | Convert an "index" Fin to a "level" Fin and vice versa
+-- | Convert an "index" Fin to a "level" Fin and vice versa.
 invert :: forall n. (SNatI n) => Fin n -> Fin n
 invert f = case snat @n of
   SZ -> case f of {}
@@ -63,9 +67,9 @@ invert f = case snat @n of
 -- * Shifting
 -------------------------------------------------------------------------------
 
--- We use the term "Weakening" to mean: Adding a new binding to the front of 
+-- We use the term "Weakening" to mean: Adding a new binding to the front of
 -- the typing context without changing existing indices.
--- In contrast, "Shifting" means: Adjusting the indices of free variables 
+-- In contrast, "Shifting" means: Adjusting the indices of free variables
 -- within a term to reflect a new binding added to the end of the context.
 --
 -- Shifting functions add some specified amount to the given
@@ -84,11 +88,11 @@ invert f = case snat @n of
 -- >>> shiftN s1 (f1 :: Fin N2)
 -- 2
 --
--- | increment by a fixed amount (on the left)
+-- | Increment by a fixed amount (on the left).
 shiftN :: forall n m. SNat n -> Fin m -> Fin (n + m)
 shiftN p f = withSNat p $ weakenRight (Proxy :: Proxy n) f
 
--- | increment by one
+-- | Increment by one.
 shift1 :: Fin m -> Fin (S m)
 shift1 = shiftN s1
 
@@ -99,47 +103,58 @@ shift1 = shiftN s1
 -- * Weakening
 -------------------------------------------------------------------------------
 
+-- | Weaken the bound of a 'Fin' by an arbitrary amount, without
+-- changing its index.
+
 -- | Weakenening changes the bound of a nat-indexed type without changing
 -- its value.
 -- These operations can either be defined for the n-ary case (as in Fin below)
 -- or be defined in terms of a single-step operation.
 -- However, as both of these operations are identity functions,
 -- it is justified to use unsafeCoerce.
--- 
+--
 -- The corresponding function in the Data.Fin library is `weakenLeft`.
--- >>> :t weakenLeft
+--
+-- @
+-- -- >>> :t weakenLeft
 -- weakenLeft :: SNatI n => Proxy m -> Fin n -> Fin (Plus n m)
+-- @
+--
 -- This function does not change the value, it only changes its type.
--- >>> weakenLeft (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
+--
+-- @
+-- -- >>> weakenLeft (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
 -- 1
+-- @
 --
 -- We could use the following definition:
 --
---      weakenFin m f = withSNat m $ weakenLeft (Proxy :: Proxy m) f
+-- @
+-- weakenFin m f = withSNat m $ weakenLeft (Proxy :: Proxy m) f
+-- @
 --
--- But, by using an `unsafeCoerce` implementation, we can avoid the
--- `SNatI n` constraint in the type of this operation.
+-- But, by using an 'unsafeCoerce' implementation, we can avoid the
+-- @'SNatI' n@ constraint in the type of this operation.
 --
--- >>> weakenFin (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
+-- @
+-- -- >>> weakenFin (Proxy :: Proxy N1) (f1 :: Fin N2) :: Fin N3
 -- 1
---
--- | weaken the bound of a Fin by an arbitrary amount, without 
--- changing its index
+-- @
 weakenFin :: proxy m -> Fin n -> Fin (m + n)
 weakenFin _ f = unsafeCoerce f
 
--- | weaken the bound of a Fin by 1.
+-- | Weaken the bound of a 'Fin' by 1.
 weaken1Fin :: Fin n -> Fin (S n)
 weaken1Fin = weakenFin s1
 
--- | weaken the bound of of a Fin by an arbitrary amount on the right.
+-- | Weaken the bound of of a 'Fin' by an arbitrary amount on the right.
 -- This is also an identity function
 -- >>> weakenFinRight (s1 :: SNat N1) (f1 :: Fin N2) :: Fin N3
 -- 1
 weakenFinRight :: proxy m -> Fin n -> Fin (n + m)
 weakenFinRight m f = unsafeCoerce f
 
--- | weaken the bound of a Fin by 1.
+-- | Weaken the bound of a 'Fin' by 1.
 weaken1FinRight :: Fin n -> Fin (n + N1)
 weaken1FinRight = weakenFinRight s1
 
@@ -151,19 +166,19 @@ weaken1FinRight = weakenFinRight s1
 -- will work in any scope. (These are also called fin0, fin1, fin2, etc
 -- in Data.Fin)
 
--- | 0
+-- | 0.
 f0 :: Fin (S n)
 f0 = FZ
 
--- | 1
+-- | 1.
 f1 :: Fin (S (S n))
 f1 = FS f0
 
--- | 2
+-- | 2.
 f2 :: Fin (S (S (S n)))
 f2 = FS f1
 
--- | 3
+-- | 3.
 f3 :: Fin (S (S (S (S n))))
 f3 = FS f2
 
@@ -189,20 +204,20 @@ strengthen1Fin = strengthenRecFin s0 s1 undefined
 -- | We implement strengthening with the following operation that
 -- generalizes the induction hypothesis, so that we can strengthen
 -- in the middle of the scope. The scope of the Fin should have the form
--- k + (m + n)
+-- @k + (m + n)@
 --
--- Indices in the middle part of the scope `m` are "strengthened" away.
+-- Indices in the middle part of the scope @m@ are "strengthened" away.
 --
 --- >>> strengthenRecFin s1 s1 s2 (f1 :: Fin (N1 + N1 + N2)) :: Maybe (Fin (N1 + N2))
 -- Nothing
 --
--- Variables that are in the first part of the scope `k` (the ones that have
+-- Variables that are in the first part of the scope @k@ (the ones that have
 -- most recently entered the context) do not change when strengthening.
 --
 --- >>> strengthenRecFin s1 s1 s2 (f0 :: Fin (N1 + N1 + N2))
 -- Just 0
 --
--- Variables in the last part of the scope `n` are decremented by strengthening
+-- Variables in the last part of the scope @n@ are decremented by strengthening
 --
 -- >>> strengthenRecFin s1 s1 s2 (f2 :: Fin (N1 + N1 + N2)) :: Maybe (Fin N3)
 -- Just 1

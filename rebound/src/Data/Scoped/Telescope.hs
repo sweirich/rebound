@@ -1,3 +1,5 @@
+-- |
+-- Stability: experimental
 module Data.Scoped.Telescope where
 
 import Rebound.Classes

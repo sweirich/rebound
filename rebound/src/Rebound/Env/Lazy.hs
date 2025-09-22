@@ -1,5 +1,6 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_HADDOCK hide #-}
 module Rebound.Env.Lazy where
 
 -- "Defunctionalized" representation of environment
@@ -34,7 +35,7 @@ class (SubstVar v) => Subst v c where
   isVar :: c n -> Maybe (v :~: c, Fin n)
   isVar _ = Nothing
   {-# INLINE isVar #-}
-  
+
 gapplyE :: forall c v m n. (Generic1 c, GSubst v (Rep1 c), Subst v c) => Env v m n -> c m -> c n
 gapplyE r e | Just (Refl, x) <- isVar @v @c e = applyEnv r x
 gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
@@ -103,7 +104,7 @@ zeroE = Zero
 -- make the bound bigger, on the right, but do not change any indices.
 -- this is an identity function
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = WeakR 
+weakenER = WeakR
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.

@@ -1,7 +1,9 @@
--- | 
+-- |
 -- Module: Data.Scoped.Maybe
+-- Description : Scoped maybe
+--
 -- This module defines a Maybe type indexed by a scope
--- This module should be imported qualified. Many of the operations 
+-- This module should be imported qualified. Many of the operations
 -- in this module have the same name as prelude functions.
 {-# LANGUAGE DeriveAnyClass #-}
 module Data.Scoped.Maybe where
@@ -20,7 +22,7 @@ import Data.Scoped.Classes
 
 newtype Maybe a n = MkMaybe (M.Maybe (a n))
     deriving newtype (Eq, Ord, Show, Semigroup, Monoid, Generic, Arbitrary, NFData)
-    deriving anyclass (ScopedFoldable M.Maybe, ScopedTraversable M.Maybe, 
+    deriving anyclass (ScopedFoldable M.Maybe, ScopedTraversable M.Maybe,
         ScopedFunctor M.Maybe, ScopedApplicative M.Maybe, ScopedMonad M.Maybe)
 
 {-# COMPLETE Nothing, Just #-}
@@ -52,7 +54,7 @@ listToMaybe :: forall a n. [a n] -> Maybe a n
 listToMaybe = coerce (M.listToMaybe :: [a n] -> M.Maybe (a n))
 
 instance Generic1 (Maybe a :: Nat -> Type) where
-   type Rep1 (Maybe a) = 
+   type Rep1 (Maybe a) =
       U1 :+: Rec1 a
 
    from1 :: Maybe a n -> Rep1 (Maybe a) n

@@ -1,9 +1,8 @@
--- | Patterns bind variables
+-- |
+-- Module       : Rebound.Bind.Pat
+-- Description  : Bind variables according to a pattern
 --
--- In this (simple) version, patterns do not contain occurrences to
--- free variables in scope (e.g. in a telescope or type annotation).
--- The pattern type must have kind `Type`
--- For more expressivity, see `Rebound.Bind.Scoped`.
+-- Bind variables according to a user-defined pattern.
 module Rebound.Bind.Pat
   ( module Rebound,
     Named(..),
@@ -36,12 +35,11 @@ import qualified Data.Set as Set
 -- * Bind type
 ----------------------------------------------------------
 
--- | The `Bind` type binds `Size pat` variables.
+-- | Type binding 'Size pat' variables.
 -- This data structure includes a delayed
 -- substitution for the variables in the body of the binder.
 data Bind v c (pat :: Type) (n :: Nat) where
   Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
-
 
 -- | To compare pattern binders, we need to unbind, but also
 -- first make sure that the patterns are equal
@@ -50,7 +48,7 @@ instance (Eq pat, Sized pat, forall n. Eq (c n), Subst v c) => Eq (Bind v c pat 
     getPat b1 == getPat b2
       && getBody b1 == getBody b2
 
--- | Create a `Bind` with an identity substitution.
+-- | Bind a pattern, using the identity substitution.
 bind ::
   (Sized pat, Subst v c) =>
   pat ->
@@ -58,17 +56,15 @@ bind ::
   Bind v c pat n
 bind pat = Bind pat idE
 
--- | Create a 'Bind' with a provided substitution.
+-- | Bind a pattern, while suspending the provided substitution.
 bindWith :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
 bindWith = Bind
 
--- | Access the pattern of a pattern binding
+-- | Retrieve the pattern of the binding.
 getPat :: Bind v c pat n -> pat
 getPat (Bind pat env t) = pat
 
--- | Access the body of a pattern binding.
--- The pattern type determines the number of variables
--- bound in the pattern
+-- | Retrieve the body of the binding.
 getBody ::
   forall v c pat n.
   (Sized pat, Subst v c) =>
@@ -77,7 +73,23 @@ getBody ::
 getBody (Bind (pat :: pat) (env :: Env v m n) t) =
   applyOpt applyE (upN (size pat) env) t
 
--- | instantiate the body with terms for each variable in the pattern
+-- | Run a function on the body (and pattern), after applying the delayed substitution.
+-- The size of the (current) scope is made available at runtime.
+unbind ::
+  forall v c pat n d.
+  (SNatI n, Sized pat, Subst v v, Subst v c) =>
+  Bind v c pat n ->
+  ((SNatI (Size pat + n)) => pat -> c (Size pat + n) -> d) ->
+  d
+unbind bnd f =
+  withSNat (sPlus (size (getPat bnd)) (snat @n)) $
+    f (getPat bnd) (getBody bnd)
+
+-- | Retrieve the body, as well as the bound pattern.
+unbindl :: (Sized pat, Subst v c) => Bind v c pat n -> (pat, c (Size pat + n))
+unbindl bnd = (getPat bnd, getBody bnd)
+
+-- | Instantiate the body (i.e. replace the bound variables) with the provided terms.
 instantiate ::
   forall v c pat n.
   (Sized pat, Subst v c) =>
@@ -89,42 +101,8 @@ instantiate b e =
     b
     (\p r t -> applyOpt applyE (withSNat (size p) $ e .++ r) t)
 
--- | apply an environment-parameterized function while instantiating
-instantiateWith ::
-  (Sized pat, SubstVar v) =>
-  Bind v c pat n ->
-  Env v (Size pat) n ->
-  (forall m. Env v m n -> c m -> c n) ->
-  c n
-instantiateWith b v f = unbindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
-
--- | unbind a binder and apply the function to the pattern and subterm
--- in a context where the extended size is available at runtime.
-unbind ::
-  forall v c pat n d.
-  (SNatI n, Sized pat, Subst v v, Subst v c) =>
-  Bind v c pat n ->
-  ((SNatI (Size pat + n)) => pat -> c (Size pat + n) -> d) ->
-  d
-unbind bnd f =
-  withSNat (sPlus (size (getPat bnd)) (snat @n)) $
-    f (getPat bnd) (getBody bnd)
-
-unbindl :: (Sized pat, Subst v c) => Bind v c pat n -> (pat, c (Size pat + n))
-unbindl bnd = (getPat bnd, getBody bnd)
-
--- | Apply a function to the pattern, suspended environment, and body
--- in a pattern binding
-unbindWith ::
-  (Sized pat, SubstVar v) =>
-  Bind v c pat n ->
-  (forall m. pat -> Env v m n -> c (Size pat + m) -> d) ->
-  d
-unbindWith (Bind pat (r :: Env v m n) t) f =
-  f pat r t
-
--- | apply an environment-parameterized function & environment
--- underneath a binder
+-- | Apply a function under the binder.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
 applyUnder ::
   (Sized pat, Subst v c2) =>
   (forall m. Env v m (Size pat + n2) -> c1 m -> c2 (Size pat + n2)) ->
@@ -135,6 +113,26 @@ applyUnder f r2 (Bind p r1 t) =
   Bind p idE (f r' t)
   where
     r' = upN (size p) (r1 .>> r2)
+
+-- | Run a function on the body.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
+unbindWith ::
+  (Sized pat, SubstVar v) =>
+  Bind v c pat n ->
+  (forall m. pat -> Env v m n -> c (Size pat + m) -> d) ->
+  d
+unbindWith (Bind pat (r :: Env v m n) t) f =
+  f pat r t
+
+-- | Instantiate the body (i.e. replace the bound variable) with the provided term.
+-- The delayed substitution is __not__ applied, but is passed to the function instead.
+instantiateWith ::
+  (Sized pat, SubstVar v) =>
+  Bind v c pat n ->
+  Env v (Size pat) n ->
+  (forall m. Env v m n -> c m -> c n) ->
+  c n
+instantiateWith b v f = unbindWith b (\p r e -> withSNat (size p) $ f (v .++ r) e)
 
 -----------------------------------------------------------------
 -- instances for Bind (Subst, FV, Strengthen)

@@ -1,7 +1,14 @@
--- | Library for length-indexed lists
--- reexports https://hackage.haskell.org/package/vec
--- Should be imported qualified as it includes operations that
--- conflict with list operations in the Prelude
+-- |
+-- Module      : Data.Vec
+-- Description : Vectors, or length-indexed lists
+--
+-- This file re-exports definitions from [vec](https://hackage.haskell.org/package/vec)'s
+-- [Data.Vec.Lazy](https://hackage.haskell.org/package/vec-0.5.1/docs/Data-Vec-Lazy.html).
+--
+-- @
+-- import 'Vec' ('Vec' (..))
+-- import qualified 'Vec' as 'Vec'
+-- @
 module Data.Vec
   ( module Data.Vec.Lazy,
     vlength,
@@ -49,7 +56,7 @@ vlength (_ ::: v) = withSNat (vlength v) SS
 -- >>> all (\x -> x > 3) (4 ::: 5 ::: VNil)
 -- True
 
--- | Ensure that a binary predicate holds for 
+-- | Ensure that a binary predicate holds for
 -- corresponding elements in two vectors
 all2 :: (a -> b -> Bool) -> Vec n a -> Vec n b -> Bool
 all2 f (x ::: xs) (y ::: ys) = f x y && all2 f xs ys

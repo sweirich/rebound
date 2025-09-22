@@ -2,6 +2,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use lambda-case" #-}
+{-# OPTIONS_HADDOCK hide #-}
 module Rebound.Env.Functional where
 
 -- Represents the environment using a function

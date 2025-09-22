@@ -1,10 +1,17 @@
--- imports and reexports libraries for Dependent Haskell
--- Because Fin and Vec include definitions with the same
--- name as Prelude functions, clients of this module should also 
---    import Data.Fin qualified as Fin
---    import Data.Vec qualified as Vec
+-- |
+-- Description: Library for dependent types
+--
+-- Imports and re-exports libraries for Dependent Haskell
+-- Because 'Fin' and 'Vec' include definitions with the same
+-- name as Prelude functions, clients of this module should also
+-- import them this way:
+--
+-- @
+-- import 'Data.Fin' qualified as 'Fin'
+-- import 'Data.Vec' qualified as 'Vec'
+-- @
 module Rebound.Lib
-  ( 
+  (
     type Type,
     module Data.Type.Equality,
     Fin (..),

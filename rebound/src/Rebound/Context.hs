@@ -1,3 +1,6 @@
+-- |
+-- Module       : Rebound.Context
+-- Description  : Typing contexts
 module Rebound.Context(Ctx, emptyC, (+++), (++++)) where
 
 import Rebound.Lib
@@ -8,7 +11,7 @@ import Rebound.Classes
 -- Typing context utilities for dependently-typed languages
 ----------------------------------------------------------------
 
--- A typing context maps indices to type in the same scope
+-- | A typing context maps indices to type in the same scope.
 type Ctx v n = Env v n n
 
 -- This is not weakening --- it increments all variables by one
@@ -28,7 +31,7 @@ emptyC = zeroE
 g +++ a = applyE @v shift1E a .: (g .>> shift1E)
 
 
--- | Append contexts. Shifts all indices in the first argument by the length 
+-- | Append contexts. Shifts all indices in the first argument by the length
 -- of the second.
 (++++) :: forall v n n' m. (SNatI n', SubstVar v) => Env v n m -> Env v n' (n' + m) -> Env v (n' + n) (n' + m)
 l ++++ r =
