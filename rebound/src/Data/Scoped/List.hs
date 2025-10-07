@@ -38,17 +38,20 @@ newtype List a n = MkList [a n]
     deriving anyclass (ScopedFoldable [], ScopedTraversable [],
                         ScopedFunctor [], ScopedApplicative [], ScopedMonad [])
 
+-- | Separate the head of the list from its tail, if applicable.
 uncons :: List a n -> Maybe (a n, List a n)
 uncons x = case coerce x of
       [] -> Nothing
       x:xs -> Just (x,coerce xs)
 
 {-# COMPLETE (:<), Nil #-}
+-- | Pattern for the empty list.
 pattern Nil :: forall a n. List a n
 pattern Nil <- (uncons -> Nothing)
  where
    Nil = coerce ([] :: [a n])
 
+-- | Pattern for a cons-ed list.
 pattern (:<) :: a n -> List a n -> List a n
 pattern x :< xs <- (uncons -> Just (x,xs))
   where
@@ -56,18 +59,23 @@ pattern x :< xs <- (uncons -> Just (x,xs))
 
 -- * Prelude / Control.Monad list operations
 
+-- | See 'Prelude.++'.
 (++) :: forall t n. List t n -> List t n -> List t n
 (++) = coerce ((Prelude.++):: [t n] -> [t n] -> [t n])
 
+-- | Lists flattening / Monadic join.
 concat :: List (List t) n -> List t n
 concat = Data.Scoped.Classes.foldr (Data.Scoped.List.++) Nil
 
+-- | See 'Prelude.filter'.
 filter :: (a n -> Bool) -> List a n -> List a n
 filter f = coerce (Prelude.filter f)
 
+-- | See 'Prelude.zipWith'.
 zipWith :: (a n -> b n -> c n) -> List a n -> List b n -> List c n
 zipWith f = coerce (Prelude.zipWith f)
 
+-- | See 'Prelude.zipWithM_'.
 zipWithM_ :: forall m k f1 f2 a b c n. (Applicative m)
     => (a n -> b n -> m c) -> List a n -> List b n -> m ()
 zipWithM_ f = coerce (M.zipWithM_ f)

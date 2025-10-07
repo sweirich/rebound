@@ -19,7 +19,7 @@ import Control.DeepSeq (NFData (..))
 -- Substitution class declarations
 ------------------------------------------------------------------------------
 -- | Well-scoped types that can be the range of
--- an environment. This should generally be the `Var`
+-- an environment. This should generally be the @Var@
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
@@ -115,14 +115,14 @@ shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
--- | `cons` -- extend an environment with a new mapping
+-- | @cons@ -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: v m -> Env v n m -> Env v (S n) m
 (.:) = Cons
 {-# INLINEABLE (.:) #-}
 
 
--- | inverse of `cons` -- remove the first mapping
+-- | inverse of @cons@ -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
 tail x = shiftNE s1 .>> x
 {-# INLINEABLE tail #-}

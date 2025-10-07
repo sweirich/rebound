@@ -19,7 +19,7 @@ import Control.DeepSeq (NFData (..))
 -- Substitution class declarations
 ------------------------------------------------------------------------------
 -- | Well-scoped types that can be the range of
--- an environment. This should generally be the `Var`
+-- an environment. This should generally be the @Var@
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
@@ -36,12 +36,13 @@ class (SubstVar v) => Subst v c where
   isVar _ = Nothing
   {-# INLINE isVar #-}
 
+-- | Generic programming variant of 'applyE'.
 gapplyE :: forall c v m n. (Generic1 c, GSubst v (Rep1 c), Subst v c) => Env v m n -> c m -> c n
 gapplyE r e | Just (Refl, x) <- isVar @v @c e = applyEnv r x
 gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 {-# INLINEABLE gapplyE #-}
 
--- Generic programming
+-- | Generic programming support for 'Subst'.
 class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
 
@@ -49,6 +50,8 @@ class GSubst v (e :: Nat -> Type) where
 ------------------------------------------------------------------------------
 -- Environment representation
 ------------------------------------------------------------------------------
+
+-- | Maps variables in scope @n@ to terms (of type @a@) in scope @m@.
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
   WeakR :: (SNat m) -> Env a n (n + m) --  weaken values in range by m
@@ -101,41 +104,46 @@ zeroE :: Env v Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
 
--- make the bound bigger, on the right, but do not change any indices.
--- this is an identity function
+-- | Increase the bound on free variables (on the right), without changing any free variable.
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
 weakenER = WeakR
 {-# INLINEABLE weakenER #-}
 
--- make the bound bigger, on the left, but do not change any indices.
--- this is an identity function
+-- | Increase the bound on free variables (on the left), without changing any free variable.
 weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (m + n)
 weakenE' = Weak
 {-# INLINEABLE weakenE' #-}
 
--- | increment all free variables by m
+-- | Shift the term, increasing every free variable as well as the bound by the provided amount.
 shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
--- | `cons` -- extend an environment with a new mapping
--- for index '0'. All existing mappings are shifted over.
+-- | @cons@ an environment, adding a new mapping
+-- for index '0'. All keys are shifted over.
 (.:) :: v m -> Env v n m -> Env v (S n) m
 (.:) = Cons
 {-# INLINEABLE (.:) #-}
 
-
--- | inverse of `cons` -- remove the first mapping
+-- | @uncons@ an environment, removing the mapping for index '0'.
+-- All other keys are shifted back.
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
 tail x = shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
 
--- | composition: do f then g
+-- | Compose two environments, applying them in sequence (left then right).
+-- Some optimizations will be applied to optimize the resulting environment.
 (.>>) :: (Subst v v) => Env v p n -> Env v n m -> Env v p m
 (.>>) = comp
 {-# INLINEABLE (.>>) #-}
 
--- | smart constructor for composition
+-- | Compose two environments, applying them in sequence (left then right).
+-- Some optimizations will be applied to optimize the resulting environment.
+--
+-- Some of the applied optimizations are:
+-- - Identity environments (e.g., @'shiftNE' SZ@) are eliminated
+-- - Absorbing environments on the right (i.e., 'zeroE') are eliminated
+-- - Compatible environments are fused (e.g., @'weakenER' n@ and @'weakenER' m)
 comp :: forall a m n p. SubstVar a =>
          Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
@@ -164,7 +172,7 @@ comp (Cons t s1) s2 = Cons (applyE s2 t) (comp s1 s2)
 comp s1 s2 = s1 :<> s2
 {-# INLINEABLE comp #-}
 
--- | modify an environment so that it can go under a binder
+-- | Adapt an environment to go under a binder.
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
 up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
@@ -172,7 +180,7 @@ up (WeakR SZ) = WeakR SZ
 up e = var Fin.f0 .: comp e (Inc s1)
 {-# INLINEABLE up #-}
 
--- | mapping operation for range of the environment
+-- | Map the range of an environment. Has to preserve the scope of the range.
 transform :: (SubstVar b) => (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f Zero = Zero
 transform f (Weak x) = Weak x

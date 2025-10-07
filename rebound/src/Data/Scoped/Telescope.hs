@@ -1,5 +1,6 @@
 -- |
 -- Stability: experimental
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Scoped.Telescope where
 
 import Rebound.Classes

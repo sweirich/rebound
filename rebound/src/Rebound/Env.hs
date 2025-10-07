@@ -4,8 +4,12 @@
 
 -- |
 -- Module      : Rebound.Env
--- Description : Environments
--- Stability   : experimental
+-- Description : Environments, or mappings from variables to terms
+--
+-- Environments, also called _parallel substitutions_ or _multi-substitutions_,
+-- map all variables in a scope to terms in another scope.
+
+
 module Rebound.Env
   ( Env,
     applyEnv,
@@ -40,8 +44,11 @@ module Rebound.Env
   )
 where
 
-import Rebound.Classes (Shiftable (..))
+-- The concrete implementation of environments can be changed by replacing
+-- this import with an alternative one.
 import Rebound.Env.Lazy
+
+import Rebound.Classes (Shiftable (..))
 import Rebound.Lib
 import Control.Monad
 import Data.Scoped.List (List, pattern Nil, pattern (:<))
@@ -56,40 +63,42 @@ import Prelude hiding (head, tail)
 -- operations on environments/substitutions
 ----------------------------------------------
 
--- TODO: do we want to replace uses of this operation with something else?
+-- | Convert a function into an environment.
 env :: forall m v n. (SubstVar v, SNatI m) => (Fin m -> v n) -> Env v m n
 env f = fromVec v
   where
     v :: Vec m (v n)
     v = Vec.tabulate f
 
--- | A singleton environment (single index domain)
--- maps that single variable to `v n`
+-- | A singleton environment (single index domain),
+-- which maps that single variable to the provided term.
 oneE :: (SubstVar v) => v n -> Env v (S Z) n
 oneE v = v .: zeroE
 
--- | an environment that maps index 0 to v and leaves
--- all other indices alone.
+-- | An environment that maps index 0 to the provided term, and maps
+-- all other indices to themselves.
 singletonE :: (SubstVar v) => v n -> Env v (S n) n
 singletonE v = v .: idE
 
--- | identity environment, any size
+-- | An identity environment, which maps all indices to themselves.
 idE :: (SubstVar v) => Env v n n
 idE = shiftNE s0
 
--- | append two environments
+-- | Append two environments.
+--
 -- The `SNatI` constraint is a runtime witness for the length
--- of the domain of the first environment. By using a class
--- constraint, this can be an infix operation.
+-- of the domain of the first environment.
 (.++) ::
   (SNatI p, SubstVar v) =>
   Env v p n ->
   Env v m n ->
   Env v (p + m) n
 (.++) = appendE snat
+-- By using a class constraint, this can be an infix operation.
 
--- | append two environments: explicit length `SNat p` required
--- for the domain of the first list
+-- | Append two environments, with the length @SNat p@ explicitly required.
+--
+-- If the length is implicitly available, '.++' might be preferable.
 appendE ::
   (SubstVar v) =>
   SNat p ->
@@ -107,15 +116,15 @@ newtype AppendE v m n p = MkAppendE
       Env v (p + m) n
   }
 
--- | access value at index 0
+-- | Access the term at index 0.
 head :: (SubstVar v) => Env v (S n) m -> v m
 head f = applyEnv f FZ
 
--- | increment all free variables by 1
+-- | Increment all free variables in image by 1.
 shift1E :: (SubstVar v) => Env v n (S n)
 shift1E = shiftNE s1
 
--- | Shift an environment by size `p`
+-- | Increment all free variables by @p@.
 upN ::
   forall v p m n.
   (Subst v v) =>
@@ -132,6 +141,7 @@ upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step))
 
 newtype UpN v m n p = MkUpN {getUpN :: Env v m n -> Env v (p + m) (p + n)}
 
+-- | Allow to implement 'Shiftable' using 'Subst'.
 shiftFromApplyE :: forall v c k n. (SubstVar v, Subst v c) => SNat k -> c n -> c (k + n)
 shiftFromApplyE k = applyE @v (shiftNE k)
 
@@ -139,10 +149,12 @@ shiftFromApplyE k = applyE @v (shiftNE k)
 -- Create an environment from a length-indexed
 -- vector of scoped values
 
+-- | Convert an environment to a 'Vec'.
 fromVec :: (SubstVar v) => Vec m (v n) -> Env v m n
 fromVec VNil = zeroE
 fromVec (x ::: vs) = x .: fromVec vs
 
+-- | Convert a 'Vec' to an environment.
 toVec :: (SubstVar v) => SNat m -> Env v m n -> Vec m (v n)
 toVec SZ r = VNil
 toVec m@(snat_ -> SS_ m') r = head r ::: toVec m' (tail r)
@@ -154,9 +166,11 @@ toVec m@(snat_ -> SS_ m') r = head r ::: toVec m' (tail r)
 instance (SNatI n, Show (v m), SubstVar v) => Show (Env v n m) where
   show x = show (tabulate x)
 
+-- | Convert an environment to an association list.
 tabulate :: (SNatI n, Subst v v) => Env v n m -> [(Fin n, v m)]
 tabulate r = map (\f -> (f, applyEnv r f)) Fin.universe
 
+-- | Convert an association list to an environment.
 fromTable ::
   forall n v.
   (SNatI n, SubstVar v) =>

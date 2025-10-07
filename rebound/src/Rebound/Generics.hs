@@ -1,9 +1,12 @@
+{-# OPTIONS_HADDOCK hide #-}
+
 module Rebound.Generics where
     
 import GHC.Generics hiding (S)
 import Rebound.Env
 import Rebound.Classes
 import Data.Set qualified as Set
+
 --------------------------------------------
 -- Generic implementation of Subst class
 --------------------------------------------

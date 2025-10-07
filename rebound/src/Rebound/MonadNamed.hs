@@ -1,4 +1,10 @@
--- | Monads supporting scopes of names
+-- |
+-- Description: Monads supporting scopes of names
+-- Stability: experimental
+--
+-- This should either be re-implemented to use 'Rebound.MonadScoped.Reader',
+-- or be discarded.
+
 module Rebound.MonadNamed
   ( Sized (..),
     Named (..),

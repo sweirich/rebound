@@ -18,7 +18,7 @@ import GHC.Generics hiding (S)
 -- Substitution class declarations
 ------------------------------------------------------------------------------
 -- | Well-scoped types that can be the range of
--- an environment. This should generally be the `Var`
+-- an environment. This should generally be the @Var@
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
@@ -86,7 +86,7 @@ shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE m = Env $ \x -> var (Fin.shiftN m x)
 {-# INLINEABLE shiftNE #-}
 
--- | `cons` -- extend an environment with a new mapping
+-- | @cons@ -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: SubstVar v => v m -> Env v n m -> Env v (S n) m
 ty .: s = Env $ \y -> case y of
@@ -94,7 +94,7 @@ ty .: s = Env $ \y -> case y of
                  FS x -> applyEnv s x
 {-# INLINEABLE (.:) #-}
 
--- | inverse of `cons` -- remove the first mapping
+-- | inverse of @cons@ -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
 tail x = shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
