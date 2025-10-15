@@ -33,6 +33,7 @@ import Rebound.Context
 import Rebound.Context qualified as Context
 import Rebound.Lib
 import Rebound.MonadScoped qualified as Scope
+import Rebound.Refinement qualified as Refinement
 import Unsafe.Coerce qualified
 
 ---------------------------------------------------------------------
@@ -446,7 +447,7 @@ declarePats ::
 declarePats pats (TCons (LocalDef x ty) (tele :: Telescope p1 n)) = do
   let r0 = singletonR (x, ty)
   ss <- Env.scopeSize
-  tele' <- withSNat ss $ doSubst @Z False (fromRefinement r0) tele
+  tele' <- withSNat ss $ doSubst @Z False (Refinement.toEnvironment r0) tele
   (defs, tms', rf) <- declarePats pats tele'
   let r1 = shift (size pats) r0
   r' <-

@@ -37,7 +37,7 @@ import Rebound.Bind.Scoped qualified as Scoped
 import Rebound.Bind.Single qualified as B
 import Rebound.Lib
 import Rebound.MonadNamed (ScopedReader)
-import Rebound.MonadNamed qualified as Scoped
+import Rebound.MonadNamed qualified as Named
 import Prelude hiding (lookup)
 
 --------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ scopeTelescope (C.Telescope t) = iter t
     iter [] = pure $ Some2 Scoped.nil
     iter (C.EntryDecl n ty : entries) = do
       ty' <- scope' ty
-      Scoped.push n $ do
+      Named.push n $ do
         Some2 @p1 tele' <- iter entries
         let ret = S.LocalDecl n ty' <:> tele'
         withSNat (sPlus (snat @p1) (snat @(S Z))) $
@@ -76,7 +76,7 @@ scopeTelescope (C.Telescope t) = iter t
 unscopeTelescope :: S.Telescope p n -> Unscope n C.Telescope
 unscopeTelescope Scoped.TNil = return $ C.Telescope []
 unscopeTelescope (Scoped.TCons h t) =
-  (C.<:>) <$> Scoped.push h (unscopeTelescope t) <*> unscopeLocal h
+  (C.<:>) <$> Named.pushVec (S.localNames h) (unscopeTelescope t) <*> unscopeLocal h
   where
     unscopeLocal :: S.Local p n -> Unscope n C.Entry
     unscopeLocal (S.LocalDecl n t) = C.EntryDecl n <$> unscope' t
@@ -112,7 +112,7 @@ unscopePattern = unscopePattern'
 --- Scoping interface
 --------------------------------------------------------------------------------
 
-type Scope n = Scoped.ScopedReaderT LocalName Maybe n
+type Scope n a = Named.ScopedReaderT LocalName Maybe n a
 
 type Unscope n a = ScopedReader LocalName n a
 
@@ -121,13 +121,13 @@ class Scoping n u s | n u -> s, s -> u, s -> n where
   unscope' :: s -> Unscope n u
 
 scopeUnder :: (SNatI n, Scoping n u s) => Vec n LocalName -> u -> Maybe s
-scopeUnder s u = Scoped.runScopedReaderT (scope' u) (Scoped.Scope snat s)
+scopeUnder s u = Named.runScopedReaderT (scope' u) s
 
 scope :: (Scoping Z u s) => u -> Maybe s
 scope = scopeUnder Vec.empty
 
 unscopeUnder :: (SNatI n, Scoping n u s) => Vec n LocalName -> s -> u
-unscopeUnder v t = Scoped.runScopedReader v (unscope' t)
+unscopeUnder v t = Named.runScopedReader (unscope' t) v
 
 unscope :: (Scoping Z u s) => s -> u
 unscope = unscopeUnder Vec.empty
@@ -143,7 +143,7 @@ toTerm (Local n) = S.Var n
 toTerm (Global n) = S.Global n
 
 lookup :: LocalName -> Scope n (Maybe (Fin n))
-lookup n = iter . Scoped.scope_names <$> Scoped.scope
+lookup n = iter <$> Named.scope
   where
     iter :: Vec n LocalName -> Maybe (Fin n)
     iter Vec.VNil = Nothing
@@ -157,20 +157,20 @@ instance Scoping n LocalName (ScopedName n) where
       Nothing -> Global (name n)
 
   unscope' (Local n) = do
-    bnds <- Scoped.scope
-    return $ Scoped.scope_names bnds Vec.! n
+    bnds <- Named.scope
+    return $ bnds Vec.! n
   unscope' (Global n) = return $ LocalName n
 
 instance Scoping n C.Match (S.Match n) where
   scope' (C.Branch pat tm) = do
     Some1 (pat' :: S.Pattern p) <- scopePattern pat
-    tm' <- Scoped.push pat' $ scope' tm
+    tm' <- Named.pushVec (S.patternNames pat') $ scope' tm
     return (S.Branch (Pat.bind pat' tm'))
 
   unscope' :: S.Match n -> Unscope n C.Match
   unscope' (S.Branch bnd) = do
     (pat, t) <- return $ Pat.unbindl bnd
-    C.Branch (unscopePattern pat) <$> Scoped.push pat (unscope' t)
+    C.Branch (unscopePattern pat) <$> Named.pushVec (S.patternNames pat) (unscope' t)
 
 instance Scoping n C.Term (S.Term n) where
   scope' :: C.Term -> Scope n (S.Term n)
@@ -179,17 +179,17 @@ instance Scoping n C.Term (S.Term n) where
   scope' (C.Global x) = return (S.Global x)
   scope' (C.Pi a x b) = do
     a' <- scope' a
-    b' <- Scoped.push x $ scope' b
+    b' <- Named.push x $ scope' b
     return (S.Pi a' (L.bind x b'))
   scope' (C.Pos s a) = do
     a' <- scope' a
     return (S.Pos s a')
   scope' (C.Let x a b) = do
     a' <- scope' a
-    b' <- Scoped.push x $ scope' b
+    b' <- Named.push x $ scope' b
     return (S.Let a' (L.bind x b'))
   scope' (C.Lam v b) = do
-    b' <- Scoped.push v $ scope' b
+    b' <- Named.push v $ scope' b
     return $ S.Lam (L.bind v b')
   scope' (C.App f a) = do
     f' <- scope' f
@@ -228,19 +228,19 @@ instance Scoping n C.Term (S.Term n) where
   unscope' S.TyType = pure C.TyType
   unscope' (S.Lam bnd) = do
     let (x, t) = L.unbindl bnd
-    C.Lam x <$> Scoped.push x (unscope' t)
+    C.Lam x <$> Named.push x (unscope' t)
   unscope' (S.Var x) = C.Var <$> unscope' (Local x)
   unscope' (S.Global n) = return $ C.Global n
   unscope' (S.Pi ty bnd) = do
     ty' <- unscope' ty
     let (x, t) = L.unbindl bnd
-    t' <- Scoped.push x $ unscope' t
+    t' <- Named.push x $ unscope' t
     return $ C.Pi ty' x t'
   unscope' (S.Pos pos t) = C.Pos pos <$> unscope' t
   unscope' (S.Let t1 bnd) = do
     t1' <- unscope' t1
     let (x, t2) = L.unbindl bnd
-    t2' <- Scoped.push x $ unscope' t2
+    t2' <- Named.push x $ unscope' t2
     return $ C.Let x t1' t2'
   unscope' (S.TyCon name args) = C.TyCon name <$> mapM unscope' args
   unscope' (S.DataCon name args) = C.DataCon name <$> mapM unscope' args
@@ -267,13 +267,13 @@ instance Scoping Z C.DataDef S.DataDef where
   scope' (C.DataDef delta s cs) = do
     Some2 (delta' :: S.Telescope p Z) <- scopeTelescope delta
     s' <- scope' s
-    cs' <- case axiomPlusZ @p of Refl -> Scoped.push delta' $ mapM scope' cs
+    cs' <- case axiomPlusZ @p of Refl -> Named.pushVec (S.telescopeNames delta') $ mapM scope' cs
     return $ S.DataDef delta' s' cs'
 
   unscope' (S.DataDef @p delta sort cstrs) = do
     delta' <- unscopeTelescope delta
     sort' <- unscope' sort
-    cstrs' <- case axiomPlusZ @p of Refl -> Scoped.push delta $ mapM unscope' cstrs
+    cstrs' <- case axiomPlusZ @p of Refl -> Named.pushVec (S.telescopeNames delta) $ mapM unscope' cstrs
     return $ C.DataDef delta' sort' cstrs'
 
 instance Scoping Z C.ModuleEntry S.ModuleEntry where
@@ -329,11 +329,11 @@ instance Scoping Z (Vec n (LocalName, C.Term)) (SNat n, Vec n LocalName, Rebound
     Refl -> do
       let names = fst <$> v
           terms = snd <$> v
-      t' <- Scoped.push names $ mapM scope' terms
+      t' <- Named.pushVec names $ mapM scope' terms
       return (Vec.vlength v, names, Rebound.fromVec t')
 
   unscope' (p, n, t) = case axiomPlusZ @n of
     Refl ->
       do
-        t' <- Scoped.push n $ unscope' (p, t)
+        t' <- Named.pushVec n $ unscope' (p, t)
         return $ Vec.zipWith (,) n t'

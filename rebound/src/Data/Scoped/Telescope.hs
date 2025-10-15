@@ -1,7 +1,7 @@
 -- |
 -- Stability: experimental
 {-# OPTIONS_HADDOCK hide #-}
-module Data.Scoped.Telescope where
+module Data.Scoped.Telescope {-# WARNING "This module is experimental" #-} where
 
 import Rebound.Classes
 import Rebound.Env (Shiftable (..))

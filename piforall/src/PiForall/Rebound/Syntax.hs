@@ -18,7 +18,6 @@ import Rebound.Bind.Pat qualified as Pat
 import Rebound.Bind.Scoped (TeleList (..), (<:>))
 import Rebound.Bind.Scoped qualified as Scoped
 import Rebound.Bind.Single qualified as B
-import Rebound.MonadNamed (Named (..))
 import Rebound.MonadScoped
 import Data.Fin
 import Data.Maybe qualified as Maybe
@@ -147,6 +146,22 @@ unPos _ = Nothing
 unPosFlaky :: Term n -> SourcePos
 unPosFlaky t = Maybe.fromMaybe (newPos "unknown location" 0 0) (unPos t)
 
+patternNames :: Pattern p -> Vec p LocalName
+patternNames (PatVar x) = x ::: VNil
+patternNames (PatCon _ p) = patListNames p
+  where
+    patListNames :: Pat.PatList Pattern p -> Vec p LocalName
+    patListNames Pat.PNil = VNil
+    patListNames (Pat.PCons h t) = patListNames t `Vec.append` patternNames h
+
+localNames :: Local p n -> Vec p LocalName
+localNames (LocalDecl x _) = x ::: VNil
+localNames (LocalDef _ _) = VNil
+
+telescopeNames :: Telescope p n -> Vec p LocalName
+telescopeNames TNil = VNil
+telescopeNames (TCons h t) = telescopeNames t `Vec.append` localNames h
+
 ----------------------------------------------
 --  Sized/Named instances
 ----------------------------------------------
@@ -157,11 +172,6 @@ instance Sized (Pattern p) where
   type Size (Pattern p) = p
   size (PatCon _ p) = size p
   size (PatVar _) = s1
-
-instance Named LocalName (Pattern p) where
-  names :: Pattern p -> Vec p LocalName
-  names (PatVar x) = x ::: VNil
-  names (PatCon _ p) = names p
 
 -- scoped patterns
 
@@ -174,10 +184,6 @@ instance Scoped.ScopedSized (Local p) where
   type ScopedSize (Local p) = p
 
 instance Scoped.IScopedSized Local
-
-instance Named LocalName (Local p n) where
-  names (LocalDecl x _) = x ::: VNil
-  names (LocalDef _ _) = VNil
 
 ----------------------------------------------
 --  Subst instances

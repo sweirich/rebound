@@ -21,6 +21,7 @@ import Rebound.Bind.Pat as Pat
 import Rebound.Bind.Scoped as Scoped
 import Rebound.MonadScoped
 import Rebound.MonadScoped qualified as Scope
+import Rebound.Refinement qualified as Refinement
 
 -- | compare two expressions for equality
 -- first check if they are alpha equivalent then
@@ -69,7 +70,7 @@ equate t1 t2 = do
                       Refl <-
                         patEq p1 p2
                           `Env.whenNothing` [DS "Cannot match branches in", DU n1, DS "and", DU n2]
-                      Env.pushUntyped p1 $ do
+                      Env.pushUntypedVec (patternNames p1) $ do
                         equate a1 a2
             zipWithM_ matchBr brs1 brs2
     (TyEq a1 b1, TyEq a2 b2) -> do
@@ -299,7 +300,7 @@ addRefinement (i, t) r = do
 
 addRefinements :: forall n a. (SNatI n) => Refinement Term n -> Refinement Term n -> TcMonad n (Refinement Term n)
 addRefinements r' r = do
-  let e = fromRefinement r'
+  let e = Refinement.toEnvironment r'
   foldM (\r i -> addRefinement (i, applyE e (var i)) r) r (domain r')
 
 pushRefinements :: forall n a. (SNatI n) => Refinement Term n -> TcMonad n a -> TcMonad n a

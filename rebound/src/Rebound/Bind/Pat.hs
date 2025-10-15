@@ -5,7 +5,6 @@
 -- Bind variables according to a user-defined pattern.
 module Rebound.Bind.Pat
   ( module Rebound,
-    Named(..),
     type Bind,
     bind,
     unbind,
@@ -24,7 +23,6 @@ module Rebound.Bind.Pat
 where
 
 import Rebound
-import Rebound.MonadNamed (Named (..))
 
 import qualified Data.Fin as Fin
 import qualified Data.Vec as Vec
@@ -237,12 +235,6 @@ instance
     Refl <- patEq ps1 ps2
     return Refl
   patEq _ _ = Nothing
-
-instance (forall p. Named name (pat p)) => Named name (PatList pat p) where
-  names :: PatList pat p -> Vec p name
-  names PNil = VNil
-  names (PCons (p1 :: pat p1) (ps :: PatList pat ps)) =
-    Vec.append @ps @p1 (names ps) (names p1)
 
 -- instance
 --   (forall p n. WithData v (pat p) n) =>

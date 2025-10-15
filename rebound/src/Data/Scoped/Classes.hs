@@ -1,7 +1,6 @@
 -- |
 -- Module      : Data.Scoped.Classes
 -- Description : Structures for scoped types
--- Stability   : experimental
 -- 
 -- These classes provide access to scoped versions of higher-kinded classes
 -- such as 'Functor'/'Foldable' etc.

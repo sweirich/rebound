@@ -24,7 +24,6 @@ module Rebound.Bind.Scoped (
     -- * Number of binding vars in pats
     ScopedSized(..),
     scopedSize,
-    scopedNames,
     scopedPatEq,
     EqSized,
     EqScopedSized,
@@ -33,7 +32,6 @@ module Rebound.Bind.Scoped (
     -- IScoped make sense, but are never used anywhere; should be remove it?
     IScopedSized,
     iscopedSize,
-    iscopedNames,
     iscopedPatEq,
     TeleList(..),
     lengthTele,
@@ -42,7 +40,6 @@ module Rebound.Bind.Scoped (
 
 import Rebound
 import Rebound.Bind.Pat qualified as Pat
-import Rebound.MonadNamed (Named (..))
 
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -71,13 +68,6 @@ class (forall p. EqSized pat p) => ScopedSized pat where
 -- | 'Rebound.Classes.size', but with a type referring to 'ScopedSize'.
 scopedSize :: forall pat p. (ScopedSized pat) => pat p -> SNat (ScopedSize pat)
 scopedSize = size
-
--- | 'Rebound.MonadNames.names', but with a type referring to 'ScopedSize'.
-scopedNames ::
-  (ScopedSized pat, Named name (pat p)) =>
-  pat p ->
-  Vec (ScopedSize pat) name
-scopedNames = names
 
 -- | Compare two patterns for equality. Provide a proof of equality of their
 -- size in case of success.
@@ -288,20 +278,19 @@ class (ScopedSize (t p) ~ p) => EqScopedSized t p
 
 instance (ScopedSize (t p) ~ p) => EqScopedSized t p
 
+-- | An indexed 'ScopedSized'.
 class
   ( forall p. ScopedSized (pat p),
     forall p. EqScopedSized pat p
   ) =>
   IScopedSized pat
 
--- with this type class, we wrap the size function yet again
--- to give it an easier to use type
+-- | 'Rebound.Classes.size', but with a type referring to 'IScopedSized'.
 iscopedSize :: (IScopedSized pat) => pat p n -> SNat p
 iscopedSize = scopedSize
 
-iscopedNames :: (IScopedSized pat, Named name (pat p n)) => pat p n -> Vec p name
-iscopedNames = scopedNames
-
+-- | Compare two patterns for equality. Provide a proof of equality of their
+-- size in case of success.
 iscopedPatEq ::
   (IScopedSized pat1, IScopedSized pat2, PatEq (pat1 p1 n1) (pat2 p2 n2)) =>
   pat1 p1 n1 ->
@@ -371,16 +360,6 @@ instance Sized (TeleList pat p n) where
   type Size (TeleList pat p n) = p
   size TNil = s0
   size (TCons p1 p2) = sPlus (size p2) (iscopedSize p1)
-
-instance
-  ( forall p1 n. Named name (pat p1 n),
-    IScopedSized pat
-  ) =>
-  Named name (TeleList pat p n)
-  where
-  names TNil = VNil
-  names (TCons p ps) =
-    Vec.append (names ps) (iscopedNames p)
 
 instance (IScopedSized pat, Subst v v, forall p. Subst v (pat p)) => Shiftable (TeleList pat p) where
   shift = shiftFromApplyE @v
