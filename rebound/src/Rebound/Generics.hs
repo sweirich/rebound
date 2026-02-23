@@ -76,7 +76,7 @@ instance GFV V1 where
   {-# INLINE gfreeVars #-}
 
 instance (GFV f, GFV g) => GFV (f :*: g) where
-  gappearsFree s (f :*: g) = gappearsFree s f && gappearsFree s g
+  gappearsFree s (f :*: g) = gappearsFree s f || gappearsFree s g
   {-# INLINE gappearsFree #-}
   gfreeVars (f :*: g) = gfreeVars f <> gfreeVars g
   {-# INLINE gfreeVars #-}
