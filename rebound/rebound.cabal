@@ -81,6 +81,56 @@ library
     , Data.Scoped.Maybe
   hs-source-dirs: src
 
+library rebound-examples
+  import:
+    common-stanza
+  visibility: private
+  build-depends:
+    base >=4.15, base < 5.0
+    , rebound
+    , mtl
+    , HUnit
+    , QuickCheck
+    , containers
+    , prettyprinter
+  exposed-modules:
+      LC
+    , LCQC
+    , LCLet
+    , PTS
+    , Pat
+    , DepMatch
+    , ScopeCheck
+    , HOAS
+    , SystemF
+    , PureSystemF
+    , LinLC
+  hs-source-dirs: examples
+
+library rebound-tutorials
+  import: 
+    common-stanza
+  build-depends:
+    base >=4.15, base < 5.0
+    , rebound
+    , mtl
+    , HUnit
+    , QuickCheck
+    , containers
+    , prettyprinter
+    , parsec
+    , template-haskell
+    , syb
+  exposed-modules:
+    Tutorial.Display
+    Tutorial.Named.Syntax
+    Tutorial.Named.PP
+    Tutorial.Named.Parser
+    Tutorial.Syntax
+    Tutorial.Gen
+    Tutorial.ScopeCheck
+  hs-source-dirs: tutorial
+
 test-suite rebound-tests
   import:
     common-stanza
