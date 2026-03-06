@@ -41,6 +41,7 @@ module Rebound.Env
     weakenE',
     weakenER,
     shiftFromApplyE,
+    skip
   )
 where
 
@@ -84,8 +85,10 @@ singletonE v = v .: idE
 idE :: (SubstVar v) => Env v n n
 idE = shiftNE s0
 
--- | Append two environments.
---
+
+
+
+-- | append two environments
 -- The `SNatI` constraint is a runtime witness for the length
 -- of the domain of the first environment.
 (.++) ::
@@ -123,6 +126,10 @@ head f = applyEnv f FZ
 -- | Increment all free variables in image by 1.
 shift1E :: (SubstVar v) => Env v n (S n)
 shift1E = shiftNE s1
+
+-- | rename then increment by 1
+skip :: SubstVar v => Env v m n -> Env v m (S n)
+skip e = e .>> shift1E
 
 -- | Increment all free variables by @p@.
 upN ::

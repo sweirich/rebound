@@ -1,6 +1,6 @@
--- This is an example that does not use rebound
+-- This is an example that does not use the rebound library
 -- instead it adapts the structure of rebound to the "names for free" 
--- technique of Bernardy and Pouillard
+-- technique of Bernardy and Pouillard.
 
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -15,19 +15,19 @@ import Prelude hiding (pi)
 
 type Tag = Type -- a type for parametric names, needs to be extensible
 
--- a Proxy type
--- This type is isomorphic to unit.
+-- The name type: indexed by a tag so that we can distinguish different names
+-- NB: This type is isomorphic to unit.
 data Name (a :: Tag) = Name
 
--- a scope is a snoc list of tags each tag is 
+-- a scope is a snoc list of tags each where tag is 
 -- a static "name" for a variable currently in scope. 
 data Scope where
    Nil  :: Scope
    (:>) :: Scope -> Tag -> Scope 
 
--- de Bruijn indices
--- represents variables in a scope
--- this type is isomorphic to Fin but the index is a list of tags
+-- de Bruijn indices represent variables in a scope
+-- this type is isomorphic to "Fin" but the index is a list of tags
+-- instead of a single nat
 data Index (s :: Scope) where
     I0 :: Index (s :> a)
     IS :: Index s -> Index (s :> a)
@@ -37,26 +37,29 @@ toInt :: Index s -> Int
 toInt I0 = 0
 toInt (IS x) = 1 + toInt x
 
-instance Show (Index s) where show i = show (toInt i)
+instance Show (Index s) where show i = show (toInt i) 
 
 
 ---------------------------------------------------------------------
 -- type classes for indices
 
--- | variable membership in scope
+-- | membership in scope
+-- If a variable is in scope, then we should be able to get its 
+-- index in that scope
 class (a :: Tag) ∈ (s :: Scope) where
     inj :: Name a -> Index s
 
+-- type class magic to calculate the index
 instance {-# OVERLAPPING #-} a ∈ (s :> a) where 
     inj _ = I0
 instance {-# INCOHERENT #-} (a ∈ n) => a ∈ (n :> b)
     where inj p = IS (inj p) 
 
--- | scope inclusion, witnessed by a substitution
--- this could be a renaming, but we don't have a 
--- separate type.
+-- | scope inclusion, witnessed by a substitution (see below)
+-- this should be a renaming (Index s -> Index s'), but we 
+-- are being a little lazy here
 class (s :: Scope) ⊆ (s' :: Scope) where
-    incl :: Env Exp s s'
+    incl :: Sub Exp s s'
 
 instance {-# OVERLAPPING #-} n ⊆ n where incl = idE
 instance {-# INCOHERENT #-} (m ⊆ n) => m ⊆ (n :> a) 
@@ -67,43 +70,50 @@ instance {-# INCOHERENT #-} (m ⊆ n) => ((m :> a) ⊆ (n :> a))
 
 --------------------------------------------------------------------
 -- Substitutions as closures
--- this is the same as in rebound, except that it uses Index instead of Fin
+-- this code is the same as in rebound, except that it uses Index 
+-- instead of Fin
 
-type Env v (s1 :: Scope) (s2 :: Scope) = Index s1 -> v s2
+type Sub v (s1 :: Scope) (s2 :: Scope) = Index s1 -> v s2
 
+-- class of types that have a var constructor
 class (Subst v v) => SubstVar v where
     ivar :: Index m -> v m
 
+-- class of types that we can apply substitutions to
 class SubstVar v => Subst v c where
-    applyE :: Env v m n -> c m -> c n
+    applyE :: Sub v m n -> c m -> c n
 
-zero :: Env v Nil (m :> a)
+zero :: Sub v Nil s
 zero = \x -> case x of {}
 
-idE :: SubstVar v => Env v n n 
+idE :: SubstVar v => Sub v n n 
 idE = ivar
 
-shift :: SubstVar v => Env v m (m :> a)
+shift :: SubstVar v => Sub v m (m :> a)
 shift = ivar . IS
 
-(.>>) :: Subst v v => Env v s1 s2 -> Env v s2 s3 -> Env v s1 s3 
+(.>>) :: Subst v v => Sub v s1 s2 -> Sub v s2 s3 -> Sub v s1 s3 
 r1 .>> r2 = applyE r2 . r1
 
-(.:) :: SubstVar v => v m -> Env v n m -> Env v (n :> a) m
+(.:) :: SubstVar v => v m -> Sub v n m -> Sub v (n :> a) m
 ty .: s = \y -> case y of 
                     I0 -> ty
                     IS x -> s x
 
-up :: Subst v v => Env v s1 s2 -> Env v (s1 :> a) (s2 :> a)
+up :: Subst v v => Sub v s1 s2 -> Sub v (s1 :> a) (s2 :> a)
 up rho = ivar I0 .: skip rho
 
-
-skip :: Subst v v => Env v m n -> Env v m (n :> a)
+skip :: Subst v v => Sub v m n -> Sub v m (n :> a)
 skip e = e .>> shift
 
---------------------------------------------------------------------
 
--- Bind abstract type (no delayed substitutions in this version)
+-- New: smart constructor for indices. If you have a Name 
+-- in the current scope, you can make a variable instance
+var :: forall a v s. (a ∈ s, SubstVar v) => Name a -> v s
+var a = ivar (inj a)
+
+--------------------------------------------------------------------
+-- An abstract type for binding
 
 -- the tag 'a' is abstract in this data structure
 data Bind v c s where
@@ -112,26 +122,36 @@ data Bind v c s where
 instance Subst v c => Subst v (Bind v c) where
     applyE s (Bind x t) = Bind x (applyE (up s) t)
 
--- smart constructor for bind. Uses a proxy for weak HOAS-like 
--- interface. 
-bind :: forall v c s. (forall a. Name a -> c (s :> a)) -> Bind v c s
-bind t = Bind Name (t Name)
+-- There are two ways to create bindings. The first is 
+-- to bind an existing name. 
+-- This is useful in translations especially as we might already have
+-- a name created from unbinding a term. We translate the body with that 
+-- name in scope, and then bind exactly that name again.
+
+-- We make the name of the bound variable the first type parameter so 
+-- that we can provide it visibly when using this function (i.e. with @)
+-- (in fact, it is important to do so for type class resolution)
+bind :: forall a s v c. c (s :> a) -> Bind v c s
+bind b = Bind Name b 
+
+-- alternatively, we have a HOAS introduction form that is parameterized
+-- by a new, fresh name 
+bindFresh :: forall v c s. (forall a. Name a -> c (s :> a)) -> Bind v c s
+bindFresh t = Bind Name (t Name)
+
 
 -- destruct a binding, producing a fresh static name in scope
 unbindWith :: Bind v c s -> (forall a. Name a -> c (s :> a) -> d) -> d
 unbindWith (Bind x t) f = f x t
 
--- smart constructor for indices
-var :: forall a v s. (a ∈ s, SubstVar v) => Name a -> v s
-var a = ivar (inj a)
-
-
-
 instance (forall s. Show (c s)) => Show (Bind v c s) where
     show (Bind x a) = "(Bind (" ++ show a ++ "))"
 
 -----------------------------------------------------
+-- past this line is a "use" of the general purpose library above
+-- the example is a small dependently-typed language 
 
+-- de Brujn 
 data Exp s where
     Star :: Exp s
     Var  :: Index s -> Exp s
@@ -157,43 +177,36 @@ instance Subst Exp Exp where
 weaken :: forall a b. (b ⊆ a) => Exp b -> Exp a 
 weaken = applyE @Exp incl
 
--- There are two ways to create lambda/pi terms. The first is 
--- to bind an existing name. 
--- This is useful in translations especially as we might have
--- created from unbinding a term, then we translate the body to 
--- a scope that includes the new name, then we want to bind exactly that 
--- name again.
--- We make the name of the bound variable the first type parameter so 
--- that we can provide it visibly when using this function
--- (in fact, it is important to do so, so that type class resolution for
--- weaken will work)
+-- convenience wrappers for two ways to create lam/pi terms
 lam :: forall a s. Exp s -> Exp (s :> a) -> Exp s
-lam t b = Lam t (Bind Name b)
+lam t b = Lam t (bind b)
 
--- alternatively, we can use a HOAS introduction form that creates a 
--- new name (and a new name proxy)
 lamFresh :: Exp s -> (forall a. (Name a -> Exp (s :> a))) -> Exp s
-lamFresh t b = Lam t (bind b)
-
+lamFresh t b = Lam t (bindFresh b)
 
 pi :: forall a s. Exp s -> Exp (s :> a) -> Exp s
-pi t b = Pi t (Bind Name b)
+pi t b = Pi t (bind b)
 
 piFresh :: Exp s -> (forall a. (Name a -> Exp (s :> a))) -> Exp s
-piFresh t b = Pi t (bind b)
+piFresh t b = Pi t (bindFresh b)
 
 -----------------------------------------------------
 -- Examples
 
+-- The arrow type "A -> B" is "Pi x:A.B" in a dependently 
+-- typed language. However, as x does not appear in B, we need 
+-- to weaken it.
 (->:) :: Exp s -> Exp s -> Exp s 
-t1 ->: t2 = pi t1 $ weaken t2   -- don't need a name here
+t1 ->: t2 = pi t1 $ weaken t2   
 
+-- The type of the identity function: Pi a:*. a -> a
 idTy :: Exp s 
 idTy = piFresh Star $ \a -> var a ->: var a
 
+-- An identity function "\a:*. \x:a.x"
 idExp :: Exp s
-idExp = lamFresh Star $ \x -> 
-           lamFresh (var x) $ \y -> var y
+idExp = lamFresh Star $ \a -> 
+           lamFresh (var a) $ \x -> var x
 
 
 -- >>> idTy
@@ -205,7 +218,22 @@ idExp = lamFresh Star $ \x ->
 -------------------------------------------------------------
 -------------------------------------------------------------
 -- parametricity translation
+-- This implements Bernardy's translation from "Parametricity for dependent types"
+-- Types are mapped to parametricity properties and terms are mapped to proofs of 
+-- those properties. This translation is tricky to express because each variable binding 
+-- in the input turns into (at least) two variable bindings in the output.  
 
+--  [[\x:A. e]]   = \x:a.\xR: [[A]] a. [[e]]
+--  [[ e1 e2 ]]   = [[e1]] e2 [[e2]]
+--  [[ x ]]       = xR
+--  [[ * ]]       = \x:*. Pi y:x. *
+--  [[Pi x:A. B]] = \xF:(Pi x:A.B). Pi x:A. Pi xR: [[A]] a. [[B]] (xF x)
+
+-- Overall, if  |- a : A,  we have   |- [[a]] : [[A]] a
+
+
+-- For the scope translation, we use an abstract type "R" for name generation.
+-- For each name "x", there is an analogous name "R x"
 data R :: Tag -> Tag
 
 type family Param (s :: Scope) :: Scope where
@@ -213,10 +241,10 @@ type family Param (s :: Scope) :: Scope where
     Param (s :> x) = Param s :> x :> R x
 
 
-extend :: Env Exp n (Param n) -> Env Exp (n :> a) (Param (n :> a))
+extend :: Sub Exp n (Param n) -> Sub Exp (n :> a) (Param (n :> a))
 extend e = (up e) .>> shift
 
-
+-- Given a name "x", find the name "R x"
 -- multiply a variable index by two
 varR :: Index n -> Index (Param n)
 varR I0 = I0
@@ -237,7 +265,7 @@ varR (IS n) = IS (IS (varR n))
 -- for this runtime witness in addition to the function that uses it for weakening.)
 -- OTOH, with enough type classes, we could probably get this argument to be created 
 -- and passed implicitly
-param' :: forall n m. Env Exp n (Param n) -> Exp n ->  Exp (Param n)
+param' :: forall n m. Sub Exp n (Param n) -> Exp n ->  Exp (Param n)
 param' theta Star = 
     lamFresh Star $ \x -> pi (var x) Star
 param' theta (Var x) = 
@@ -262,16 +290,18 @@ param' theta (Lam ty bnd) =
       pb   = param' (extend theta) b
   in 
   lam @x pty 
-    (lam @(R x)  
-        (App (weaken pty) (var x)) pb)
+    (lam @(R x) (App (weaken pty) (var x)) pb)
 
 param' theta (App f arg) = 
   App (App (param' theta f) (applyE theta arg)) (param' theta arg)
 
 
+-------------------------------------------------------------------------------
+--- Version 2
+
 -- Now let's use a type class to implicitly pass the theta argument
 class Theta n where  
-    theta :: Env Exp n (Param n)
+    theta :: Sub Exp n (Param n)
 instance Theta Nil where 
     theta = idE
 instance Theta s => Theta (s :> a) where 
@@ -280,8 +310,8 @@ instance Theta s => Theta (s :> a) where
 -- This instance is not allowed in Haskell because Param is a type family
 -- instance Theta n => (n ⊆ (Param n)) where
 --     incl = applyE @Exp theta
--- otherwise we could use weaken instead of "applyE @Exp theta" and 
--- "applyE @Exp (skip theta)" below
+-- otherwise we could use weaken instead of "applyE theta" and 
+-- "applyE (skip theta)" below
 
 param :: forall n m. Theta n => Exp n -> Exp (Param n)
 param Star = 
@@ -319,11 +349,13 @@ param (App f arg) =
 
 
 -----------------------------------------------------
+-- Version 3
+--
 -- This version uses functional dependencies instead of type families to 
 -- all the definition of the function to use 'weaken' in all places.
 
 class IParam s s' | s -> s' where
-    denv   :: Env Exp s s'
+    denv   :: Sub Exp s s'
 instance IParam Nil Nil where
     denv = idE
 instance (IParam s s') => IParam (s :> a) (s' :> a :> R a) where 
@@ -339,7 +371,7 @@ ivarR i = case (denv i) of
             Var x -> x 
             _  -> error "not a renaming"
 {-
--- if we want to avoid the error above, we can make the type class carry 
+-- if we want to avoid the (potential) error above, we can make the type class carry 
 -- a proof witness and use that to convert the variable.
 data DParam s s' where
     P0 :: DParam Nil Nil 
@@ -351,8 +383,6 @@ ivarR = go dparam where
     go (PS d) (IS i) = (IS (IS (go d i)))
 -}
 
-app :: (s1 ⊆ s, s2 ⊆ s) => Exp s1 -> Exp s2 -> Exp s
-app t u = App (weaken t) (weaken u)
 
 iparam :: forall n n'. (IParam n n') => Exp n -> Exp n'
 iparam Star = 
