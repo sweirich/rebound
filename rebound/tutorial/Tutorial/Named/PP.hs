@@ -26,6 +26,10 @@ import Tutorial.Named.Syntax
 oneline :: Display DispState a => a -> String
 oneline x = show (PP.group (display x initState))
 
+pp :: Display DispState a => a -> String
+pp x = show (display x initState)
+
+
 ------------------------------------------------
 -- * Pretty printing parameters and state
 --

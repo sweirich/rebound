@@ -1,12 +1,13 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Tutorial.Simple.CPS where
 
+import Test.QuickCheck
 import Tutorial.Simple.Syntax
 import Data.Vec ( (!) ) 
 import Tutorial.Simple.Gen
-import Tutorial.Named.PP
+import Tutorial.Simple.Eval
+import Tutorial.Simple.ScopeCheck
 
--- prop = forAllShow arbitrary
 
 -- CBV CPS translation (naive)
 --
@@ -21,7 +22,47 @@ import Tutorial.Named.PP
 
 
 cps :: Tm Z -> Tm Z
-cps e = cpsExp CpsStart e (Meta (bind1 wildcardName (Var FZ))) 
+cps e = cpsExp CpsStart e (Meta (bind1 (LocalName "x") (Var FZ))) 
+
+prop_cps_eval :: Tm Z -> Property
+prop_cps_eval e = 
+     counterexample ("e          = " ++ pp e)          $
+     counterexample ("eval_e     = " ++ pp eval_e)     $
+     counterexample ("cps_e      = " ++ pp cps_e)      $
+     counterexample ("cps_eval_e = " ++ pp cps_eval_e) $
+     counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+     cps_eval_e == eval_cps_e
+  where 
+     cps_e = cps e
+     eval_e = case eval e of 
+                 Left _ -> discard
+                 Right v -> v
+     cps_eval_e = cps eval_e
+     eval_cps_e = case eval (cps_e) of
+                    Left _ -> discard
+                    Right v -> v
+
+
+
+prop_cps_step :: Tm Z -> Property
+prop_cps_step e = 
+     counterexample ("e          = " ++ pp e) $
+     counterexample ("step_e     = " ++ pp step_e) $
+     counterexample ("cps_e      = " ++ pp cps_e) $
+     counterexample ("cps_step_e = " ++ pp cps_step_e) $
+     counterexample ("step_cps_e = " ++ pp step_cps_e) $
+     cps_step_e == step_cps_e
+  where 
+     cps_e = cps e
+     step_e = case step e of 
+                 Left _ -> discard
+                 Right v -> v
+     cps_step_e = cps (step_e)
+     step_cps_e = case step (cps_e) of
+                    Left _ -> discard
+                    Right v -> v
+
+        
 
 contName :: LocalName
 contName = LocalName "k"
@@ -55,6 +96,8 @@ data CpsCtx g g' where
   -- Context in the body of Meta. The input has the type
   -- of the parameter and the output has the converted type.
           
+  CpsLift   :: CpsCtx g g' -> CpsCtx (S g) (S (S g'))
+
 
 cpsIdx :: CpsCtx g g' -> Fin g -> Fin g' 
 cpsIdx CpsStart v = case v of {}
@@ -62,6 +105,8 @@ cpsIdx (CpsLam gg)  FZ      = FS FZ
 cpsIdx (CpsLam gg)  (FS v)  = FS (FS (cpsIdx gg v))
 cpsIdx (CpsMeta gg) FZ      = FZ
 cpsIdx (CpsMeta gg) (FS v)  = FS (cpsIdx gg v)
+cpsIdx (CpsLift gg) FZ      = FZ
+cpsIdx (CpsLift gg) (FS v)  = FS (FS (cpsIdx gg v))
 
 weaken :: Env Tm n (S n)
 weaken = shift1E
@@ -72,11 +117,8 @@ cpsExp g (Unit)   k = applyCont k Unit
 cpsExp g (Lam b)  k =
   let   e'  = Lam . bind1 (getLocalName b)
                $ Lam . bind1 contName
-                 $ cpsExp (CpsLam g) (getBody1 b) k'
-  
-        k'  = Obj $ Var FZ
-  
-      in
+                 $ cpsExp (CpsLam g) (getBody1 b) (Obj $ Var FZ)
+  in
         applyCont k e'    
 cpsExp g (Pair e1 e2) k = 
   let k1 :: Cont g'
@@ -112,3 +154,14 @@ cpsExp g (MatchPair e1 b) k =
       cpsExp g e1 k1
 cpsExp g (Inj i e) k = 
   cpsExp g e (Meta . bind1 contName $ applyCont (applyE weaken k) (Inj i (Var FZ)))
+
+cpsExp g (MatchUnit e1 e2) k = 
+  cpsExp g e1 (Meta . bind1 contName $ MatchUnit (Var FZ) 
+    (cpsExp (CpsMeta g) (applyE weaken e2) (applyE weaken k)))
+
+cpsExp g (MatchSum e0 e1 e2) k = 
+  cpsExp g e0 (Meta . bind1 contName $ MatchSum (Var FZ)
+    (bind1 (getLocalName e1) 
+      (cpsExp (CpsLift g) (getBody e1) (applyE (weaken .>> weaken) k)))
+    (bind1 (getLocalName e2)
+      (cpsExp (CpsLift g) (getBody e2) (applyE (weaken .>> weaken) k))))

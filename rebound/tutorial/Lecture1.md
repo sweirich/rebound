@@ -416,3 +416,57 @@ The library also provides smart constructors (`bind1`, `bind2`),
 accessors (`getBody1`, `getBody2`, `getLocalName`), and support for
 pretty-printing with user-chosen variable names — things that are awkward
 to add on top of the raw `Bind1`/`Bind2` data constructors.
+
+---
+
+## 10. Testing with QuickCheck — `TestEval.hs`
+
+With the evaluator in hand we can state and test some natural correctness
+properties using QuickCheck.  The two main properties are:
+
+**`prop_evalVal`** — evaluation always produces a value (when it succeeds):
+
+```haskell
+prop_evalVal :: Tm Z -> Property
+prop_evalVal e = case eval e of
+    Left _  -> discard          -- stuck terms are not counterexamples
+    Right v -> counterexample ("term: "  ++ pp e) $
+               counterexample ("value: " ++ pp v) $
+               isVal v
+```
+
+**`prop_evalStep`** — one small step does not change the final result:
+
+```haskell
+prop_evalStep :: Tm Z -> Property
+prop_evalStep e =
+    case step e of
+        Left _   -> discard
+        Right e' -> counterexample ("e  = " ++ pp e)  $
+                    counterexample ("e' = " ++ pp e') $
+                    eval e == eval e'
+```
+
+When a property fails, QuickCheck prints a counterexample.  Instead of
+showing the raw Haskell constructor soup — `App (Lam (Bind1 (Var FZ))) Unit`
+— the `counterexample` calls translate the term to named syntax and run the
+pretty printer first, giving readable output like:
+
+```
+*** Failed! ...
+term:  (λ x0. x0) ()
+value: ...
+```
+
+Running the tests:
+
+```
+ghci> qc prop_evalVal
++++ OK, passed 1000 tests; 871 discarded.
+ghci> qc prop_evalStep
++++ OK, passed 1000 tests; 543 discarded.
+```
+
+The high discard rate reflects the fact that randomly generated terms often
+get stuck (they are not well-typed). Randomly generated terms *could* also diverge, but 
+that is rare in this context.

@@ -135,6 +135,7 @@ library rebound-tutorials
     Tutorial.Simple.Typecheck
     Tutorial.Simple.Scratch
     Tutorial.Simple.CPS
+    Tutorial.Simple.TestEval
   hs-source-dirs: tutorial
 
 test-suite rebound-tests

@@ -1,25 +1,20 @@
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-|
 Module      : Simple.Eval
-Description : Evaluator for simply-typed lambda calculus
-Copyright   : (c) Stephanie Weirich, 2026
-License     : MIT
-Maintainer  : sweirich@seas.upenn.edu
-Stability   : experimental
+Description : Evaluator(s) for simply-typed lambda calculus
 
 -}
 
 module Tutorial.Simple.Eval where
 
-import Tutorial.Simple.Scratch
+import Tutorial.Simple.Syntax
 import Tutorial.Simple.Gen
 import Test.QuickCheck
 
 -- | (big-step) evaluation function 
 eval :: Tm Z -> Either String (Tm Z)
 eval (Var x) = case x of {}
-eval (Lam m)   = return (Lam m)
-eval Unit      = return Unit
+eval (Lam m)      = return (Lam m)
+eval Unit         = return Unit
 eval (Pair e1 e2) = Pair <$> eval e1 <*> eval e2
 eval (Inj i m) = do
     t <- eval m
@@ -54,16 +49,8 @@ isVal (Lam b) = True
 isVal Unit = True
 isVal (Inj i e) = isVal e
 isVal (Pair e1 e2) = isVal e1 && isVal e2
-isVal (Ann e t) = isVal e
-isVal _ = False
+isVal e = False
 
-qc :: Testable prop => prop -> IO ()
-qc = quickCheckWith stdArgs { maxSuccess = 1000 }
-
-prop_evalVal :: Tm Z -> Property
-prop_evalVal e = case (eval e) of 
-                    Left _ -> discard -- ignore tests that get stuck
-                    Right v -> property $ isVal v 
 
 data Outcome = Value | Stuck
 
@@ -113,9 +100,3 @@ step (MatchSum s b1 b2) = case step s of
     Right s' -> Right (MatchSum s' b1 b2)
 step (Ann e t) = Right e
 
-
-prop_evalStep :: Tm Z -> Property
-prop_evalStep e = 
-    case step e of 
-        Right e' -> property $ eval e == eval e'
-        Left s -> discard
