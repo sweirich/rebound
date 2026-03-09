@@ -20,6 +20,7 @@ common common-stanza
   ghc-options:
      -Wno-type-defaults
      -Wincomplete-patterns
+     -Wno-deprecations
   default-language:
     GHC2021
   default-extensions:
@@ -122,13 +123,18 @@ library rebound-tutorials
     , template-haskell
     , syb
   exposed-modules:
-    Tutorial.Display
+    Tutorial.Lib
     Tutorial.Named.Syntax
     Tutorial.Named.PP
     Tutorial.Named.Parser
-    Tutorial.Syntax
-    Tutorial.Gen
-    Tutorial.ScopeCheck
+    Tutorial.Named.Gen
+    Tutorial.Simple.Syntax
+    Tutorial.Simple.Gen
+    Tutorial.Simple.Eval
+    Tutorial.Simple.ScopeCheck
+    Tutorial.Simple.Typecheck
+    Tutorial.Simple.Scratch
+    Tutorial.Simple.CPS
   hs-source-dirs: tutorial
 
 test-suite rebound-tests

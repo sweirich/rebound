@@ -6,6 +6,7 @@ import Test.QuickCheck (Gen(..),Arbitrary(..))
 import qualified Test.QuickCheck as QC
 
 import qualified Data.Fin as Fin
+import Data.Vec ((!))
 
 -- * Arbitrary instance for Ty
 
@@ -69,17 +70,18 @@ genTm :: forall n. SNat n -> Int -> QC.Gen (Tm n)
 genTm n sz =
     let
         sz' = (sz `div` 2)
-        gens = [Lam <$> (bind1 <$> genTm (next n) sz'),
+        gens = [Lam <$> (bind1 <$> arbitrary <*> genTm (next n) sz'),
                 App <$> genTm n sz' <*> genTm n sz',
                 
                 pure Unit,
                 MatchUnit <$> genTm n sz' <*> genTm n sz',
 
                 Pair <$> genTm n sz' <*> genTm n sz',
-                MatchPair <$> genTm n sz' <*> (bind2 <$> genTm (next (next n)) sz'),
+                MatchPair <$> genTm n sz' <*> (bind2 <$> arbitrary <*> arbitrary <*> genTm (next (next n)) sz'),
                 
                 Inj <$> QC.elements [0,1] <*> genTm n sz',
-                MatchSum <$> genTm n sz'  <*> (bind1 <$> genTm (next n) sz') <*> (bind1 <$> genTm (next n) sz')
+                MatchSum <$> genTm n sz'  <*> (bind1 <$> arbitrary <*> genTm (next n) sz') 
+                                          <*> (bind1 <$> arbitrary <*> genTm (next n) sz')
               ]
     in
     case snat_ n of
@@ -98,17 +100,20 @@ genTm n sz =
 shrinkTm :: SNatI n => Tm n -> [Tm n]
 shrinkTm (Var FZ) = []
 shrinkTm (Var x ) = [ Var (pred x) ]
-shrinkTm (Lam t)  = [ Lam (bind1 t') | t' <- shrinkTm (getBody1 t) ]
+shrinkTm (Lam t)  = [ Lam (bind1 (getLocalName t) t') | t' <- shrinkTm (getBody1 t) ]
 shrinkTm (App f a)  = shrinkTwo App f a
 shrinkTm (Pair a b) = shrinkTwo Pair a b 
 shrinkTm (MatchUnit a b) = shrinkTwo MatchUnit a b
 shrinkTm (MatchPair a b) = 
    [a] ++ [ MatchPair a' b | a' <- shrink a]
-       ++ [ MatchPair a (bind2 b') | b' <- shrink (getBody2 b)]
+       ++ [ MatchPair a (bind2 x y b') | b' <- shrink (getBody2 b)]
+    where x = names ! FZ
+          y = names ! (FS FZ)
+          names = getLocalName2 b
 shrinkTm (MatchSum a b1 b2) = 
    [a] ++ [ MatchSum a' b1 b2 | a' <- shrink a]
-       ++ [ MatchSum a (bind1 b') b2 | b' <- shrink (getBody1 b1)]
-       ++ [ MatchSum a b1 (bind1 b') | b' <- shrink (getBody1 b2)]
+       ++ [ MatchSum a (bind1 (getLocalName b1) b') b2 | b' <- shrink (getBody1 b1)]
+       ++ [ MatchSum a b1 (bind1 (getLocalName b2) b') | b' <- shrink (getBody1 b2)]
 shrinkTm _ = []
 
 shrinkTwo :: QC.Arbitrary a => (a -> a -> a) -> a -> a -> [a]

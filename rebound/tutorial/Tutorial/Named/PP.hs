@@ -19,10 +19,12 @@ import Prettyprinter (Doc, (<+>))
 import Prettyprinter qualified as PP
 import Control.Monad.Reader ( MonadReader(local) )
 
-import Tutorial.Display
+import Tutorial.Lib
 import Tutorial.Named.Syntax
 
 
+oneline :: Display DispState a => a -> String
+oneline x = show (PP.group (display x initState))
 
 ------------------------------------------------
 -- * Pretty printing parameters and state

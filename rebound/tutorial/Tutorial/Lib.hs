@@ -8,6 +8,8 @@ import Prettyprinter qualified as PP
 import Text.ParserCombinators.Parsec.Error (ParseError)
 import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, sourceName)
 
+import Test.QuickCheck
+
 -- * Injection/Projection pairs
 
 class Injection a b where
@@ -16,12 +18,12 @@ class Injection b a => Projection a b where
     project :: a -> Maybe b
 
 prop_Projection1 :: forall b a. (Arbitrary a, Eq a, Projection a b) => a -> Bool
-prop_Projection1 a = case (project a) of 
+prop_Projection1 a = case (project @a @b a) of 
                       Nothing -> True
                       Just b -> a == inject b
 
-prop_Projection2 :: forall b a. (Arbitrary a, Eq a, Projection a b) => a -> Bool
-prop_Projection2 a = project (inject a) == Just a
+prop_Projection2 :: forall b a. (Arbitrary a, Eq a, Projection b a) => a -> Bool
+prop_Projection2 a = project @b @a (inject a) == Just a
 
 -- * Finite maps from Fin n
 
@@ -35,7 +37,7 @@ empty = \x -> case x of {}
 extend :: Map a n -> a -> Map a (S n)
 extend g a = \x -> case x of { FZ -> a ; FS y -> g y }
 
-
+-------------------------------------------------------------------------
 -- * Display class for pretty printing with associated state, such as prececence
 
 class Display s d where

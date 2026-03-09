@@ -1,6 +1,6 @@
 module Tutorial.Simple.Typecheck where
 
-import Tutorial.Simple.Syntax 
+import Tutorial.Simple.Syntax hiding (Ctx)
 
 -- * Typing contexts
 

@@ -1,6 +1,19 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-|
+Module      : Simple.Eval
+Description : Evaluator for simply-typed lambda calculus
+Copyright   : (c) Stephanie Weirich, 2026
+License     : MIT
+Maintainer  : sweirich@seas.upenn.edu
+Stability   : experimental
+
+-}
+
 module Tutorial.Simple.Eval where
 
-import Tutorial.Simple.Syntax
+import Tutorial.Simple.Scratch
+import Tutorial.Simple.Gen
+import Test.QuickCheck
 
 -- | (big-step) evaluation function 
 eval :: Tm Z -> Either String (Tm Z)
@@ -34,3 +47,75 @@ eval (MatchUnit e m) = do
         Unit -> eval m
         _ -> Left "Wrong"
 eval (Ann e t) = eval e
+
+-- | is a term a value?
+isVal :: Tm Z -> Bool
+isVal (Lam b) = True
+isVal Unit = True
+isVal (Inj i e) = isVal e
+isVal (Pair e1 e2) = isVal e1 && isVal e2
+isVal (Ann e t) = isVal e
+isVal _ = False
+
+qc :: Testable prop => prop -> IO ()
+qc = quickCheckWith stdArgs { maxSuccess = 1000 }
+
+prop_evalVal :: Tm Z -> Property
+prop_evalVal e = case (eval e) of 
+                    Left _ -> discard -- ignore tests that get stuck
+                    Right v -> property $ isVal v 
+
+data Outcome = Value | Stuck
+
+-- | Small-step evaluation function
+step :: Tm Z -> Either Outcome (Tm Z)
+step (Var x) = case x of {}
+step (Lam b) = Left Value
+step (App f a) = case step f of 
+    Left Stuck -> Left Stuck
+    Left Value -> case f of 
+        Lam b -> case step a of 
+                    Left Value -> Right (instantiate1 b a)
+                    Left Stuck -> Left Stuck
+                    Right a' -> Right (App f a')
+        _ -> Left Stuck
+    Right f' -> Right (App f' a)
+step Unit = Left Value
+step (MatchUnit u s) = case step u of 
+    Left Stuck -> Left Stuck
+    Left Value -> case u of 
+            Unit -> Right s
+            _    -> Left Stuck
+    Right u' -> Right (MatchUnit u' s)
+step (Pair a1 a2) = case step a1 of 
+    Left Stuck -> Left Stuck
+    Left Value -> case step a2 of 
+        Left Stuck -> Left Stuck
+        Left Value -> Left Value
+        Right a2' -> Right (Pair a1 a2')
+    Right a1' -> Right (Pair a1' a2)
+step (MatchPair p b) = case step p of 
+    Left Stuck -> Left Stuck
+    Left Value -> case p of 
+        Pair v1 v2 -> Right (instantiate2 b v1 v2)
+        _ -> Left Stuck
+    Right p' -> Right (MatchPair p' b)
+step (Inj i a) = case step a of 
+    Left Stuck -> Left Stuck
+    Left Value -> Left Value
+    Right a' -> Right (Inj i a')
+step (MatchSum s b1 b2) = case step s of 
+    Left Stuck -> Left Stuck
+    Left Value -> case s of 
+        Inj 0 v -> Right (instantiate1 b1 v)
+        Inj 1 v -> Right (instantiate1 b2 v)
+        _ -> Left Stuck
+    Right s' -> Right (MatchSum s' b1 b2)
+step (Ann e t) = Right e
+
+
+prop_evalStep :: Tm Z -> Property
+prop_evalStep e = 
+    case step e of 
+        Right e' -> property $ eval e == eval e'
+        Left s -> discard

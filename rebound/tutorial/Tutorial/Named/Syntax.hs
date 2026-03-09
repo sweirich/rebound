@@ -1,17 +1,16 @@
 {-|
-Module      : Named.Syntax
+Module      : Tutorial.Named.Syntax
 Description : Abstract syntax of typed lambda calclus with names
-Copyright   : (c) Stephanie Weirich, 2026
-License     : MIT
-Maintainer  : sweirich@seas.upenn.edu
-Stability   : experimental
 
-This module defines the syntax of a simple typed
+This module defines the abstract syntax for a simple typed
 lambda calculus with n-ary products and sums.
+
 Both products and sums are eliminated via pattern 
 matching. This syntax is used for parsing and pretty 
 printing. The `Named.Parser` module contains a description 
-of a concrete syntax for this language.
+of a concrete syntax for this language, and the Named.PP
+module converts this abstract representation into the 
+concrete syntax.
 
 -}
 
@@ -51,12 +50,12 @@ data Tm where
     Var   :: String -> Tm
     -- | λ term
     Lam   :: String -> Tm -> Tm
-    -- | (e1, ..., en)
+    -- | application
+    App   :: Tm -> Tm -> Tm
+    -- | tuples (e1, ..., en)
     Pair  :: [ Tm ] -> Tm
     -- | Inj i e
     Inj   :: Int -> Tm -> Tm
-    -- | application
-    App   :: Tm -> Tm -> Tm
     -- | Case analysis with list of pattern,branches
     Case  :: Tm -> [(Tm,Tm)] -> Tm
     -- | type annotation

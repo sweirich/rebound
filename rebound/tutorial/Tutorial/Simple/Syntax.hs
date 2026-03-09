@@ -10,17 +10,18 @@ A simply-typed lambda calculus with binary products and sums. Demonstrates a
 simple use of the `rebound` library.
 
 -}
-module Tutorial.Simple.Syntax(Ty(..), Tm(..), module Rebound, module Rebound.Bind.PatN) where
+module Tutorial.Simple.Syntax(Ty(..), Tm(..), module Rebound, module Data.LocalName, module Rebound.Bind.Local) where
 
-import Rebound
-import Rebound.Bind.PatN 
+import Rebound hiding (Ctx)
+import Rebound.Bind.Local
+import Data.LocalName
 
 -- Types 
 data Ty = One | Zero | Ty :-> Ty | Ty :* Ty | Ty :+ Ty 
   deriving (Eq, Show)
 
-data Branch n where 
-    Branch :: forall m n. SNatI m => Pat.Bind Tm Tm (Pat m) (m + n) -> Branch n 
+--data Branch n where 
+--    Branch :: forall m n. SNatI m => Pat.Bind Tm Tm (Pat m) (m + n) -> Branch n 
 
 -- Terms 
 data Tm (n :: Nat) where
@@ -38,8 +39,8 @@ data Tm (n :: Nat) where
     MatchPair :: Tm n -> Bind2 Tm Tm n -> Tm n
     MatchSum  :: Tm n -> Bind1 Tm Tm n -> Bind1 Tm Tm n -> Tm n
     -- type annotation
-
     Ann  :: Tm n -> Ty -> Tm n
+    
       deriving (Generic1, Eq, Show)
 
 instance Show (Bind1 Tm Tm n) where
