@@ -23,9 +23,11 @@ import Tutorial.Lib
 import Tutorial.Named.Syntax
 
 
+-- | Pretty-print on a single line (using 'PP.group' to collapse line breaks)
 oneline :: Display DispState a => a -> String
 oneline x = show (PP.group (display x initState))
 
+-- | Pretty-print with possible line breaks
 pp :: Display DispState a => a -> String
 pp x = show (display x initState)
 
@@ -50,11 +52,12 @@ data DispState = DI {
     prec  :: Int
 }
 
-data Style 
-    -- | use 0,1,2 for type names
-    = Math 
-    -- | use Void, Unit, Bool for type names
-    | Lang 
+-- | Printing style controls how type names are displayed
+data Style
+    -- | Use @0@, @1@, @2@ for type names
+    = Math
+    -- | Use @Void@, @Unit@, @Bool@ for type names
+    | Lang
 
 initState :: DispState
 initState = DI { style = Math, prec = levelBase }
@@ -134,18 +137,21 @@ instance Display DispState Ty where
 ----------------------------------------------
 -- * Diplay instance for Terms 
 
+-- | Pretty-print a single case branch @p -> e@
 displayBr :: (Tm,Tm) -> DispState -> Doc e
 displayBr (p,e) = do
     s1 <- withPrec 0 (display p)
     s2 <- withPrec levelBranch (display e)
     return (s1 <+> PP.pretty "->" <+> s2)
 
+-- | Pretty-print a list of case branches, adding @|@ separators when there are multiple
 displayBrs :: [(Tm,Tm)] -> DispState -> [Doc e]
 displayBrs []  s    = [PP.braces (PP.pretty "")]
 displayBrs [x] s    = [displayBr x s]
 displayBrs xs s =
     map (\b -> PP.pretty "|" <+> displayBr b s) xs
 
+-- | Collect consecutive lambda binders so they can be printed as @λ x y z. e@
 gatherBinders :: Tm -> ([String], Tm)
 gatherBinders (Lam x e) = ((x:rest),e')
   where (rest,e') = gatherBinders e

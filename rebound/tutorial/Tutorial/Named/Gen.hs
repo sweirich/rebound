@@ -1,7 +1,10 @@
 {-|
 Module      : Tutorial.Named.Gen
-Description : Generate random abstract syntax terms
+Description : QuickCheck generators for the named lambda calculus
 
+Provides 'QC.Arbitrary' instances for 'Ty' and 'Tm', plus the underlying
+generators and shrinkers. The generators use the standard 'QC.sized'
+mechanism: size controls the depth of the term tree.
 -}
 
 module Tutorial.Named.Gen(Gen(..), Arbitrary(..)) where
@@ -74,6 +77,7 @@ varNames = ["x", "y", "z", "w", "a", "b", "c", "d"] ++ [ "x" ++ show n | n <- [0
 -- 
 -- >>> QC.sample' (genVar 3)
 
+-- | Select uniformly from the first @n@ variable names; fails if @n <= 0@
 genVar n = QC.elements (take n varNames)
 
 -- | Generate a term of size 'sz' with 'vars' in scope
@@ -107,6 +111,7 @@ genPat vars sz
   
 -- >>> QC.sample' (genTm 0 5)
 
+-- | Generate a term with @vars@ variables in scope and depth bounded by @sz@
 genTm vars sz =
     let
         sz' = sz `div` 2
@@ -131,7 +136,7 @@ genTm vars sz =
                 then QC.oneof [Var <$> genVar vars, pure (Pair [])]
                 else QC.oneof ((Var <$> genVar vars) : gens)
 
--- | Shrink a named lambda calculus term
+-- | Shrink a named lambda calculus term, preserving scope
 shrinkTm :: Tm -> [Tm]
 shrinkTm (Var _)     = []
 shrinkTm (Lam x t)   = [t] ++ [Lam x t' | t' <- shrinkTm t]
@@ -143,11 +148,13 @@ shrinkTm (Case e bs) = [e] ++ [Case e' bs | e' <- shrinkTm e]
                            ++ [Case e bs' | bs' <- shrink bs]
 shrinkTm (Ann t _)   = [t]
 
+-- | Shrink a binary constructor by shrinking either child
 shrinkTwo :: QC.Arbitrary a => (a -> a -> a) -> a -> a -> [a]
 shrinkTwo f a b =
   [a,b] ++ [ f a' b | a' <- shrink a]
         ++ [ f a b' | b' <- shrink b]
 
+-- | Shrink a binary constructor whose two arguments have different types
 shrinkTwo' :: (QC.Arbitrary a, QC.Arbitrary b) => (a -> b -> a) -> a -> b -> [a]
 shrinkTwo' f a b =
   [a] ++ [ f a' b | a' <- shrink a]

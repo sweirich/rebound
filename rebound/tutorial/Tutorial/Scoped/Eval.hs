@@ -1,7 +1,12 @@
 {-|
-Module      : Simple.Eval
-Description : Evaluator(s) for simply-typed lambda calculus
+Module      : Tutorial.Scoped.Eval
+Description : Big-step and small-step evaluators for the scoped lambda calculus
 
+Both evaluators operate on closed terms ('Tm' 'Z') to avoid the need for
+an environment.  The big-step 'eval' returns a value or an error string;
+the small-step 'step' returns 'Left' 'Value' when the term is already a
+value, 'Left' 'Stuck' when evaluation is blocked, or 'Right' @e'@ for the
+next term.
 -}
 
 module Tutorial.Scoped.Eval where

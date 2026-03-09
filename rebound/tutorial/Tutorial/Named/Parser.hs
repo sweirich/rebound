@@ -1,7 +1,17 @@
--- | Parser for a small lambda calculus with n-ary products and sums.
--- It is implemented using the 'parsec' library and produces abstract
--- syntax represented by Named.Syntax
--- 
+{-|
+Module      : Tutorial.Named.Parser
+Description : Parser for a named lambda calculus with n-ary products and sums
+
+A 'parsec'-based parser for the concrete syntax of the tutorial language,
+producing 'Tutorial.Named.Syntax.Tm' and 'Tutorial.Named.Syntax.Ty' values.
+
+The concrete syntax supports:
+
+  * Types: @Unit@\/@1@, @Void@\/@0@, @Bool@\/@2@, @t -> t@, @t * t@, @t + t@
+  * Terms: variables, lambda, application, pairs, injections, pattern matching,
+           @let@, @if@\/@then@\/@else@, type annotations
+  * Patterns: variables, unit, tuples, injections, annotated patterns
+-}
 module Tutorial.Named.Parser where
 
 import Control.Monad (void)
@@ -153,10 +163,9 @@ unitP = (reserved "Unit" <|> reserved "1") >> return unitTy
 boolP :: Parser Ty
 boolP = (reserved "Bool" <|> reserved "2") >> return boolTy
 
--- parse a sequence of types, separated by either '*' or '+'
--- once you see the operator, the list must continue to use the same operator
--- this definition is factored this way so that we don't need to backtrack 
--- after parsing the first element of the list
+-- | Parse a sequence of types separated by either @*@ or @+@.
+-- Once the operator is seen the rest of the list must use the same operator.
+-- Factored to avoid backtracking after the first element.
 prodOrSumTy :: Parser Ty -> Parser Ty
 prodOrSumTy p = do
    x <- p
@@ -201,8 +210,9 @@ ty = buildExpressionParser table factor <?> "type"
 var :: Parser Tm 
 var = Var <$> identifier
 
+-- | Parse an injection: @Inj i e@, @True@, or @False@
 inj :: Parser Tm -> Parser Tm
-inj p = 
+inj p =
         (symbol "Inj" >> Inj <$> lexeme natural <*> p)
     <|> (reserved "True" >> return (Inj 1 (Pair []))) 
     <|> (reserved "False" >> return (Inj 0 (Pair [])))
@@ -217,6 +227,7 @@ inj p =
 -- Right (Inj 0 (Pair []))
 
 
+-- | Parse a parenthesised tuple: @()@, @(e)@, or @(e1, ..., en)@
 tuple :: Parser Tm -> Parser Tm
 tuple p = do xs <- P.sepBy p comma
              case xs of 
@@ -234,11 +245,8 @@ tuple p = do xs <- P.sepBy p comma
 -- Right (Pair [Var "x",Var "y"])
 
 
--- The difficulty with parsing patterns is that we need to parse
--- between products (comma separated sequences of terms), 
--- type annotations (terms followed by a colon then a type), 
--- and single terms. All of these *start* with a single term, the 
--- difference is what happens next.
+-- | Parse a term that may be a product, a type annotation, or a single term.
+-- All three forms begin with a single term; we commit after seeing @,@ or @:@.
 multiple :: Parser Tm -> Parser Tm
 multiple p = try one <|> return (Pair []) where
   one = p >>= \x -> 
@@ -284,14 +292,16 @@ pat = term <?> "pattern" where
 -----------------------------------------------------------------
 --- * Terms 
 
-lambda :: Parser Tm 
-lambda = do 
+-- | Parse a lambda abstraction: @\ x1 ... xn . e@ or @λ x1 ... xn . e@
+lambda :: Parser Tm
+lambda = do
   reservedOp "\\" <|> reservedOp "λ"
   binds <- many1 identifier
   dot
   body <- tm
   return $ foldr Lam body binds
 
+-- | Parse a @case@ expression: @case e of | p -> e | ...@
 casetm :: Parser Tm
 casetm = do
   reserved "case"
@@ -301,13 +311,15 @@ casetm = do
   brs <- P.sepBy branch (reservedOp "|")
   return (Case cond brs)
 
+-- | Parse a single branch: @p -> e@
 branch :: Parser (Tm,Tm)
-branch = do 
+branch = do
   p <- pat
   reservedOp "->"
   t <- tm
   return (p,t)
 
+-- | Parse a term (entry point for expressions)
 tm :: Parser Tm
 tm = funapp <?> "expression" where
 
@@ -333,6 +345,7 @@ tm = funapp <?> "expression" where
 -- >>> testParser tm "\\ x . \\ y . (x y) (x x)"
 -- Right (Lam "x" (Lam "y" (App (App (Var "x") (Var "y")) (App (Var "x") (Var "x")))))
 
+-- | Parse a @let@ expression: @let x = e1 in e2@  (sugar for @(\ x . e2) e1@)
 lettm :: Parser Tm
 lettm =
   do
@@ -344,8 +357,9 @@ lettm =
     body <- tm
     return $ App (Lam x body) rhs 
 
+-- | Parse an @if@ expression: @if e then e1 else e2@  (sugar for @case@)
 iftm :: Parser Tm
-iftm = do 
+iftm = do
   reserved "if" 
   cond <- tm 
   reserved "then"

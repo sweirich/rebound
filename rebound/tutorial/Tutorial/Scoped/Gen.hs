@@ -1,3 +1,16 @@
+{-|
+Module      : Tutorial.Scoped.Gen
+Description : QuickCheck generators for well-scoped lambda calculus terms
+
+Provides 'QC.Arbitrary' instances for 'Ty' and @'Tm' n@ (requiring
+'SNatI' for the term instance), plus the underlying generators and
+shrinkers.
+
+The key function is 'genTm', which takes an explicit 'SNat' @n@ for the
+number of free variables in scope and a size parameter bounding term
+depth.  The 'SNatI' constraint on the 'Arbitrary' instance is satisfied
+automatically when using @arbitrary :: Gen (Tm n)@ at a concrete @n@.
+-}
 module Tutorial.Scoped.Gen(Gen(..), Arbitrary(..)) where
 
 import Tutorial.Scoped.Syntax
@@ -36,6 +49,8 @@ genTy sz
        genPair = (:*)  <$> genTy sz' <*> genTy sz'
        genSum  = (:+)  <$> genTy sz' <*> genTy sz'
 
+-- | Example type, for doctest use
+t :: Ty
 t = ((One :+ Zero) :-> One) :* (Zero :+ Zero)
 
 -- | Produce a list of types smaller than the argument
@@ -96,7 +111,8 @@ genTm n sz =
               then QC.oneof [genVar, pure Unit]  -- either a variable in scope or unit
               else QC.oneof (genVar : gens)      -- arbitrary term in scope
 
--- | shrink a lambda calculus term, maintaining the same scope.
+-- | Shrink a well-scoped term, keeping it in the same scope @n@.
+-- Variables are shrunk towards 'FZ'; other constructors drop or simplify children.
 shrinkTm :: SNatI n => Tm n -> [Tm n]
 shrinkTm (Var FZ) = []
 shrinkTm (Var x ) = [ Var (pred x) ]
@@ -116,13 +132,15 @@ shrinkTm (MatchSum a b1 b2) =
        ++ [ MatchSum a b1 (bind1 (getLocalName b2) b') | b' <- shrink (getBody1 b2)]
 shrinkTm _ = []
 
+-- | Shrink a homogeneous binary constructor by shrinking either child
 shrinkTwo :: QC.Arbitrary a => (a -> a -> a) -> a -> a -> [a]
-shrinkTwo f a b = 
+shrinkTwo f a b =
   [a,b] ++ [ f a' b | a' <- shrink a]
         ++ [ f a b' | b' <- shrink b]
 
+-- | Shrink a binary constructor whose two arguments have different types
 shrinkTwo' :: (QC.Arbitrary a, QC.Arbitrary b) => (a -> b -> a) -> a -> b -> [a]
-shrinkTwo' f a b = 
+shrinkTwo' f a b =
   [a] ++ [ f a' b | a' <- shrink a]
         ++ [ f a b' | b' <- shrink b]
 

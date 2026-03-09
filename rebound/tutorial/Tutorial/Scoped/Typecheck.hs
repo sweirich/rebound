@@ -1,3 +1,16 @@
+{-|
+Module      : Tutorial.Scoped.Typecheck
+Description : Bidirectional type checker for the scoped lambda calculus
+
+A standard bidirectional type checker for 'Tutorial.Scoped.Syntax.Tm'.
+
+  * 'tiTm' /infers/ a type; it requires an annotation on lambdas and injections.
+  * 'tcTm' /checks/ a term against a given type; it eliminates annotations via
+    the subsumption rule at the bottom of 'tcTm'.
+
+The typing context 'Ctx' is a function @'Fin' n -> 'Ty'@, extended with
+'(+%)' at each binder.
+-}
 module Tutorial.Scoped.Typecheck where
 
 import Tutorial.Scoped.Syntax hiding (Ctx)
