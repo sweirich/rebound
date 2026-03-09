@@ -24,14 +24,14 @@ The translation is defined by the following equations, where @[[e]] k@ means
 
 The top-level entry point 'cps' uses the identity continuation @λx. x@.
 -}
-module Tutorial.Simple.CPS where
+module Tutorial.Scoped.CPS where
 
 import Test.QuickCheck
-import Tutorial.Simple.Syntax
+import Tutorial.Scoped.Syntax
 import Data.Vec ( (!) )
-import Tutorial.Simple.Gen
-import Tutorial.Simple.Eval
-import Tutorial.Simple.ScopeCheck
+import Tutorial.Scoped.Gen
+import Tutorial.Scoped.Eval
+import Tutorial.Scoped.ScopeCheck
 
 ------------------------------------------------------------------------
 -- * Top-level entry point and properties

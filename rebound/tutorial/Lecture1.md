@@ -4,9 +4,9 @@
 
 This lecture covers how to represent lambda calculus terms with *variable binding*
 in Haskell. We will build the infrastructure from scratch in
-`Tutorial.Simple.Scratch`, use it in an evaluator in `Tutorial.Simple.Eval`,
+`Tutorial.Scoped.Scratch`, use it in an evaluator in `Tutorial.Scoped.Eval`,
 and then show how to replace the hand-written infrastructure with the
-`rebound` library in `Tutorial.Simple.Syntax`.
+`rebound` library in `Tutorial.Scoped.Syntax`.
 
 ---
 
@@ -281,8 +281,8 @@ instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 
 ## 8. Using the Infrastructure — `Eval.hs`
 
-The evaluator in `Tutorial.Simple.Eval` shows these primitives in action.
-It imports `Tutorial.Simple.Scratch` and uses `instantiate1`/`instantiate2`
+The evaluator in `Tutorial.Scoped.Eval` shows these primitives in action.
+It imports `Tutorial.Scoped.Scratch` and uses `instantiate1`/`instantiate2`
 at every elimination step:
 
 ```haskell
@@ -338,7 +338,7 @@ The infrastructure in `Scratch.hs` — `Bind1`, `Bind2`, `applyE`, `idE`,
 `rebound` library packages this machinery so you don't have to rewrite it for
 every new language.
 
-The file `Tutorial.Simple.Syntax` shows the migration. The diff is small:
+The file `Tutorial.Scoped.Syntax` shows the migration. The diff is small:
 
 ### Imports
 
@@ -397,14 +397,14 @@ instance Subst Tm Tm where
 
 With these in place, the library derives `applyE` (called `applyE` or via
 `Subst` methods), `lift`, `shift`, `instantiate1`, and `instantiate2` for
-free. The `Eval.hs` file can import `Tutorial.Simple.Syntax` instead of
-`Tutorial.Simple.Scratch` and the evaluator code is *unchanged* — the same
+free. The `Eval.hs` file can import `Tutorial.Scoped.Syntax` instead of
+`Tutorial.Scoped.Scratch` and the evaluator code is *unchanged* — the same
 `instantiate1` and `instantiate2` calls work because the library exports them
 with the same interface.
 
 ### Summary of changes
 
-| Hand-written (`Scratch.hs`)        | Library (`Simple.Syntax` + `rebound`) |
+| Hand-written (`Scratch.hs`)        | Library (`Syntax.hs` + `rebound`) |
 |------------------------------------|----------------------------------------|
 | `data Bind1 n`                     | `Bind1 Tm Tm n` from `Rebound.Bind.Local` |
 | `data Bind2 n`                     | `Bind2 Tm Tm n` from `Rebound.Bind.Local` |

@@ -128,14 +128,14 @@ library rebound-tutorials
     Tutorial.Named.PP
     Tutorial.Named.Parser
     Tutorial.Named.Gen
-    Tutorial.Simple.Syntax
-    Tutorial.Simple.Gen
-    Tutorial.Simple.Eval
-    Tutorial.Simple.ScopeCheck
-    Tutorial.Simple.Typecheck
-    Tutorial.Simple.Scratch
-    Tutorial.Simple.CPS
-    Tutorial.Simple.TestEval
+    Tutorial.Scoped.Syntax
+    Tutorial.Scoped.Gen
+    Tutorial.Scoped.Eval
+    Tutorial.Scoped.ScopeCheck
+    Tutorial.Scoped.Typecheck
+    Tutorial.Scoped.Scratch
+    Tutorial.Scoped.CPS
+    Tutorial.Scoped.TestEval
   hs-source-dirs: tutorial
 
 test-suite rebound-tests

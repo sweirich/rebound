@@ -26,7 +26,7 @@ We maintain two parallel term representations:
 | Module | Type | Variables | Purpose |
 |---|---|---|---|
 | `Named.Syntax` | `Tm` | `String` | parsing, pretty-printing |
-| `Simple.Syntax` | `Tm n` | `Fin n` | evaluation, type-checking |
+| `Scoped.Syntax` | `Tm n` | `Fin n` | evaluation, type-checking |
 
 The named representation is convenient for humans: variable names are
 readable strings and there is no type index to worry about.  The scoped
