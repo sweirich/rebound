@@ -201,10 +201,6 @@ instance Display DispState Tm where
            (PP.hang 2 (PP.vsep 
             (PP.pretty "case" <+> s1 <+> PP.pretty "of" : s2)))
 
-    display (Ann e t) = do 
-        s1 <- withPrec 0 (display e)
-        s2 <- withPrec 0 (display t)
-        parens 0 (s1 <+> PP.colon <+> s2)
 
 -- >>> test (App (Var "x") (App (Var "x") (Var "x")))
 -- x (x x)

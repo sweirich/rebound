@@ -132,8 +132,7 @@ whiteSpace = P.whiteSpace tokenizer
 lexeme :: Parser a -> Parser a
 lexeme = P.lexeme tokenizer
 
-colon, dot, comma :: Parser ()
-colon = void (P.colon tokenizer)
+dot, comma :: Parser ()
 dot = void (P.dot tokenizer)
 comma = void (P.comma tokenizer)
 
@@ -245,21 +244,17 @@ tuple p = do xs <- P.sepBy p comma
 -- Right (Pair [Var "x",Var "y"])
 
 
--- | Parse a term that may be a product, a type annotation, or a single term.
--- All three forms begin with a single term; we commit after seeing @,@ or @:@.
+-- | Parse a term that may be a product or a single term.
+-- Both forms begin with a single term; we commit after seeing @,@.
 multiple :: Parser Tm -> Parser Tm
 multiple p = try one <|> return (Pair []) where
-  one = p >>= \x -> 
-            (Ann x <$> (colon >> ty))
-            <|> (comma >> 
+  one = p >>= \x ->
+            (comma >>
                   do xs <- P.sepBy p comma
-                     case xs of 
+                     case xs of
                         [] -> return x
                         _  -> return $ Pair (x:xs))
             <|> return x
-
--- >>> testParser (parens (multiple var)) "(x : 1)"
--- Right (Ann (Var "x") (Prod []))
 
 -- >>> testParser (parens (multiple var)) "(x)"
 -- Right (Var "x")
@@ -281,9 +276,6 @@ pat = term <?> "pattern" where
 
 -- >>> testParser pat "()"
 -- Right (Pair [])
-
--- >>> testParser pat "(x : 1)"
--- Right (Ann (Var "x") (Prod []))
 
 -- >>> testParser pat "Inj1 ((x,Inj 0 y),())"
 -- Right (Inj 1 (Pair [Pair [Var "x",Inj 0 (Var "y")],Pair []]))

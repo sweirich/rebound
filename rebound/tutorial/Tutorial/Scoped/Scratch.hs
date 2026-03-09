@@ -125,8 +125,6 @@ data Tm n where
     MatchUnit :: Tm n -> Tm n -> Tm n
     MatchPair :: Tm n -> Bind2 n -> Tm n
     MatchSum  :: Tm n -> Bind1 n -> Bind1 n -> Tm n
-    -- type annotation
-    Ann       :: Tm n -> Ty -> Tm n
       deriving (Eq, Show)
 
 -- | Apply a substitution environment to a term, replacing every free
@@ -144,7 +142,7 @@ applyE env (MatchPair a (Bind2 b)) =
     MatchPair (applyE env a) (Bind2 (applyE (lift (lift env)) b))
 applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
     MatchSum (applyE env a) (Bind1 (applyE (lift env) b1)) (Bind1 (applyE (lift env) b2))
-applyE env (Ann t ty)           = Ann (applyE env t) ty
+
 
 ------------------------------------------------------------------------
 -- * Examples

@@ -46,7 +46,6 @@ eval (MatchUnit e m) = do
     case v of 
         Unit -> eval m
         _ -> Left "Wrong"
-eval (Ann e t) = eval e
 
 -- | is a term a value?
 isVal :: Tm Z -> Bool
@@ -103,5 +102,5 @@ step (MatchSum s b1 b2) = case step s of
         Inj 1 v -> Right (instantiate1 b2 v)
         _ -> Left Stuck
     Right s' -> Right (MatchSum s' b1 b2)
-step (Ann e t) = Right e
+
 

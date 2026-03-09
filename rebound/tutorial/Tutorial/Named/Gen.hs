@@ -146,7 +146,7 @@ shrinkTm (Pair ts)   = [Pair ts' | ts' <- shrink ts]
 shrinkTm (Inj i t)   = [t] ++ [Inj i t' | t' <- shrinkTm t]
 shrinkTm (Case e bs) = [e] ++ [Case e' bs | e' <- shrinkTm e]
                            ++ [Case e bs' | bs' <- shrink bs]
-shrinkTm (Ann t _)   = [t]
+
 
 -- | Shrink a binary constructor by shrinking either child
 shrinkTwo :: QC.Arbitrary a => (a -> a -> a) -> a -> a -> [a]

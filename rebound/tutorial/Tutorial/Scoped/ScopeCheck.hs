@@ -144,7 +144,6 @@ injectTm = to emptyCtx where
                 , (N.Inj 1 (N.Var s2), to (vs +% s2) (I.getBody1 e2)) ]
             where s1 = show (I.getLocalName e1)
                   s2 = show (I.getLocalName e2)
-        to vs (I.Ann e ty)  = N.Ann (to vs e) (injectTy ty)
 
 -- | Convert a named term to a closed well-scoped term.
 -- Returns @Nothing@ if the named term contains free variables or uses

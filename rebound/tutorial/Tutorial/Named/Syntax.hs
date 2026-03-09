@@ -58,8 +58,6 @@ data Tm where
     Inj   :: Int -> Tm -> Tm
     -- | Case analysis with list of pattern,branches
     Case  :: Tm -> [(Tm,Tm)] -> Tm
-    -- | type annotation
-    Ann  :: Tm -> Ty -> Tm
       deriving (Show, Eq)
 
 -- * Syntactic sugar

@@ -58,9 +58,6 @@ data Tm (n :: Nat) where
     MatchPair :: Tm n -> Bind2 Tm Tm n -> Tm n
     -- | Sum elimination — one branch for each injection, each binding its payload
     MatchSum  :: Tm n -> Bind1 Tm Tm n -> Bind1 Tm Tm n -> Tm n
-    -- | Type annotation @e : t@
-    Ann  :: Tm n -> Ty -> Tm n
-    
       deriving (Generic1, Eq, Show)
 
 instance Show (Bind1 Tm Tm n) where
