@@ -175,3 +175,19 @@ test-suite rebound-tests
     Examples.PTS
     Examples.DepMatch
     Examples.LinLC
+
+test-suite tutorial-tests
+  import:
+    common-stanza
+  build-depends:
+      base
+    , rebound-tutorials
+    , QuickCheck
+    , tasty
+    , tasty-quickcheck
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    TutorialTests.hs
