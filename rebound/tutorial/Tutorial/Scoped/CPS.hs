@@ -60,12 +60,12 @@ prop_cps_eval e =
   where
      cps_e = cps e
      eval_e = case eval e of
-                 Left _ -> discard
-                 Right v -> v
+                 Nothing -> discard
+                 Just v -> v
      cps_eval_e = cps eval_e
      eval_cps_e = case eval (cps_e) of
-                    Left _ -> discard
-                    Right v -> v
+                    Nothing -> discard
+                    Just v -> v
 
 -- | __Note__: this property as written is __too strong__ and will fail.
 --

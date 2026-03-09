@@ -1,5 +1,5 @@
 {-|
-Module      : Simple.ScopeCheck
+Module      : Scoped.ScopeCheck
 Description : Conversion between the scoped (de Bruijn) and named representations
 
 This module provides two pairs of conversion functions:
@@ -11,7 +11,7 @@ This module provides two pairs of conversion functions:
   (@I.Tm n@) and unscoped named terms (@N.Tm@).
 
 The named representation is used for parsing and pretty-printing; the scoped
-representation is used for evaluation and type-checking.  The two directions
+representation is used for evaluation and transformation.  The two directions
 serve different purposes:
 
 * __inject__ (scoped → named): always succeeds; used for display.

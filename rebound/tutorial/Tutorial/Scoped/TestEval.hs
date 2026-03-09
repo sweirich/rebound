@@ -10,16 +10,16 @@ import Tutorial.Scoped.ScopeCheck
 -- | The result of evaluation is a value
 prop_evalVal :: Tm Z -> Property
 prop_evalVal e = case eval e of
-    Left _  -> discard
-    Right v -> counterexample ("term: " ++ pp e) $
+    Nothing -> discard
+    Just v  -> counterexample ("term: " ++ pp e) $
                counterexample ("value: " ++ pp v) $
                isVal v
 
 -- | Evaluating a value is idempotent
 prop_evalValIdem e = isVal e ==> case eval e of
-    Left _  -> counterexample ("term: " ++ pp e) $
+    Nothing -> counterexample ("term: " ++ pp e) $
                property False
-    Right v -> counterexample ("term: " ++ pp e) $
+    Just v -> counterexample ("term: " ++ pp e) $
                counterexample ("value: " ++ pp v) $
                e == v
 

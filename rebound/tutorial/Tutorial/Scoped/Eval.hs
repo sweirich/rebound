@@ -2,8 +2,8 @@
 Module      : Tutorial.Scoped.Eval
 Description : Big-step and small-step evaluators for the scoped lambda calculus
 
-Both evaluators operate on closed terms ('Tm' 'Z') to avoid the need for
-an environment.  The big-step 'eval' returns a value or an error string;
+Both evaluators operate on closed terms ('Tm' 'Z').  
+The big-step 'eval' returns a value or Nothing on an error;
 the small-step 'step' returns 'Left' 'Value' when the term is already a
 value, 'Left' 'Stuck' when evaluation is blocked, or 'Right' @e'@ for the
 next term.
@@ -16,7 +16,7 @@ import Tutorial.Scoped.Gen
 import Test.QuickCheck
 
 -- | (big-step) evaluation function 
-eval :: Tm Z -> Either String (Tm Z)
+eval :: Tm Z -> Maybe (Tm Z)
 eval (Var x) = case x of {}
 eval (Lam m)      = return (Lam m)
 eval Unit         = return Unit
@@ -29,23 +29,23 @@ eval (App m n) = do
     nv <- eval n 
     case mv of 
       Lam n -> eval (instantiate1 n nv)
-      _ -> Left "Wrong"
+      _ -> Nothing
 eval (MatchSum  e0 m m') = do
     v <- eval e0
     case v of
         (Inj 0 v1) -> eval (instantiate1 m v1) 
         (Inj 1 v1) -> eval (instantiate1 m' v1)
-        _ -> Left "Wrong"
+        _ -> Nothing
 eval (MatchPair e m) = do 
     v <- eval e 
     case v of
         Pair v1 v2 -> eval (instantiate2 m v1 v2)
-        _ -> Left "Wrong"
+        _ -> Nothing
 eval (MatchUnit e m) = do
     v <- eval e
     case v of 
         Unit -> eval m
-        _ -> Left "Wrong"
+        _ -> Nothing
 
 -- | is a term a value?
 isVal :: Tm Z -> Bool
@@ -55,7 +55,7 @@ isVal (Inj i e) = isVal e
 isVal (Pair e1 e2) = isVal e1 && isVal e2
 isVal e = False
 
-
+-- | A term can fail to step if it is a value or if it is stuck
 data Outcome = Value | Stuck
 
 -- | Small-step evaluation function

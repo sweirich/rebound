@@ -1,10 +1,6 @@
 {-|
 Module      : Tutorial.Scoped.Syntax
 Description : Well-scoped abstract syntax for a simply-typed lambda calculus
-Copyright   : (c) Stephanie Weirich, 2026
-License     : MIT
-Maintainer  : sweirich@seas.upenn.edu
-Stability   : experimental
 
 A simply-typed lambda calculus with binary products and sums whose terms are
 indexed by a 'Nat' tracking the number of free variables in scope.  Variable
@@ -32,8 +28,6 @@ data Ty
   | Ty :+ Ty
   deriving (Eq, Show)
 
---data Branch n where 
---    Branch :: forall m n. SNatI m => Pat.Bind Tm Tm (Pat m) (m + n) -> Branch n 
 
 -- | Terms of the simply-typed lambda calculus, parameterised by the number of
 -- free variables @n@ in scope.  Variable occurrences are de Bruijn indices

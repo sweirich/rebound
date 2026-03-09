@@ -1,5 +1,6 @@
--- | Complete definitions of well-scoped de Bruijn term representations from scratch.
--- Uses no library functions
+-- Module      : Scoped.Scratch
+-- Description : Complete definitions of well-scoped de Bruijn term representations from scratch.
+
 module Tutorial.Scoped.Scratch (
   -- * Finite sets
   Nat(..),
@@ -61,8 +62,10 @@ idE = Var
 -- Analogous to cons for lists of terms.
 infixr 5 .:
 (.:) :: Tm n -> Env m n -> Env (S m) n
-(.:) t _   FZ     = t
-(.:) _ env (FS x) = env x
+t .: env = \case
+    FZ   -> t      -- the new outermost variable maps to t
+    FS x -> env x  -- all others delegate to env
+
 
 -- | The shifting environment: maps each variable @x@ to @Var (FS x)@,
 -- i.e. weakens a scope by introducing a fresh outermost variable.
