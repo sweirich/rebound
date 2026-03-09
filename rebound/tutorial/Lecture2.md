@@ -1,21 +1,23 @@
 # Lecture 2: Where Do Well-Scoped Terms Come From?
 
-In Lecture 1 we built the de Bruijn representation and an evaluator, and
-observed that QuickCheck discards a large fraction of generated tests because
-randomly-built terms get stuck.  The root cause is that `Arbitrary (Tm n)`
-generates *syntactically* valid terms with no regard for types.
+In Lecture 1 we built the de Bruijn representation and an evaluator, and 
+used QuickCheck to generate well-scoped terms to test the properties of 
+our evaluator. In the case that QC finds a bug, we converted the term to a 
+named representation for printing. We also want to use this named representation 
+for parsing: users do not want to write their code using de Bruijn indices... instead
+we should let them use good-old-fashioned variable names and check for them 
+that these names are in scope.
 
-Before we can fix that we need to step back: even before asking about
-*well-typed* terms, where do *well-scoped* terms come from in the first
-place?  There are two sources:
+So that means that there are two sources of *well-scoped* terms that we want to 
+consider:
 
 1. **From the user** — the user writes a program in the *named* surface
    syntax; a *scope-checker* converts it to the de Bruijn representation.
 2. **From the generator** — QuickCheck generates them directly using a
    size-directed generator that tracks the scope as it recurses.
 
-This lecture covers both, and ends with a demo showing that the two roads
-form a round trip.
+This lecture covers both, and uses QuickCheck to ensure that we are treating 
+variable names consistently.
 
 ---
 
@@ -26,26 +28,31 @@ We maintain two parallel term representations:
 | Module | Type | Variables | Purpose |
 |---|---|---|---|
 | `Named.Syntax` | `Tm` | `String` | parsing, pretty-printing |
-| `Scoped.Syntax` | `Tm n` | `Fin n` | evaluation, type-checking |
+| `Scoped.Syntax` | `Tm n` | `Fin n` | evaluation, compilation |
 
 The named representation is convenient for humans: variable names are
 readable strings and there is no type index to worry about.  The scoped
 representation is safe by construction: the type system rules out
 out-of-scope variables entirely.
 
-`ScopeCheck.hs` bridges the gap with four functions:
+`ScopeCheck.hs` bridges the gap.  The top-level entry points are:
 
 ```haskell
-injectTy  :: I.Ty   -> N.Ty          -- always succeeds
-projectTy :: N.Ty   -> Maybe I.Ty    -- fails for n-ary types
+injectTm  :: I.Tm Z -> N.Tm           -- always succeeds
+projectTm :: N.Tm   -> Maybe (I.Tm Z) -- fails for free variables / unsupported patterns
+```
 
-injectTm  :: I.Tm Z -> N.Tm          -- always succeeds
-projectTm :: N.Tm   -> Maybe (I.Tm Z)-- fails for free variables / unsupported patterns
+Each is a one-liner that delegates to a worker that carries an explicit
+context, making the workers usable independently:
+
+```haskell
+injectTmWith  :: Vec n String      -> I.Tm n -> N.Tm
+projectTmWith :: [(String, Fin n)] -> N.Tm   -> Maybe (I.Tm n)
 ```
 
 ---
 
-## 2. Scope-Checking: Named → Scoped (`projectTm`)
+## 2. Scope-Checking: Named → Scoped (`projectTmWith`)
 
 The scope-checker converts a named term, where variables are strings, into a
 well-scoped term, where variables are de Bruijn indices.  The key challenge is
@@ -58,9 +65,10 @@ recursion.  Each entry records a name and the de Bruijn index it is currently
 bound to in scope `n`.
 
 ```haskell
+projectTmWith :: [(String, Fin n)] -> N.Tm -> Maybe (I.Tm n)
+
 projectTm :: N.Tm -> Maybe (I.Tm Z)
-projectTm = to [] where
-    to :: [(String, Fin n)] -> N.Tm -> Maybe (I.Tm n)
+projectTm = projectTmWith []
 ```
 
 The outer call starts with the empty list `[]` (no variables in scope), so
@@ -69,9 +77,9 @@ the result is a *closed* term `I.Tm Z`.
 ### Variable lookup
 
 ```haskell
-    to vs (N.Var v) = do
-        x <- lookup v vs
-        return $ I.Var x
+projectTmWith vs (N.Var v) = do
+    x <- lookup v vs
+    return $ I.Var x
 ```
 
 If `v` is not in the association list the term has a free variable and we
@@ -80,16 +88,16 @@ return `Nothing`.
 ### Crossing a binder
 
 ```haskell
-    to vs (N.Lam v b) = do
-        b' <- to ((v, FZ) : map (fmap FS) vs) b
-        return $ I.Lam (I.bind1 (I.LocalName v) b')
+projectTmWith vs (N.Lam v b) = do
+    b' <- projectTmWith ((v, FZ) : map (fmap FS) vs) b
+    return $ I.Lam (I.bind1 (I.LocalName v) b')
 ```
 
 When we cross a `λv.`, we extend the scope.  The new variable `v` maps to
-`FZ` (the innermost de Bruijn index).  Every existing variable `x` in the
-list is shifted up by one (`fmap FS`) because they are now one binder
-further away.  The result is packed into `I.bind1`, which stores the user's
-name `v` as a `LocalName` for later pretty-printing.
+`FZ` (the innermost de Bruijn index).  Every existing variable in the list is
+shifted up by one (`fmap FS`) because they are now one binder further away.
+The result is packed into `I.bind1`, which stores the user's name `v` as a
+`LocalName` for later pretty-printing.
 
 ### Pattern matching
 
@@ -97,10 +105,10 @@ For `MatchPair`, which binds two names simultaneously, we add both to the
 list and shift the rest by two:
 
 ```haskell
-    to vs (N.Case e [(N.Pair [N.Var v1, N.Var v2], e1)]) = do
-        a' <- to vs e
-        b' <- to ((v2, FZ) : (v1, FS FZ) : map (fmap (FS . FS)) vs) e1
-        return (I.MatchPair a' (I.bind2 (I.LocalName v1) (I.LocalName v2) b'))
+projectTmWith vs (N.Case e [(N.Pair [N.Var v1, N.Var v2], e1)]) = do
+    a' <- projectTmWith vs e
+    b' <- projectTmWith ((v2, FZ) : (v1, FS FZ) : map (fmap (FS . FS)) vs) e1
+    return (I.MatchPair a' (I.bind2 (I.LocalName v1) (I.LocalName v2) b'))
 ```
 
 Note the order: `v2` is innermost (`FZ`) and `v1` is next (`FS FZ`).  This
@@ -110,23 +118,23 @@ For `MatchSum`, the two branches are independent: each introduces one name
 into its own copy of the scope:
 
 ```haskell
-    to vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)]) = do
-        a'  <- to vs e
-        b1' <- to ((v1, FZ) : map (fmap FS) vs) e1
-        b2' <- to ((v2, FZ) : map (fmap FS) vs) e2
-        return (I.MatchSum a' (I.bind1 (I.LocalName v1) b1')
-                              (I.bind1 (I.LocalName v2) b2'))
+projectTmWith vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)]) = do
+    a'  <- projectTmWith vs e
+    b1' <- projectTmWith ((v1, FZ) : map (fmap FS) vs) e1
+    b2' <- projectTmWith ((v2, FZ) : map (fmap FS) vs) e2
+    return (I.MatchSum a' (I.bind1 (I.LocalName v1) b1')
+                          (I.bind1 (I.LocalName v2) b2'))
 ```
 
 Unsupported patterns return `Nothing`:
 
 ```haskell
-    to vs _ = Nothing
+projectTmWith vs _ = Nothing
 ```
 
 ---
 
-## 3. Printing: Scoped → Named (`injectTm`)
+## 3. Printing: Scoped → Named (`injectTmWith`)
 
 Going the other direction is always safe: a well-scoped term has no free
 variables and every variable is a valid index.  The job is to replace each
@@ -134,44 +142,73 @@ variables and every variable is a valid index.  The job is to replace each
 
 ### The naming context
 
-We carry a context `Ctx n` — in the simplest version, a function
-`Fin n -> String` — that maps each in-scope index to a name:
+We carry a `Vec n String` — a length-indexed vector of names — that maps each
+in-scope de Bruijn index to a string.  The head of the vector (index `FZ`) is
+the innermost (most recently bound) variable; names are prepended at each
+binder site.
 
 ```haskell
-type Ctx n = Fin n -> String
+injectTmWith :: Vec n String -> I.Tm n -> N.Tm
 
-emptyCtx :: Ctx Z
-emptyCtx = \x -> case x of {}   -- Fin Z is empty, so no case needed
-
-(+%) :: Ctx n -> String -> Ctx (S n)
-ctx +% s = \x -> case x of { FZ -> s ; FS y -> ctx y }
+injectTm :: I.Tm Z -> N.Tm
+injectTm = injectTmWith VNil
 ```
 
-`Fin Z` is an empty type (there are no constructors), so `emptyCtx` is
-vacuously total.  Extending with `(+%)` mirrors the structure of `(.:)` for
-substitution environments from Lecture 1.
+`VNil :: Vec Z String` is the empty vector for the closed-term case.
 
 ### The traversal
 
 ```haskell
-injectTm :: I.Tm Z -> N.Tm
-injectTm = to emptyCtx where
-    to :: forall n. SNatI n => Ctx n -> I.Tm n -> N.Tm
-    to vs (I.Var x)     = N.Var (vs x)
-    to vs (I.Lam t)     = N.Lam s (to (vs +% s) (I.getBody1 t))
-                            where s = show (I.getLocalName t)
-    ...
+injectTmWith vs (I.Var x)     = N.Var (vs ! x)
+injectTmWith vs (I.Lam t)     = N.Lam s (injectTmWith (s ::: vs) (I.getBody1 t))
+                                  where s = freshen (show (I.getLocalName t)) vs
 ```
 
-At a `Lam`, we retrieve the stored `LocalName` from the binder with
-`getLocalName`, convert it to a string, and extend the context before
-recursing into the body.  This is the inverse of `projectTm`: the name that
-was stored by `bind1` is recovered here.
+`vs ! x` looks up index `x` in the vector.  At a `Lam`, we retrieve the
+stored `LocalName` hint with `getLocalName`, convert it to a string, *freshen*
+it (see below), then prepend it to the vector before recursing into the body.
+This is the inverse of `projectTmWith`: the name stored by `bind1` is
+recovered here.
 
-The `SNatI n` constraint is needed so that `Fin.universe :: [Fin n]` is
-available in the generator (see §5); `injectTm` itself does not need it, but
-the constraint appears on the helper `to` in order to satisfy the type of
-`getBody1`.
+### Name freshening
+
+The `LocalName` hints stored in binders are *just hints* — they need not be
+unique.  QuickCheck, for example, freely generates terms where two nested
+binders share the same name hint.  If we used the hints verbatim the
+pretty-printed output would contain shadowed names and the round-trip property
+`prop_project_round_trip` would fail (the parser can't recover which binder a
+shadowed name refers to).
+
+We solve this with a small helper:
+
+```haskell
+-- | True if the string appears anywhere in the vector.
+inVec :: String -> Vec n String -> Bool
+inVec _ VNil       = False
+inVec x (y ::: ys) = x == y || inVec x ys
+
+-- | Return s unchanged if it is not in scope; otherwise append 0, 1, 2, …
+-- until a fresh name is found.
+freshen :: String -> Vec n String -> String
+freshen s vs
+    | not (inVec s vs) = s
+    | otherwise        = head [ s ++ show i | i <- [0 :: Int ..], not (inVec (s ++ show i) vs) ]
+```
+
+At every binder site, the proposed name is checked against the current vector
+and suffixed with a number if necessary.  For `MatchPair`, which introduces
+two names at once, the second name is freshened against the already-extended
+context that includes the first:
+
+```haskell
+injectTmWith vs (I.MatchPair e1 e2) =
+    N.Case (injectTmWith vs e1) [(N.Pair [N.Var s1, N.Var s2], injectTmWith vs' e2')]
+    where s1    = freshen (show (names ! FZ))      vs
+          s2    = freshen (show (names ! FS FZ))   (s1 ::: vs)
+          names = I.getLocalName2 e2
+          e2'   = I.getBody2 e2
+          vs'   = s2 ::: s1 ::: vs
+```
 
 ---
 
@@ -420,8 +457,8 @@ scope-checking the named term recovers exactly the original de Bruijn term.
 
 | Concept | Where | Key idea |
 |---|---|---|
-| Named → scoped | `projectTm` | association list `[(String, Fin n)]`; extend and shift at each binder |
-| Scoped → named | `injectTm` | context `Ctx n = Fin n -> String`; retrieve `LocalName` from each binder |
+| Named → scoped | `projectTmWith` | association list `[(String, Fin n)]`; extend and shift at each binder |
+| Scoped → named | `injectTmWith` | `Vec n String` naming context; retrieve `LocalName` hint, freshen if shadowed |
 | α-equivalence | `LocalName` | `Eq` instance makes all names equal; de Bruijn does the real comparison |
 | Well-scoped generation | `genTm` | scope tracked as `SNat n`; binders widen scope with `next`; variables from `Fin.universe` |
 | Round-trip | `prop_project_round_trip` | inject ∘ project = id on closed terms |
