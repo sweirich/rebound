@@ -127,12 +127,10 @@ library rebound-tutorials
     Tutorial.Named.Syntax
     Tutorial.Named.PP
     Tutorial.Named.Parser
-    Tutorial.Named.Gen
     Tutorial.Scoped.Syntax
     Tutorial.Scoped.Gen
     Tutorial.Scoped.Eval
     Tutorial.Scoped.ScopeCheck
-    Tutorial.Scoped.Typecheck
     Tutorial.Scoped.Scratch
     Tutorial.Scoped.CPS
     Tutorial.Scoped.TestEval
