@@ -56,13 +56,13 @@ terms
       | inj i e           sum intro  
       | e1 e2             application
       | case e of brs     pattern match
-      | e : t             annotation
       | ( e )             parentheses
 
       (syntactic sugar)
       | True | False | if e1 then e2 else e3
       | \x1 ... xn . e    
       | let x = e1 in e2 
+      | e1 ; e2
    
    br ::= | p -> e        branch
 

@@ -67,35 +67,63 @@ prop_cps_eval e =
                     Nothing -> discard
                     Just v -> v
 
--- | __Note__: this property as written is __too strong__ and will fail.
---
--- It checks @cps(step(e)) == step(cps(e))@ — syntactic equality after
--- exactly one step on each side.  This does not hold because the CPS
--- translation introduces /administrative redexes/: one direct-style step
--- may correspond to multiple CPS steps.
---
--- The correct small-step statement is the weaker:
---
--- @eval(cps(step(e))) == eval(step(cps(e)))@
---
--- which follows from 'prop_cps_eval' and 'prop_evalStep'.
+{-     e -> e'
+
+       [[e]] ->* [[e']]
+    
+-}                    
+
 prop_cps_step :: Tm Z -> Property
 prop_cps_step e =
      counterexample ("e          = " ++ pp e) $
+     counterexample ("eval e     = " ++ pp eval_e) $
      counterexample ("step_e     = " ++ pp step_e) $
-     counterexample ("cps_e      = " ++ pp cps_e) $
      counterexample ("cps_step_e = " ++ pp cps_step_e) $
-     counterexample ("step_cps_e = " ++ pp step_cps_e) $
-     cps_step_e == step_cps_e
+     counterexample ("cps_e      = " ++ pp cps_e) $
+     case eval e of 
+        Nothing -> discard -- ignore tests for ill-typed terms
+        Just _  -> step_star cps_e cps_step_e
   where
      cps_e = cps e
+     eval_e = case eval e of 
+                 Nothing -> discard
+                 Just v -> v
      step_e = case step e of
-                 Left _ -> discard
+                 Left _ -> discard -- if e is a value or gets stuck, ignore this test
                  Right v -> v
-     cps_step_e = cps (step_e)
-     step_cps_e = case step (cps_e) of
-                    Left _ -> discard
-                    Right v -> v
+     cps_step_e = cps step_e
+     
+     
+step_star :: Tm Z -> Tm Z -> Property
+step_star e v = 
+    counterexample ("steps to  => " ++ pp e) $
+    e == v .||. case step e of 
+    Left _ -> property False  -- should not get stuck
+    Right e' -> step_star e' v
+
+
+step_step :: Tm Z -> Either Outcome (Tm Z)
+step_step e = case step e of 
+    Left o -> Left o
+    Right e' -> step e'
+
+step_step_step :: Tm Z -> Either Outcome (Tm Z)
+step_step_step e = case step e of 
+    Left o -> Left o
+    Right e' -> case step e' of 
+        Left o -> Left o
+        Right e'' -> step e''
+
+e = MatchUnit (MatchUnit Unit Unit) (Lam (bind1 (LocalName "w") (Var FZ)))
+
+cps_e = cps e
+step_e = case step e of Right v -> v
+
+-- >>> pp step_e
+-- "(); \955 w. w"
+
+-- >>> 
+
 
 ------------------------------------------------------------------------
 -- * Continuations
@@ -294,3 +322,132 @@ cpsExp g (MatchSum e0 e1 e2) k =
             (bind1 (getLocalName e2)
                 (cpsExp (CpsLift g) (getBody e2)
                     (applyE (weaken .>> weaken) k))))
+
+------------------------------------------------------------------------
+-- * Naive CPS translation (object-level continuations only)
+------------------------------------------------------------------------
+
+-- | Apply the naive CPS translation to a closed term, using the identity
+-- continuation @λx. x@ as an explicit object-level term.
+--
+-- Unlike 'cps', every intermediate continuation here is a genuine lambda in
+-- the output term, not a Haskell-level binder.  The output therefore contains
+-- more administrative beta-redexes, but the evaluator reduces them all away,
+-- so @eval (cpsObj e) == eval (cps e)@ (see 'prop_cpsObj_eval').
+cpsObj :: Tm Z -> Tm Z
+cpsObj e = cpsObjExp CpsStart e (Lam (bind1 (LocalName "x") (Var FZ)))
+
+-- | Naive CPS worker.  Translate source term @e@ in scope @g@, applying the
+-- /object-level/ continuation @k :: Tm g'@ to the result.
+--
+-- The equations mirror the standard call-by-value CPS translation verbatim:
+--
+-- @
+-- T[[x]]                   k = k x
+-- T[[λx. e]]               k = k (λx. λk'. T[[e]] k')
+-- T[[e1 e2]]               k = T[[e1]] (λx. T[[e2]] (λy. x y k))
+-- T[[()]]                  k = k ()
+-- T[[(e1,e2)]]             k = T[[e1]] (λx. T[[e2]] (λy. k (x,y)))
+-- T[[inj i e]]             k = T[[e]] (λx. k (inj i x))
+-- T[[case e of () → b]]    k = T[[e]] (λz. case z of () → T[[b]] k)
+-- T[[case e of (x,y) → b]] k = T[[e]] (λz. case z of (x,y) → T[[b]] k)
+-- T[[case e of {Inj_i y_i → b_i}]] k
+--                          = T[[e]] (λz. case z of {Inj_i y_i → T[[b_i]] k})
+-- @
+cpsObjExp :: forall g g'. CpsCtx g g' -> Tm g -> Tm g' -> Tm g'
+
+-- Variable / Unit: apply k to the (remapped) value.
+cpsObjExp g (Var v) k = App k (Var (cpsIdx g v))
+cpsObjExp g Unit    k = App k Unit
+
+-- Lambda: T[[λx. e]] k = k (λx. λk'. T[[e]] k')
+-- k' is the innermost variable (Var FZ) in the doubly-extended output scope.
+cpsObjExp g (Lam b) k =
+    let body = cpsObjExp (CpsLam g) (getBody1 b) (Var FZ)
+        lam  = Lam . bind1 (getLocalName b) $
+                 Lam . bind1 contName $ body
+    in App k lam
+
+-- Application: T[[e1 e2]] k = T[[e1]] (λx. T[[e2]] (λy. x y k))
+cpsObjExp g (App e1 e2) k =
+    let -- λy. x y k   in scope S(S g')
+        innerCont = Lam . bind1 (LocalName "y") $
+                      App (App (Var (FS FZ)) (Var FZ))
+                          (applyE (weaken .>> weaken) k)
+        -- λx. T[[e2]] innerCont   in scope g'
+        outerCont = Lam . bind1 (LocalName "x") $
+                      cpsObjExp (CpsMeta g) (applyE weaken e2) innerCont
+    in cpsObjExp g e1 outerCont
+
+-- Pair: T[[(e1,e2)]] k = T[[e1]] (λx. T[[e2]] (λy. k (x,y)))
+cpsObjExp g (Pair e1 e2) k =
+    let innerCont = Lam . bind1 (LocalName "y") $
+                      App (applyE (weaken .>> weaken) k)
+                          (Pair (Var (FS FZ)) (Var FZ))
+        outerCont = Lam . bind1 (LocalName "x") $
+                      cpsObjExp (CpsMeta g) (applyE weaken e2) innerCont
+    in cpsObjExp g e1 outerCont
+
+-- Injection: T[[inj i e]] k = T[[e]] (λx. k (inj i x))
+cpsObjExp g (Inj i e) k =
+    cpsObjExp g e (Lam . bind1 (LocalName "x") $
+                       App (applyE weaken k) (Inj i (Var FZ)))
+
+-- MatchUnit: T[[case e of () → b]] k = T[[e]] (λz. case z of () → T[[b]] k)
+cpsObjExp g (MatchUnit e1 e2) k =
+    cpsObjExp g e1 (Lam . bind1 (LocalName "z") $
+                       MatchUnit (Var FZ)
+                           (cpsObjExp (CpsMeta g) (applyE weaken e2)
+                                                  (applyE weaken k)))
+
+-- MatchPair: T[[case e of (x,y) → b]] k = T[[e]] (λz. case z of (x,y) → T[[b]] k)
+-- Build the translated branch body first (k weakened for x and y),
+-- then wrap in λz and weaken once more for the scrutinee binder.
+cpsObjExp g (MatchPair e1 b) k =
+    let b'    = getBody2 b
+        names = getLocalName2 b
+        x1    = names ! FZ
+        x2    = names ! FS FZ
+        b''   = bind2 x1 x2
+                    (cpsObjExp (CpsMeta (CpsMeta g)) b'
+                               (applyE (weaken .>> weaken) k))
+    in cpsObjExp g e1 (Lam . bind1 (LocalName "z") $
+                          MatchPair (Var FZ) (applyE weaken b''))
+
+-- MatchSum: T[[case e of {Inj_i y_i → b_i}]] k
+--         = T[[e]] (λz. case z of {Inj_i y_i → T[[b_i]] k})
+-- k weakened twice inside each branch (once for z, once for y_i).
+cpsObjExp g (MatchSum e0 e1 e2) k =
+    cpsObjExp g e0 (Lam . bind1 (LocalName "z") $
+                       MatchSum (Var FZ)
+                           (bind1 (getLocalName e1)
+                               (cpsObjExp (CpsLift g) (getBody e1)
+                                          (applyE (weaken .>> weaken) k)))
+                           (bind1 (getLocalName e2)
+                               (cpsObjExp (CpsLift g) (getBody e2)
+                                          (applyE (weaken .>> weaken) k))))
+
+-- | __Correctness__: naive CPS preserves big-step evaluation.
+--
+-- @eval(cpsObj(e)) == eval(cpsObj(eval(e)))@
+--
+-- Unlike 'cps', @cpsObj@ introduces administrative beta-redexes even inside
+-- values, so @cpsObj(v)@ is not itself a value.  We therefore evaluate both
+-- sides.  Terms that get stuck are discarded.
+prop_cpsObj_eval :: Tm Z -> Property
+prop_cpsObj_eval e =
+     counterexample ("e                    = " ++ pp e)                    $
+     counterexample ("eval_e               = " ++ pp eval_e)               $
+     counterexample ("eval_cpsObj_e        = " ++ pp eval_cpsObj_e)        $
+     counterexample ("eval_cpsObj_eval_e   = " ++ pp eval_cpsObj_eval_e)   $
+     eval_cpsObj_e == eval_cpsObj_eval_e
+  where
+     eval_e = case eval e of
+                 Nothing -> discard
+                 Just v  -> v
+     eval_cpsObj_e = case eval (cpsObj e) of
+                       Nothing -> discard
+                       Just v  -> v
+     eval_cpsObj_eval_e = case eval (cpsObj eval_e) of
+                            Nothing -> discard
+                            Just v  -> v

@@ -174,11 +174,11 @@ instance Display DispState Tm where
         parens 0 (PP.pretty "Inj" <> PP.pretty i <+> s)
 
     -- syntactic sugar for let
-    display (App (Lam x e1) e2) = do
-        s1 <- withPrec 0 (display e1)
-        s2 <- withPrec 0 (display e2)
-        parens 0 (PP.pretty "let" <+> PP.pretty x <+> PP.equals <+> s2
-                  <+> PP.pretty "in" <+> s1)
+    --display (App (Lam x e1) e2) = do
+    --    s1 <- withPrec 0 (display e1)
+    --    s2 <- withPrec 0 (display e2)
+    --    parens 0 (PP.pretty "let" <+> PP.pretty x <+> PP.equals <+> s2
+    --              <+> PP.pretty "in" <+> s1)
     display (App e1 e2) = do
         s1 <- withPrec levelApp (display e1)
         s2 <- withPrec (levelApp+1) (display e2)
@@ -193,7 +193,11 @@ instance Display DispState Tm where
         parens 0 
            (PP.pretty "if" <+> s0 <+> PP.pretty "then" <+> s1
                   <+> PP.pretty "else" <+> s2)
-               
+    display (Case e1 [(Pair [], e2)]) = do
+        s1 <- withPrec 0 (display e1)
+        s2 <- withPrec 0 (display e2)
+        parens 0 
+           (s1 <> PP.semi <+> s2)
     display (Case e brs) = do
         s1 <- withPrec 0 (display e)
         s2 <- withPrec 0 (displayBrs brs)

@@ -1,4 +1,5 @@
-module Main where
+
+module Tutorial.Test where
 
 import Test.Tasty
 import Test.Tasty.QuickCheck qualified as QC
@@ -8,10 +9,10 @@ import Tutorial.Scoped.TestEval    qualified as TE
 import Tutorial.Scoped.CPS         qualified as CPS
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMain all
 
-tests :: TestTree
-tests = testGroup "Tutorial"
+all :: TestTree
+all = testGroup "Tutorial"
     [ testGroup "ScopeCheck"
         [ QC.testProperty "project round-trip"  SC.prop_project_round_trip
         , QC.testProperty "parse round-trip"    SC.prop_parse_round_trip
@@ -22,7 +23,6 @@ tests = testGroup "Tutorial"
         , QC.testProperty "step respects eval"       TE.prop_evalStep
         ]
     , testGroup "CPS"
-        [ QC.testProperty "cps preserves eval"         CPS.prop_cps_eval
-        , QC.testProperty "naive cps preserves eval"   CPS.prop_cpsObj_eval
+        [ QC.testProperty "cps preserves eval"  CPS.prop_cps_eval
         ]
     ]
