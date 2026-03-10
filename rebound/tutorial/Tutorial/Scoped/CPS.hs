@@ -40,7 +40,7 @@ import Tutorial.Scoped.ScopeCheck
 -- | Apply the CPS translation to a closed term, using the identity
 -- continuation @λx. x@ so that the result is still a closed term.
 cps :: Tm Z -> Tm Z
-cps e = cpsExp CpsStart e (Meta (bind1 (LocalName "x") (Var FZ)))
+cps e = cpsExp CpsStart e (Obj (Lam (bind1 (LocalName "x") (Var FZ))))
 
 -- | __Correctness__: CPS preserves big-step evaluation.
 --
@@ -81,7 +81,7 @@ prop_cps_step e =
      counterexample ("cps_step_e = " ++ pp cps_step_e) $
      counterexample ("cps_e      = " ++ pp cps_e) $
      case eval e of 
-        Nothing -> discard -- ignore tests for ill-typed terms
+        Nothing -> discard -- ignore tests for ill-typed terms or values
         Just _  -> step_star cps_e cps_step_e
   where
      cps_e = cps e
@@ -138,7 +138,7 @@ contName = LocalName "k"
 --
 -- * 'Obj' holds an existing object-level term; applying it emits @App@.
 -- * 'Meta' holds a Haskell-level binder; applying it substitutes directly,
---   avoiding an administrative lambda/beta pair in the output.
+--   avoiding an administrative reduction in the output.
 data Cont (g :: Nat) where
   -- | An object-level continuation: a term to be applied.
   Obj   :: Tm g          -> Cont g
@@ -148,8 +148,8 @@ data Cont (g :: Nat) where
 
 -- | Apply a continuation to a value.
 --
--- * @applyCont (Obj  f) v = App f v@       — genuine application
--- * @applyCont (Meta k) v = instantiate1 k v@ — direct substitution, no lambda
+-- * @applyCont (Obj  f) v = App f v@          - create an application
+-- * @applyCont (Meta k) v = instantiate1 k v@ — direct substitution
 applyCont :: Cont g -> Tm g -> Tm g
 applyCont (Obj o)  v  = App o v
 applyCont (Meta k) v  = instantiate1 k v
@@ -237,7 +237,7 @@ weaken = shift1E
 -- only 'reifyCont' introduces a lambda when an object-level term is required.
 cpsExp :: forall g g'. CpsCtx g g' -> Tm g -> Cont g' -> Tm g'
 
--- Variables and unit: pass the (remapped) value directly to k.
+-- Variables and unit: pass the value directly to k.
 cpsExp g (Var v) k = applyCont k (Var (cpsIdx g v))
 cpsExp g Unit    k = applyCont k Unit
 
@@ -250,6 +250,12 @@ cpsExp g (Lam b) k =
                  $ cpsExp (CpsLam g) (getBody1 b) (Obj (Var FZ))
     in applyCont k e'
 
+{-
+-- special case for let
+cpsExp g (App (Lam b) e) k = 
+    cpsExp g e (Meta . bind1 (getLocalName b)
+               $ cpsExp (CpsMeta g) (getBody b) (applyE weaken k))
+-}
 -- Pair: [[(e1,e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 -- k1 evaluates e2 in the extended scope (weaken e2 for the x binder).
 -- k2 collects x = Var (FS FZ) and y = Var FZ, forms the pair, passes to k.
@@ -314,7 +320,7 @@ cpsExp g (MatchUnit e1 e2) k =
 -- using CpsLift g: y_i stays at FZ, outer vars skip the scrutinee at FS FZ.
 -- k is weakened twice (past z and y_i).
 cpsExp g (MatchSum e0 e1 e2) k =
-    cpsExp g e0 (Meta . bind1 contName $
+    cpsExp g e0 (Meta . bind1 (LocalName "x") $
         MatchSum (Var FZ)
             (bind1 (getLocalName e1)
                 (cpsExp (CpsLift g) (getBody e1)
