@@ -2,11 +2,11 @@ cabal-version:  3.0
 name:           rebound-tutorial
 version:        0.1.0.0
 description:    Tutorial code for "Implement your POPL paper (in Haskell)"
-homepage:       https://github.com/sweirich/rebound
+homepage:       https://github.com/sweirich/rebound/tutorial
 bug-reports:    https://github.com/sweirich/rebound/issues
-author:         Stephanie Weirich, Noe De Santo
+author:         Stephanie Weirich
 maintainer:     sweirich@seas.upenn.edu
-copyright:      2025 Stephanie Weirich, Noe De Santo
+copyright:      2026 Stephanie Weirich
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
@@ -63,10 +63,10 @@ library
     , Tutorial.Scoped.Syntax
     , Tutorial.Scoped.Gen
     , Tutorial.Scoped.Eval
+    , Tutorial.Scoped.Eval.Test
     , Tutorial.Scoped.ScopeCheck
     , Tutorial.Scoped.Scratch
     , Tutorial.Scoped.CPS
-    , Tutorial.Scoped.TestEval
   hs-source-dirs: src
 
 test-suite tutorial-tests
@@ -83,4 +83,4 @@ test-suite tutorial-tests
   hs-source-dirs:
     test
   main-is:
-    TutorialTests.hs
+    Main.hs

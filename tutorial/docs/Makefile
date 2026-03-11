@@ -3,7 +3,8 @@
 #
 # Usage:
 #   make          – build all HTML lecture pages
-#   make clean    – remove generated HTML
+#   make haddock  – build and copy Haddock API docs to haddock/
+#   make clean    – remove generated HTML and haddock/
 #   make watch    – rebuild on changes (requires entr)
 #   make serve    – serve locally on http://localhost:8000 (requires python3)
 
@@ -19,7 +20,9 @@ PANDOC_FLAGS := \
   --to=html5 \
   -s
 
-.PHONY: all clean watch serve
+HADDOCK_DEST := haddock
+
+.PHONY: all clean watch serve haddock
 
 all: lecture1.html lecture2.html lecture3.html lecture4.html
 
@@ -47,8 +50,14 @@ lecture4.html: $(LECTURES)/Lecture4.md $(TEMPLATE) $(CSS)
 	  --metadata lecture4-active=true \
 	  -o $@ $<
 
+haddock:
+	cd .. && cabal haddock
+	rm -rf $(HADDOCK_DEST)
+	cp -r $$(find ../dist-newstyle -path '*/rebound-tutorial-*/doc/html/rebound-tutorial' -type d | head -1) $(HADDOCK_DEST)
+
 clean:
 	rm -f lecture1.html lecture2.html lecture3.html lecture4.html
+	rm -rf $(HADDOCK_DEST)
 
 watch:
 	ls $(LECTURES)/*.md $(TEMPLATE) $(CSS) | entr $(MAKE)
