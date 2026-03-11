@@ -1,0 +1,86 @@
+cabal-version:  3.0
+name:           rebound-tutorial
+version:        0.1.0.0
+description:    Tutorial code for "Implement your POPL paper (in Haskell)"
+homepage:       https://github.com/sweirich/rebound
+bug-reports:    https://github.com/sweirich/rebound/issues
+author:         Stephanie Weirich, Noe De Santo
+maintainer:     sweirich@seas.upenn.edu
+copyright:      2025 Stephanie Weirich, Noe De Santo
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-doc-files:
+    README.md
+    lectures/Lecture1.md
+    lectures/Lecture2.md
+    lectures/Lecture3.md
+    lectures/Lecture4.md
+category:       Language
+
+common common-stanza
+  ghc-options:
+     -Wno-type-defaults
+     -Wincomplete-patterns
+     -Wno-deprecations
+  default-language:
+    GHC2021
+  default-extensions:
+    KindSignatures
+    , DataKinds
+    , GADTs
+    , StandaloneDeriving
+    , LambdaCase
+    , QuantifiedConstraints
+    , TypeFamilies
+    , AllowAmbiguousTypes
+    , UndecidableInstances
+    , FunctionalDependencies
+    , ViewPatterns
+    , PatternSynonyms
+    , PackageImports
+    , DerivingStrategies
+
+library
+  import:
+    common-stanza
+  build-depends:
+      base >= 4.15 && < 5.0
+    , rebound >= 0.1
+    , mtl
+    , HUnit
+    , QuickCheck >= 2.14.3 && < 2.15
+    , containers
+    , prettyprinter
+    , parsec
+    , template-haskell
+    , syb
+  exposed-modules:
+      Tutorial.Lib
+    , Tutorial.Named.Syntax
+    , Tutorial.Named.PP
+    , Tutorial.Named.Parser
+    , Tutorial.Scoped.Syntax
+    , Tutorial.Scoped.Gen
+    , Tutorial.Scoped.Eval
+    , Tutorial.Scoped.ScopeCheck
+    , Tutorial.Scoped.Scratch
+    , Tutorial.Scoped.CPS
+    , Tutorial.Scoped.TestEval
+  hs-source-dirs: src
+
+test-suite tutorial-tests
+  import:
+    common-stanza
+  build-depends:
+      base
+    , rebound-tutorial
+    , QuickCheck
+    , tasty
+    , tasty-quickcheck
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    TutorialTests.hs

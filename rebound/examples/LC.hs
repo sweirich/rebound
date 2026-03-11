@@ -22,11 +22,11 @@ import qualified Data.Maybe as Maybe
 
 -- | Datatype of well-scoped lambda-calculus expressions
 --
--- The `Var` constructor of this datatype takes an index that must
+-- The @Var@ constructor of this datatype takes an index that must
 -- be strictly less than the bound. Note that the type `Fin (S n)`
 -- has `n` different elements.
 
--- The `Lam` constructor binds a variable, using the the type `Bind`
+-- The @Lam@ constructor binds a variable, using the the type `Bind`
 -- from the library. The type arguments state that the binder is
 -- for a single expression variable, inside an expression term, that may
 -- have at most `n` free variables.
@@ -35,8 +35,6 @@ data Exp (n :: Nat) where
   Lam :: Bind Exp Exp n -> Exp n
   App :: Exp n -> Exp n -> Exp n
     deriving (Generic1)
--- Enable generic derivation for substitution
--- deriving instance (Generic1 Exp)
 
  
 
@@ -208,7 +206,7 @@ eval' k e = case step e of
 
 -- | Calculate the normal form of a lambda expression. This
 -- is like evaluation except that it also reduces underneath
--- the binders of `Lam` expressions. There, we must first `getBody`
+-- the binders of @Lam@ expressions. There, we must first `getBody`
 -- the binder and then rebind when finished
 nf :: Exp n -> Exp n
 nf (Var x) = Var x

@@ -1,4 +1,7 @@
-module Data.Scoped.Telescope where
+-- |
+-- Stability: experimental
+{-# OPTIONS_HADDOCK hide #-}
+module Data.Scoped.Telescope {-# WARNING "This module is experimental" #-} where
 
 import Rebound.Classes
 import Rebound.Env (Shiftable (..))
@@ -11,7 +14,7 @@ import Rebound.Lib (axiomAssoc, axiomPlusZ)
 import Data.SNat
 
 -- | Unlike 'Scoped.TeleList', this datatype does not nest: it is effectively a
--- 'List'/'Vec' but with extra scoping inside.
+-- 'List.List'/'Data.Vec.Vec' but with extra scoping inside.
 data Telescope u s n m where
   TNil :: Telescope u s Z m
   TCons :: (u, s (n + m)) -> !(Telescope u s n m) -> Telescope u s (S n) m

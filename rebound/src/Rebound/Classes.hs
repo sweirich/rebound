@@ -1,7 +1,9 @@
 -- |
 -- Module      : Rebound.Classes
 -- Description : Type class definitions
--- Stability   : experimental
+--
+-- Main typeclasses used by the library.
+
 {-# LANGUAGE DefaultSignatures #-}
 module Rebound.Classes where
 
@@ -21,6 +23,13 @@ import GHC.Generics (Generic1(..))
 ----------------------------------------------------------
 -- Indices/variables shifting
 ----------------------------------------------------------
+
+-- | Bring a scoped type into a new, bigger, scope, through variable shifting.
+-- 
+-- This class is used for types which are scoped, yet do not allow
+-- substitution in general. Typical examples are data-structures which
+-- associate metadata to variables.
+-- See 'Rebound.Refinement.Refinement' for an example. 
 class Shiftable t where
   shift :: SNat k -> t n -> t (k + n)
   -- a good default implementation of this is `shiftFromApply`. But the 
@@ -30,6 +39,7 @@ class Shiftable t where
 -- Free variables
 ----------------------------------------------------------
 
+-- | Computes the set of free variables in a term.
 class FV (t :: Nat -> Type) where
   -- | Does a particular variable appear free?
   appearsFree :: Fin n -> t n -> Bool
@@ -37,12 +47,13 @@ class FV (t :: Nat -> Type) where
   appearsFree x e = gappearsFree x (from1 e)
   {-# INLINE appearsFree #-}
 
-  -- | Calculate all of the free variables in a term
+  -- | Calculate all of the free variables in a term.
   freeVars :: t n -> Set (Fin n)
   default freeVars :: (Generic1 t, GFV (Rep1 t)) => t n -> Set (Fin n)
   freeVars e = gfreeVars (from1 e)
   {-# INLINE freeVars #-}
 
+-- | Generic programming support for 'FV'.
 class GFV (t :: Nat -> Type) where
   gappearsFree :: Fin n -> t n -> Bool
   gfreeVars :: t n -> Set (Fin n)
@@ -55,14 +66,18 @@ class GFV (t :: Nat -> Type) where
 -- must fail if the term uses invalid variables. Therefore, we make a
 -- class of scoped types that can be strengthened.
 
--- entry point for eliminating the most recently bound variable from the scope (if unused)
+-- | Eliminates the most recently bound variable from the term (if unused).
 strengthen :: forall n t. (Strengthen t, SNatI n) => t (S n) -> Maybe (t n)
 strengthen = strengthenRec s0 s1 (snat :: SNat n)
 
--- n-ary version of strengthen
+-- | Eliminates the @n@ most recently bound variables from the term (if unused).
 strengthenN :: forall m n t. (Strengthen t, SNatI n) => SNat m -> t (m + n) -> Maybe (t n)
 strengthenN m = strengthenRec s0 m (snat :: SNat n)
 
+-- | Bring scoped terms into a smaller scope, if possible.
+--
+-- Strengthening is only possible if the term only refers to variable which
+-- are in the smaller scope.
 class Strengthen t where
   -- generalize strengthening -- remove m variables from the middle of the scope
   strengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
@@ -74,6 +89,7 @@ class Strengthen t where
   strengthenOneRec :: forall k n. SNat k -> SNat n -> t (k + S n) -> Maybe (t (k + n))
   strengthenOneRec k = strengthenRec k s1
 
+-- | Generic programming support for 'Strengthen'.
 class GStrengthen (t :: Nat -> Type) where
   gstrengthenRec :: SNat k -> SNat m -> SNat n -> t (k + (m + n)) -> Maybe (t (k + n))
 

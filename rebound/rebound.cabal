@@ -10,7 +10,7 @@ copyright:      2025 Stephanie Weirich, Noe De Santo
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
-extra-source-files:
+extra-doc-files:
     README.md
     ChangeLog.md
 category:       Language
@@ -20,6 +20,7 @@ common common-stanza
   ghc-options:
      -Wno-type-defaults
      -Wincomplete-patterns
+     -Wno-deprecations
   default-language:
     GHC2021
   default-extensions:
@@ -37,17 +38,18 @@ common common-stanza
     , PatternSynonyms
     , PackageImports
     , DerivingStrategies
+
 library
   import:
       common-stanza
   build-depends:
-      base >=4.15, base < 5.0
-    , containers
-    , mtl
-    , QuickCheck
-    , fin >= 0.3
-    , vec
-    , deepseq
+      base >= 4.15 && < 5.0
+    , containers >= 0.6.7 && < 0.7
+    , deepseq >= 1.4.8 && < 1.5
+    , fin >= 0.3 && < 0.4
+    , mtl >= 2.3.1 && < 2.4
+    , QuickCheck >= 2.14.3 && < 2.15
+    , vec >= 0.5 && < 0.6
   exposed-modules:
       Rebound
     , Rebound.Classes
@@ -106,23 +108,65 @@ library rebound-examples
     , LinLC
   hs-source-dirs: examples
 
+library rebound-tutorials
+  import: 
+    common-stanza
+  build-depends:
+    base >=4.15, base < 5.0
+    , rebound
+    , mtl
+    , HUnit
+    , QuickCheck
+    , containers
+    , prettyprinter
+    , parsec
+    , template-haskell
+    , syb
+  exposed-modules:
+    Tutorial.Lib
+    Tutorial.Named.Syntax
+    Tutorial.Named.PP
+    Tutorial.Named.Parser
+    Tutorial.Scoped.Syntax
+    Tutorial.Scoped.Gen
+    Tutorial.Scoped.Eval
+    Tutorial.Scoped.ScopeCheck
+    Tutorial.Scoped.Scratch
+    Tutorial.Scoped.CPS
+    Tutorial.Scoped.TestEval
+  hs-source-dirs: tutorial
+
 test-suite rebound-tests
   import:
     common-stanza
   build-depends:
       base
     , rebound
-    , rebound-examples
+    , containers
+    , mtl
+    , QuickCheck
     , tasty
     , tasty-hunit
     , tasty-quickcheck
   type:
     exitcode-stdio-1.0
   hs-source-dirs:
+    examples
     test
   main-is:
     All.hs
   other-modules:
+    LC
+    LCQC
+    LCLet
+    PTS
+    Pat
+    DepMatch
+    ScopeCheck
+    HOAS
+    SystemF
+    PureSystemF
+    LinLC
     Utils
     Examples.LC
     Examples.LCLet
@@ -131,3 +175,19 @@ test-suite rebound-tests
     Examples.PTS
     Examples.DepMatch
     Examples.LinLC
+
+test-suite tutorial-tests
+  import:
+    common-stanza
+  build-depends:
+      base
+    , rebound-tutorials
+    , QuickCheck
+    , tasty
+    , tasty-quickcheck
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    TutorialTests.hs

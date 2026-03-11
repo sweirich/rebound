@@ -1,13 +1,14 @@
 -- |
 -- Module      : Data.Scoped.Classes
 -- Description : Structures for scoped types
--- Stability   : experimental
 -- 
 -- These classes provide access to scoped versions of higher-kinded classes
--- such as Functor/Foldable etc.
+-- such as 'Functor'/'Foldable' etc.
 -- All instances of this class should be coercible to existing instances of 
 -- these classes. (Which are used in the default definitions.)
+
 module Data.Scoped.Classes(
+    type (~>)(..),
     ScopedFunctor(..),
     ScopedFoldable(..),
     ScopedTraversable(..),
@@ -25,14 +26,17 @@ import Control.DeepSeq
 import Data.Foldable qualified as F
 import Data.Traversable qualified as T
 
+-- | A scoped function (i.e., a function whose input & output are scoped).
 newtype (~>) a b n = MkArr (a n -> b n) 
     deriving newtype (Semigroup, Monoid, Arbitrary, CoArbitrary, Testable, NFData)
     deriving stock (Generic)
 
+-- | Scoped 'Functor'.
 class (forall a n. Coercible (f a n) (k (a n)), Functor k) => ScopedFunctor k f | f -> k where
     fmap :: Functor k => (a n -> b n) -> f a n -> f b n
     fmap f = coerce (M.fmap @k f)
 
+-- | Scoped 'Foldable'.
 class (forall a n. Coercible (f a n) (k (a n)), Foldable k) => ScopedFoldable k f | f -> k where
     fold :: (Monoid (a n)) => f a n -> a n
     fold x = F.fold @k (coerce x)
@@ -91,6 +95,7 @@ class (forall a n. Coercible (f a n) (k (a n)), Foldable k) => ScopedFoldable k 
     mapM_ :: (Monad m) => (a n -> m b) -> f a n -> m ()
     mapM_ f x = M.mapM_ @k f (coerce x)
 
+-- | Scoped 'Applicative'.
 class (forall a n. Coercible (t a n) (k (a n)), Applicative k) => ScopedApplicative k t | t -> k where
     pure  :: a n -> t a n
     pure x = coerce (Prelude.pure @k x) 
@@ -100,6 +105,7 @@ class (forall a n. Coercible (t a n) (k (a n)), Applicative k) => ScopedApplicat
         fk :: k (a n -> b n)
         fk = coerce <$> (coerce f :: k ((a ~> b) n))
 
+-- | Scoped 'Monad'.
 class (forall a n. Coercible (t a n) (k (a n)), Monad k, ScopedApplicative k t) => 
        ScopedMonad k t | t -> k where
     return :: a n -> t a n
@@ -111,6 +117,7 @@ class (forall a n. Coercible (t a n) (k (a n)), Monad k, ScopedApplicative k t) 
         r = (M.>>=) (coerce ma :: k (a n)) (coerce kb)
 
 -- The default definitions do not have 0-cost coercions due to role limitations
+-- | Scoped 'Traversable'.
 class (forall a n. Coercible (t a n) (k (a n)), Traversable k) => ScopedTraversable k t | t -> k where
    traverse :: forall a b n f. Applicative f => (a n -> f (b n)) -> t a n -> f (t b n)
    traverse f x = coerce <$> T.traverse @k f (coerce x)

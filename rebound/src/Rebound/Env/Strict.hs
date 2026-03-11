@@ -1,5 +1,6 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_HADDOCK hide #-}
 module Rebound.Env.Strict where
 
 -- "Defunctionalized" representation of environment
@@ -18,7 +19,7 @@ import Control.DeepSeq (NFData (..))
 -- Substitution class declarations
 ------------------------------------------------------------------------------
 -- | Well-scoped types that can be the range of
--- an environment. This should generally be the `Var`
+-- an environment. This should generally be the @Var@
 -- constructor from the syntax.
 class (Subst v v) => SubstVar (v :: Nat -> Type) where
   var :: Fin n -> v n
@@ -35,7 +36,7 @@ class (SubstVar v) => Subst v c where
   isVar :: c n -> Maybe (v :~: c, Fin n)
   isVar _ = Nothing
   {-# INLINE isVar #-}
-  
+
 -- Generic programming
 class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
@@ -102,7 +103,7 @@ zeroE = Zero
 -- make the bound bigger, on the right, but do not change any indices.
 -- this is an identity function
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = WeakR 
+weakenER = WeakR
 {-# INLINEABLE weakenER #-}
 
 -- make the bound bigger, on the left, but do not change any indices.
@@ -116,14 +117,14 @@ shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
--- | `cons` -- extend an environment with a new mapping
+-- | @cons@ -- extend an environment with a new mapping
 -- for index '0'. All existing mappings are shifted over.
 (.:) :: v m -> Env v n m -> Env v (S n) m
 (.:) = Cons
 {-# INLINEABLE (.:) #-}
 
 
--- | inverse of `cons` -- remove the first mapping
+-- | inverse of @cons@ -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m
 tail x = shiftNE s1 .>> x
 {-# INLINEABLE tail #-}
@@ -135,7 +136,7 @@ tail x = shiftNE s1 .>> x
 
 -- | smart constructor for composition
 -- Names of some cases are taken from Abadi et. al "Explicit Substitutions"
-comp :: forall a m n p. SubstVar a => 
+comp :: forall a m n p. SubstVar a =>
          Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
 comp (Weak (k1 :: SNat m1)) (Weak (k2 :: SNat m2))  =

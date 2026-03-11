@@ -1,3 +1,8 @@
+-- |
+-- Description: Scoped variants of some monads
+--
+-- Provides scoped variants of monads from [mtl](https://hackage.haskell.org/package/mtl).
+
 module Rebound.MonadScoped
   ( MonadScopedReader (..),
     ScopedReader (..),
@@ -29,14 +34,21 @@ import Data.SNat (type (+))
 -- Reader class
 -----------------------------------------------------------------------
 
+-- | Scoped variant of 'Control.Monad.Reader.MonadReader'.
+--
+-- __Note__: the "environment" mentioned here as nothing to do with 'Rebound.Env.Env'!
 class (forall n. Monad (m n)) => MonadScopedReader e m | m -> e where
   {-# MINIMAL (askS | readerS), localS #-}
+  -- | Retrieve the environment.
   askS :: m n (e n)
   askS = readerS id
+  -- | Run a function in an altered environment.
   localS :: (e n -> e n') -> m n' a -> m n a
+  -- | Retrieve a function of the environment.
   readerS :: (e n -> a) -> m n a
   readerS f = f <$> askS
 
+-- | Retrieve the environment.
 asksS :: (MonadScopedReader e m) => (e n -> a) -> m n a
 asksS = readerS
 
@@ -44,9 +56,10 @@ asksS = readerS
 -- Reader monad
 -----------------------------------------------------------------------
 
--- Trivial instance of MonadScoped
+-- | Computations that need a (read-only) environment.
 type ScopedReader e n a = ScopedReaderT e Identity n a
 
+-- | Run the computation with the provided environment.
 runScopedReader :: ScopedReader e n a -> e n -> a
 runScopedReader c m = runIdentity $ runScopedReaderT c m
 
@@ -54,6 +67,7 @@ runScopedReader c m = runIdentity $ runScopedReaderT c m
 -- Reader transformer
 -----------------------------------------------------------------------
 
+-- | A scoped variant of 'Control.Monad.Reader.ReaderT'.
 newtype ScopedReaderT e m n a = ScopedReaderT {runScopedReaderT :: e n -> m a}
   deriving (Functor)
 
@@ -86,15 +100,21 @@ instance (Monad m) => MonadScopedReader e (ScopedReaderT e m) where
 -- State class
 -----------------------------------------------------------------------
 
+-- | Scoped variant of 'Control.Monad.State.MonadState'.
 class (forall n. Monad (m n)) => MonadScopedState s m | m -> s where
   {-# MINIMAL rescope, (stateS | (getS, putS)) #-}
+  -- | Change the scope of the environment, run a function, and change back the scope.
   rescope :: (s n -> s n') -> (s n' -> s n) -> m n' a -> m n a
 
+  -- | Retrieve the state.
   getS :: m n (s n)
   getS = stateS $ \s -> (s, s)
+
+  -- | Set the state.
   putS :: s n -> m n ()
   putS s = stateS $ const ((), s)
 
+  -- | Lift a function into a monadic computation.
   stateS :: (s n -> (a, s n)) -> m n a
   stateS f = do
     s <- getS
@@ -102,11 +122,13 @@ class (forall n. Monad (m n)) => MonadScopedState s m | m -> s where
     putS s'
     return v
 
+-- | Apply a function to the state.
 modifyS :: (MonadScopedState s m) => (s n -> s n) -> m n ()
 modifyS f = do
   s <- getS
   putS $ f s
 
+-- | Retrieve a function of the state.
 getsS :: (MonadScopedState s m) => (s n -> a) -> m n a
 getsS f = f <$> getS
 
@@ -114,14 +136,18 @@ getsS f = f <$> getS
 -- State monad
 -----------------------------------------------------------------------
 
+-- | Computations that need a state.
 type ScopedState s n a = ScopedStateT s Identity n a
 
+-- | Run the computation with the provided state, and return the result as well as the final state.
 runScopedState :: ScopedState s n a -> s n -> (a, s n)
 runScopedState m s = runIdentity $ runScopedStateT m s
 
+-- | Run the computation with the provided state, and return the result.
 evalScopedState :: ScopedState s n a -> s n -> a
 evalScopedState m s = runIdentity $ evalScopedStateT m s
 
+-- | Run the computation with the provided state, and return the final state.
 execScopedState :: ScopedState s n a -> s n -> s n
 execScopedState m s = runIdentity $ execScopedStateT m s
 
@@ -129,12 +155,15 @@ execScopedState m s = runIdentity $ execScopedStateT m s
 -- State transformer
 -----------------------------------------------------------------------
 
+-- | A scoped variant of 'Control.Monad.State.StateT'.
 newtype ScopedStateT s m n a = ScopedStateT {runScopedStateT :: s n -> m (a, s n)}
   deriving (Functor)
 
+-- | Run the computation with the provided state, and return the result.
 evalScopedStateT :: (Functor m) => ScopedStateT s m n a -> s n -> m a
 evalScopedStateT m s = fst <$> runScopedStateT m s
 
+-- | Run the computation with the provided state, and return the final state.
 execScopedStateT :: (Functor m) => ScopedStateT s m n a -> s n -> m (s n)
 execScopedStateT m s = snd <$> runScopedStateT m s
 

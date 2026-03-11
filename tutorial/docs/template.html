@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$if(title)$$title$ — $endif$Implement your POPL paper</title>
+<link rel="stylesheet" href="style.css">
+$if(highlighting-css)$
+<style>
+$highlighting-css$
+</style>
+$endif$
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="site-title" href="index.html">Implement your POPL paper</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
+      <a href="https://github.com/sweirich/rebound">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<nav class="lecture-nav">
+  <div class="inner">
+    <a href="lecture1.html"$if(lecture1-active)$ class="active"$endif$>Lecture 1</a>
+    <a href="lecture2.html"$if(lecture2-active)$ class="active"$endif$>Lecture 2</a>
+    <a href="lecture3.html"$if(lecture3-active)$ class="active"$endif$>Lecture 3</a>
+    <a href="lecture4.html"$if(lecture4-active)$ class="active"$endif$>Lecture 4</a>
+  </div>
+</nav>
+
+<main>
+$body$
+</main>
+
+<footer>
+  &copy; 2025 Stephanie Weirich, Noe De Santo &mdash;
+  Tutorial code on <a href="https://github.com/sweirich/rebound">GitHub</a> &mdash;
+  <a href="https://hackage.haskell.org/package/rebound">rebound</a> library on Hackage
+</footer>
+
+</body>
+</html>

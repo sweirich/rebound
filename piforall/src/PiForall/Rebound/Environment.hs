@@ -55,8 +55,8 @@ import Rebound.Bind.Local qualified as Local
 import Rebound.Bind.Pat qualified as Pat
 import Rebound.Bind.Scoped qualified as Scoped
 import Rebound.Env(Shiftable)
-import Rebound.Refinement (fromRefinement)
-import Rebound.MonadNamed (Named, Sized (..))
+import Rebound.Refinement qualified as Refinement
+import Rebound.MonadNamed (Sized (..))
 import Rebound.MonadNamed qualified as MonadNamed
 import Rebound.MonadScoped (MonadScopedReader (..))
 import Rebound.MonadScoped qualified as Scoped
@@ -111,12 +111,12 @@ push (Scoped.TCons h t) m = case h of
 push1 :: LocalName -> Term n -> TcMonad (S n) a -> TcMonad n a
 push1 n t = localS (extend n t)
 
-pushUntyped :: (Named LocalName p) => p -> TcMonad (Size p + n) a -> TcMonad n a
-pushUntyped p = pushUntyped' (MonadNamed.names p)
-  where
-    pushUntyped' :: forall p n a. Vec.Vec p LocalName -> TcMonad (p + n) a -> TcMonad n a
-    pushUntyped' Vec.VNil m = m
-    pushUntyped' (h Vec.::: t) m = pushUntyped' t $ push1 h (error "No type available") m
+pushUntyped :: LocalName -> TcMonad (S n) a -> TcMonad n a
+pushUntyped n m = push1 n (error "No type available") m
+
+pushUntypedVec :: Vec.Vec p LocalName -> TcMonad (p + n) a -> TcMonad n a
+pushUntypedVec Vec.VNil m = m
+pushUntypedVec (h Vec.::: t) m = pushUntypedVec t $ pushUntyped h m
 
 type MonadScoped = Scoped.MonadScopedReader TcEnv
 
@@ -355,7 +355,7 @@ sdisplay (DZ s) di = return $ scopedDisplay s emptyEnv
 sdisplay (DR r) di = do
   ss <- scopeSize
   s <- readerS names
-  let r' = withSNat ss $ fromRefinement r
+  let r' = withSNat ss $ Refinement.toEnvironment r
   let t' = toList $ withSNat ss $ ScopeCheck.unscopeUnder s (ss, r')
   let c :: [Doc ()] = (\(i, t) -> disp i <+> PP.pretty "|-->" <+> disp t) <$> zip (toList s) t'
   return $ PP.vcat c
