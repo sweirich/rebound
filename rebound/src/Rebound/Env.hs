@@ -134,7 +134,7 @@ skip e = e .>> shift1E
 -- | Increment all free variables by @p@.
 upN ::
   forall v p m n.
-  (Subst v v) =>
+  (SubstVar v) =>
   SNat p ->
   Env v m n ->
   Env v (p + m) (p + n)
@@ -144,7 +144,7 @@ upN p = getUpN @_ @_ @_ @p (withSNat p (induction base step))
     base = MkUpN id
     step :: forall p1. UpN v m n p1 -> UpN v m n (S p1)
     step (MkUpN r) = MkUpN $
-      \e -> var Fin.f0 .: (r e .>> shiftNE s1)
+      \e -> var Fin.f0 .: (skip (r e))
 
 newtype UpN v m n p = MkUpN {getUpN :: Env v m n -> Env v (p + m) (p + n)}
 

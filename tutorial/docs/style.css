@@ -1,0 +1,285 @@
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --text:        #1a1a2e;
+  --muted:       #555;
+  --accent:      #2d5fa8;
+  --accent-dark: #1a3e73;
+  --bg:          #ffffff;
+  --bg-alt:      #f6f8fa;
+  --border:      #d1d9e0;
+  --code-bg:     #f0f2f5;
+  --code-border: #c8d0da;
+  --max-width:   780px;
+  --font-sans:   system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono:   "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.7;
+}
+
+/* ── Site header ──────────────────────────────────────────────────────────── */
+header.site-header {
+  background: var(--accent);
+  color: #fff;
+  padding: 0 2rem;
+}
+
+header.site-header .inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+}
+
+header.site-header a.site-title {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+header.site-header nav a {
+  color: rgba(255,255,255,0.85);
+  text-decoration: none;
+  margin-left: 1.4rem;
+  font-size: 0.9rem;
+  transition: color 0.15s;
+}
+header.site-header nav a:hover { color: #fff; }
+
+/* ── Lecture breadcrumb strip ─────────────────────────────────────────────── */
+.lecture-nav {
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+}
+.lecture-nav .inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  gap: 0;
+}
+.lecture-nav a {
+  display: inline-block;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.lecture-nav a:hover { color: var(--accent); }
+.lecture-nav a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+main {
+  max-width: var(--max-width);
+  margin: 2.5rem auto 4rem;
+  padding: 0 1.5rem;
+}
+
+/* ── Hero (index page only) ───────────────────────────────────────────────── */
+.hero {
+  background: linear-gradient(135deg, #1a3e73 0%, #2d5fa8 100%);
+  color: #fff;
+  padding: 3.5rem 2rem;
+  text-align: center;
+}
+.hero h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.hero .subtitle {
+  margin: 0 auto 1.8rem;
+  max-width: 520px;
+  font-size: 1.05rem;
+  color: rgba(255,255,255,0.85);
+}
+.hero .btn-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-block;
+  padding: 0.6rem 1.4rem;
+  border-radius: 5px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: #fff; color: var(--accent-dark); }
+.btn-secondary { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.6); }
+
+/* ── Lecture card grid ────────────────────────────────────────────────────── */
+.lecture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.2rem;
+  margin: 2.5rem auto;
+  max-width: var(--max-width);
+  padding: 0 1.5rem;
+}
+.lecture-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.4rem 1.6rem;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  display: block;
+}
+.lecture-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(45,95,168,0.12);
+}
+.lecture-card .lecture-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+.lecture-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+.lecture-card p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Info section (index) ─────────────────────────────────────────────────── */
+.info-section {
+  max-width: var(--max-width);
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+@media (max-width: 600px) { .info-section { grid-template-columns: 1fr; } }
+.info-section h2 { margin-top: 0; font-size: 1.15rem; }
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  line-height: 1.3;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+h1 { font-size: 1.9rem; margin-top: 0; }
+h2 { font-size: 1.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+h3 { font-size: 1.1rem; }
+h4 { font-size: 1rem; font-weight: 600; }
+
+p { margin: 0.8rem 0 1rem; }
+
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--accent-dark); }
+
+/* ── Code ─────────────────────────────────────────────────────────────────── */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Pandoc syntax-highlighting overrides */
+div.sourceCode { margin: 1rem 0; }
+div.sourceCode pre { margin: 0; }
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.2rem 0;
+  font-size: 0.9rem;
+}
+th {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.85rem;
+  text-align: left;
+  font-weight: 600;
+}
+td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.85rem;
+}
+tr:nth-child(even) td { background: var(--bg-alt); }
+
+/* ── Blockquote ───────────────────────────────────────────────────────────── */
+blockquote {
+  border-left: 4px solid var(--accent);
+  margin: 1rem 0;
+  padding: 0.4rem 1rem;
+  color: var(--muted);
+  background: var(--bg-alt);
+  border-radius: 0 4px 4px 0;
+}
+blockquote p { margin: 0.3rem 0; }
+
+/* ── HR ───────────────────────────────────────────────────────────────────── */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 1.2rem 2rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+footer a { color: var(--muted); }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  header.site-header .inner { height: auto; padding: 0.6rem 0; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+  header.site-header nav { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  header.site-header nav a { margin-left: 0; }
+  .hero { padding: 2rem 1rem; }
+  .hero h1 { font-size: 1.5rem; }
+}

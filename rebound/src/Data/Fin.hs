@@ -23,6 +23,7 @@ module Data.Fin(
   invert,
   shiftN,
   shift1,
+  split,
   weakenFin,
   weakenFinRight,
   weaken1Fin,
@@ -236,3 +237,4 @@ strengthenRecFin (snat_ -> SS_ k) m n FZ = Just FZ
   -- Case: x < k, leave it alone
 strengthenRecFin (snat_ -> SS_ k) m n (FS x) =
     FS <$> strengthenRecFin k m n x
+

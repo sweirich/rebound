@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implement your POPL paper (in Haskell)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="site-title" href="index.html">Implement your POPL paper</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
+      <a href="https://github.com/sweirich/rebound">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<nav class="lecture-nav">
+  <div class="inner">
+    <a href="lecture1.html">Lecture 1</a>
+    <a href="lecture2.html">Lecture 2</a>
+    <a href="lecture3.html">Lecture 3</a>
+    <a href="lecture4.html">Lecture 4</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Implement your POPL paper (in Haskell)</h1>
+  <p class="subtitle">
+    A four-lecture tutorial on well-scoped de Bruijn indices for implementing
+    type systems, interpreters, and program transformations.
+  </p>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="lecture1.html">Start with Lecture 1</a>
+    <a class="btn btn-secondary" href="https://github.com/sweirich/rebound">Get the code on GitHub</a>
+  </div>
+</div>
+
+<div class="lecture-grid">
+  <a class="lecture-card" href="lecture1.html">
+    <div class="lecture-num">Lecture 1</div>
+    <h3>Well-Scoped De Bruijn Representations</h3>
+    <p>Build the infrastructure from scratch: finite sets, binders,
+       substitution environments, and a big-step evaluator for a
+       simply-typed lambda calculus.</p>
+  </a>
+
+  <a class="lecture-card" href="lecture2.html">
+    <div class="lecture-num">Lecture 2</div>
+    <h3>Where Do Well-Scoped Terms Come From?</h3>
+    <p>Scope-check user-written named terms into de Bruijn form, generate
+       arbitrary well-scoped terms with QuickCheck, and verify a
+       parse–pretty-print round trip.</p>
+  </a>
+
+  <a class="lecture-card" href="lecture3.html">
+    <div class="lecture-num">Lecture 3</div>
+    <h3>CPS: A Scope-Preserving Translation</h3>
+    <p>Implement continuation-passing-style conversion as a typed,
+       scope-preserving term-to-term transformation, and test its
+       correctness properties with QuickCheck.</p>
+  </a>
+
+  <a class="lecture-card" href="lecture4.html">
+    <div class="lecture-num">Lecture 4</div>
+    <h3>Efficient Implementation</h3>
+    <p>Open the rebound library's black box: delayed substitutions inside
+       binders, defunctionalized environments, smart composition, and the
+       identity shortcut — achieving 4000&times; speedups.</p>
+  </a>
+</div>
+
+<div class="info-section">
+  <div>
+    <h2>About the tutorial</h2>
+    <p>
+      This series of four 50-minute lectures covers how to represent and
+      manipulate lambda-calculus terms using well-scoped de Bruijn indices in
+      Haskell. The goal is to provide a practical basis for implementation,
+      suitable for experimenting with language and logic design.
+    </p>
+    <p>
+      The target audience is students and researchers familiar with lambda
+      calculi and functional programming (Haskell, OCaml, Rocq, or Agda). Some
+      prior exposure to dependently-typed programming is helpful.
+    </p>
+  </div>
+
+  <div>
+    <h2>Getting the code</h2>
+    <p>
+      The tutorial code is a self-contained Haskell project that depends on
+      the <a href="https://hackage.haskell.org/package/rebound">rebound</a>
+      library on Hackage.
+    </p>
+    <pre><code>git clone https://github.com/sweirich/rebound
+cd rebound/tutorial
+cabal build
+cabal repl</code></pre>
+    <p>
+      You need GHC and Cabal, which you can install via
+      <a href="https://www.haskell.org/ghcup/">GHCup</a>.
+    </p>
+  </div>
+</div>
+
+<footer>
+  &copy; 2025 Stephanie Weirich, Noe De Santo &mdash;
+  Tutorial code on <a href="https://github.com/sweirich/rebound">GitHub</a> &mdash;
+  <a href="https://hackage.haskell.org/package/rebound">rebound</a> library on Hackage
+</footer>
+
+</body>
+</html>

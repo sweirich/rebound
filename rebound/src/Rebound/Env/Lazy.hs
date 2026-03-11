@@ -115,7 +115,7 @@ weakenE' = Weak
 {-# INLINEABLE weakenE' #-}
 
 -- | Shift the term, increasing every free variable as well as the bound by the provided amount.
-shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
+shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 

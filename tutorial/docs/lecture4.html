@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 4: Efficient
+Implementation — Implement your POPL paper</title>
+<link rel="stylesheet" href="style.css">
+<style>
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="site-title" href="index.html">Implement your POPL paper</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
+      <a href="https://github.com/sweirich/rebound">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<nav class="lecture-nav">
+  <div class="inner">
+    <a href="lecture1.html">Lecture 1</a>
+    <a href="lecture2.html">Lecture 2</a>
+    <a href="lecture3.html">Lecture 3</a>
+    <a href="lecture4.html" class="active">Lecture 4</a>
+  </div>
+</nav>
+
+<main>
+<h1
+id="lecture-4-efficient-implementation-delayed-and-defunctionalized-substitutions">Lecture
+4: Efficient Implementation — Delayed and Defunctionalized
+Substitutions</h1>
+<p>Lectures 1–3 built a correct implementation of well-scoped de Bruijn
+terms, showed how to convert between named and scoped representations,
+and used the machinery to implement CPS conversion. All of this worked
+using the <code>rebound</code> library, but so far we have treated it as
+a black box. This lecture opens the box.</p>
+<p>The focus is efficiency. We will see:</p>
+<ol type="1">
+<li><strong>Why naive traversal is expensive</strong> — every
+<code>applyE</code> call traverses the entire term.</li>
+<li><strong>Delayed substitutions at binders</strong> — store a pending
+substitution <em>inside</em> the <code>Bind</code> wrapper instead of
+applying it immediately.</li>
+<li><strong>Defunctionalized environments</strong> — represent
+substitutions as data rather than functions so that compositions can be
+simplified by smart constructor rules.</li>
+<li><strong>The <code>applyOpt</code> shortcut</strong> — detect the
+identity environment and bail out before touching the term.</li>
+<li><strong>How it all fits together</strong> — what
+<code>getBody</code>, <code>instantiate1</code>, and <code>applyE</code>
+actually do in the library.</li>
+</ol>
+<hr />
+<h2 id="the-problem-traversal-cost-for-substitutions">1. The Problem:
+Traversal Cost for Substitutions</h2>
+<p>Recall the hand-written substitution from
+<code>Scratch.hs</code>:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Env</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (lift env) b))</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">App</span> f a)       <span class="ot">=</span> <span class="dt">App</span> (applyE env f) (applyE env a)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- ...</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ot">lift ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>lift env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
+<p>Every call to <code>applyE</code> traverses the entire term,
+recursing into every sub-term. Crucially, <code>lift</code> is called
+<em>once per binder encountered during traversal</em>, and each
+<code>lift</code> itself calls <code>applyE shift</code> on every term
+in the range of <code>env</code>.</p>
+<p>Consider a deeply-nested expression: normalizing it requires many
+rounds of substitution, and each round descends through all the binders
+above the redex. In the worst case — reducing a sequence of
+<code>n</code> beta redexes in a term of depth <code>d</code> — the
+naive strategy costs O(n × d) traversals.</p>
+<p>There is a classical solution, known since at least Abadi, Cardelli,
+Curien, and Lévy’s <em>Explicit Substitutions</em> (1991):
+<strong>delay</strong> the substitution in the term instead of applying
+it immediately.</p>
+<p>In that calculus, substitutions could be stored anywhere in the term.
+But here, we would like to hide the delayed substitution from users.
+Therefore, we will only store substitutions in the binder type.</p>
+<h3 id="measuring-the-cost">Measuring the cost</h3>
+<p>The paper accompanying the <code>rebound</code> library benchmarked
+several implementations of full normalization on a standard stress test.
+Here are representative timings:</p>
+<table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th>Strategy</th>
+<th>Time (nf)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SubstV</code></td>
+<td>Naive eager substitution (à la <code>Scratch.hs</code>)</td>
+<td>3330 ms</td>
+</tr>
+<tr>
+<td><code>BindV</code></td>
+<td>Delayed substitution inside <code>Bind</code></td>
+<td>0.767 ms</td>
+</tr>
+<tr>
+<td><code>EnvV</code></td>
+<td>Explicit environment threaded everywhere</td>
+<td>0.586 ms</td>
+</tr>
+</tbody>
+</table>
+<p>The delayed-substitution approach (<code>BindV</code>) is roughly
+<strong>4300× faster</strong> than the naive one. The remaining sections
+explain how the library achieves this.</p>
+<hr />
+<h2 id="from-naive-to-delayed-the-bind-type">2. From Naive to Delayed:
+The <code>Bind</code> Type</h2>
+<p>In <code>Scratch.hs</code>, <code>Bind1</code> is a transparent
+wrapper around the body:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bind1</span> n <span class="ot">=</span> <span class="dt">Bind1</span> (<span class="dt">Tm</span> (<span class="dt">S</span> n))</span></code></pre></div>
+<p>There is nowhere to store a pending substitution. When we cross a
+binder with <code>applyE</code>, we must call <code>lift env</code> and
+descend into the body immediately.</p>
+<p>The library’s <code>Bind</code> type adds a slot for the name hint
+<em>and</em> a slot for the pending substitution. The tutorial’s
+<code>Bind1 Tm Tm n</code> (from <code>Rebound.Bind.Local</code>) is a
+synonym for:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Bind1</span> v c n <span class="ot">=</span> <span class="dt">Pat.Bind</span> v c <span class="dt">LocalName</span> n</span></code></pre></div>
+<p>The general <code>Bind</code> type (from
+<code>Rebound.Bind.Pat</code>) is:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bind</span> v c (<span class="ot">pat ::</span> <span class="dt">Type</span>) (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Bind</span><span class="ot"> ::</span> pat <span class="ot">-&gt;</span> <span class="dt">Env</span> v m n <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> m) <span class="ot">-&gt;</span> <span class="dt">Bind</span> v c pat n</span></code></pre></div>
+<p>There are three fields:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pat</code></td>
+<td><code>pat</code></td>
+<td>pattern metadata (e.g. <code>LocalName</code>,
+<code>Vec N2 LocalName</code>)</td>
+</tr>
+<tr>
+<td><code>Env v m n</code></td>
+<td>pending substitution</td>
+<td>maps old scope <code>m</code> to current scope <code>n</code></td>
+</tr>
+<tr>
+<td><code>c (Size pat + m)</code></td>
+<td>body</td>
+<td>term under the binder, still in old scope <code>m</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-does-bind-carry-a-pattern">Why does <code>Bind</code> carry
+a pattern?</h3>
+<p>The body of a binder lives in a larger scope than the surrounding
+term: the scope grows by <code>Size pat</code> — the number of variables
+the pattern introduces. For a simple lambda,
+<code>pat = LocalName</code> and <code>Size LocalName = 1</code>, so the
+body lives in scope <code>S m</code>. For a pair match,
+<code>pat = Vec N2 LocalName</code> and
+<code>Size (Vec N2 LocalName) = 2</code>, so the body lives in scope
+<code>S (S m)</code>.</p>
+<p>Beyond the scope bookkeeping, the pattern carries <em>metadata</em>.
+For the tutorial’s <code>LocalName</code> pattern, that metadata is the
+user-visible name hint used for pretty-printing:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lam stores the name &quot;x&quot; alongside the body</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ot">ex_id ::</span> <span class="dt">Tm</span> <span class="dt">Z</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>ex_id <span class="ot">=</span> <span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- retrieve the name hint later</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="ot">getLocalName ::</span> <span class="dt">Bind1</span> v c n <span class="ot">-&gt;</span> <span class="dt">LocalName</span></span></code></pre></div>
+<p>The <code>Eq</code> instance for <code>LocalName</code> ignores the
+name (<code>x == y = True</code>), so two binders with different names
+but identical bodies are considered equal. The de Bruijn indices do the
+real comparison; <code>LocalName</code> is only for display.</p>
+<h3 id="constructing-a-binder">Constructing a binder</h3>
+<p>In <code>Rebound.Bind.Local</code>, <code>bind1</code> takes the name
+as an explicit argument:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">bind1 ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> c (<span class="dt">S</span> n) <span class="ot">-&gt;</span> <span class="dt">Bind1</span> v c n</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>bind1 name body <span class="ot">=</span> Pat.bind name body    <span class="co">-- stores: Bind name idE body</span></span></code></pre></div>
+<p>The internal <code>Pat.bind</code> sets the pending environment to
+<code>idE</code>:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">bind ::</span> <span class="dt">Sized</span> pat <span class="ot">=&gt;</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> pat <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> n) <span class="ot">-&gt;</span> <span class="dt">Bind</span> v c pat n</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>bind pat <span class="ot">=</span> <span class="dt">Bind</span> pat idE</span></code></pre></div>
+<p>No traversal. The body is stored as-is with a zero-cost identity
+substitution.</p>
+<h3 id="applying-a-substitution-to-a-binder-o1">Applying a substitution
+to a binder — O(1)</h3>
+<p>Here is the key insight. The <code>Subst</code> instance for
+<code>Bind</code> is:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Subst</span> v (<span class="dt">Bind</span> v c p) <span class="kw">where</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    applyE env1 (<span class="dt">Bind</span> p env2 body) <span class="ot">=</span> <span class="dt">Bind</span> p (env2 <span class="op">.&gt;&gt;</span> env1) body</span></code></pre></div>
+<p>Applying environment <code>env1</code> to a binder does
+<strong>not</strong> touch the body at all. It simply <em>composes</em>
+the new environment with the existing one. The body is untouched.</p>
+<p>Compare this to the naive version:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (lift env) b))</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        ^^^^^^^^^^^^^^^^^^^^</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        traverses the entire body eagerly</span></span></code></pre></div>
+<p>With the library:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- rebound (delayed)</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> bnd) <span class="ot">=</span> <span class="dt">Lam</span> (applyE env bnd)</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="co">--                        = Lam (Bind p (old_env .&gt;&gt; env) body)</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co">--                                       ^^^^^^^^^^^^^^^^</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="co">--                                       just a composition — no traversal</span></span></code></pre></div>
+<p>Every time a substitution passes over a binder, the cost is O(1). The
+traversal of the body is <em>deferred</em> until the body is actually
+needed.</p>
+<h3 id="forcing-the-body-getbody">Forcing the body —
+<code>getBody</code></h3>
+<p>The suspended substitution is applied on demand by
+<code>getBody</code>:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">getBody ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> <span class="dt">Bind</span> v c pat n <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> n)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>getBody (<span class="dt">Bind</span> (<span class="ot">pat ::</span> pat) (<span class="ot">env ::</span> <span class="dt">Env</span> v m n) body) <span class="ot">=</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    applyOpt applyE (upN (size pat) env) body</span></code></pre></div>
+<p><code>upN k env</code> lifts <code>env</code> under <code>k</code>
+binders: the <code>k</code> locally-bound variables map to themselves,
+and all outer variables are shifted appropriately. <code>applyOpt</code>
+is described in §5.</p>
+<hr />
+<h2 id="defunctionalized-environments">3. Defunctionalized
+Environments</h2>
+<p>In <code>Scratch.hs</code> we used a function type:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Env</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span></code></pre></div>
+<p>Shifting a substitution over a binder is O(1), but only if
+environment <em>composition</em> — the <code>.&gt;&gt;</code> operator —
+is itself cheap. With a plain function, we can compose:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>compE f g x <span class="ot">=</span> applyE f (g x)   <span class="co">-- O(1) to build, but no simplification possible</span></span></code></pre></div>
+<p>But there is no way to inspect a function to detect special cases
+like the identity or consecutive shifts. In particular, we cannot detect
+that <code>shift .&gt;&gt; shift</code> should simplify to a single
+shift-by-two.</p>
+<p>The <code>rebound</code> library uses a
+<strong>defunctionalized</strong> representation — substitutions are
+<em>data</em>, not functions, so they can be inspected, simplified, and
+fused:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Env</span> (<span class="ot">a ::</span> <span class="dt">Nat</span> <span class="ot">-&gt;</span> <span class="dt">Type</span>) (<span class="ot">n ::</span> <span class="dt">Nat</span>) (<span class="ot">m ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Zero</span><span class="ot">  ::</span> <span class="dt">Env</span> a <span class="dt">Z</span> n                            <span class="co">-- empty domain (scope Z)</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Inc</span><span class="ot">   ::</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Env</span> a n (m <span class="op">+</span> n)            <span class="co">-- shift every index up by m</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Cons</span><span class="ot">  ::</span> a m <span class="ot">-&gt;</span> <span class="dt">Env</span> a n m <span class="ot">-&gt;</span> <span class="dt">Env</span> a (<span class="dt">S</span> n) m    <span class="co">-- FZ ↦ head, rest to tail</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ot">    (:&lt;&gt;) ::</span> <span class="dt">Env</span> a m n <span class="ot">-&gt;</span> <span class="dt">Env</span> a n p <span class="ot">-&gt;</span> <span class="dt">Env</span> a m p  <span class="co">-- sequential composition</span></span></code></pre></div>
+<p>Each constructor represents a specific, commonly-occurring
+substitution:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Constructor</th>
+<th>Naive function equivalent</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Zero</code></td>
+<td><code>\x -&gt; case x of {}</code></td>
+<td>empty domain (scope 0)</td>
+</tr>
+<tr>
+<td><code>Inc m</code></td>
+<td><code>\x -&gt; Var (shiftN m x)</code></td>
+<td>shift every variable up by <code>m</code></td>
+</tr>
+<tr>
+<td><code>Cons t r</code></td>
+<td><code>\case FZ -&gt; t; FS x -&gt; r x</code></td>
+<td>extend: <code>FZ ↦ t</code>, rest via <code>r</code></td>
+</tr>
+<tr>
+<td><code>e1 :&lt;&gt; e2</code></td>
+<td><code>\x -&gt; applyE e2 (applyEnv e1 x)</code></td>
+<td>sequential composition</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fin.shiftn-adding-to-an-index"><code>Fin.shiftN</code> — adding
+to an index</h3>
+<p><code>Fin.shiftN m x</code> adds the natural number <code>m</code> to
+the de Bruijn index <code>x</code>, producing a larger index in
+<code>Fin (m + n)</code>:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>Fin.shiftN<span class="ot"> ::</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> <span class="dt">Fin</span> (m <span class="op">+</span> n)</span></code></pre></div>
+<p>For example, <code>shiftN s2 FZ = FS (FS FZ)</code> — index 0 becomes
+index 2. The <code>Inc m</code> constructor uses this:
+<code>applyEnv (Inc m) x = var (shiftN m x)</code>.</p>
+<h3 id="shiftne-building-an-inc-environment"><code>shiftNE</code> —
+building an <code>Inc</code> environment</h3>
+<p><code>shiftNE m</code> is the smart constructor that wraps
+<code>m</code> in <code>Inc</code>:</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">shiftNE ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Env</span> v n (m <span class="op">+</span> n)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>shiftNE <span class="ot">=</span> <span class="dt">Inc</span></span></code></pre></div>
+<p>Two standard aliases are built on top:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">idE     ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v n n</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>idE     <span class="ot">=</span> shiftNE s0        <span class="co">-- Inc SZ  (shift by zero = identity)</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="ot">shift1E ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v n (<span class="dt">S</span> n)</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>shift1E <span class="ot">=</span> shiftNE s1        <span class="co">-- Inc s1  (shift by one)</span></span></code></pre></div>
+<p>Because <code>idE = Inc SZ</code> is <em>data</em>,
+<code>applyOpt</code> (§5 below) can inspect it without calling into
+<code>applyE</code>.</p>
+<h3 id="interpreting-the-environment">Interpreting the environment</h3>
+<p>The application function <code>applyEnv</code> interprets these
+constructors:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyEnv ::</span> <span class="dt">SubstVar</span> a <span class="ot">=&gt;</span> <span class="dt">Env</span> a n m <span class="ot">-&gt;</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> a m</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>applyEnv <span class="dt">Zero</span>        x      <span class="ot">=</span> Fin.absurd x</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Inc</span> m)     x      <span class="ot">=</span> var (Fin.shiftN m x)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Cons</span> t _)  <span class="dt">FZ</span>     <span class="ot">=</span> t</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Cons</span> _ r)  (<span class="dt">FS</span> x) <span class="ot">=</span> applyEnv r x</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>applyEnv (s1 <span class="op">:&lt;&gt;</span> s2) x      <span class="ot">=</span> applyE s2 (applyEnv s1 x)</span></code></pre></div>
+<h3 id="why-not-a-plain-function">Why not a plain function?</h3>
+<p>The naive function-based environment
+(<code>type Env m n = Fin m -&gt; Tm n</code>) is perfectly correct, but
+cannot be inspected. You cannot tell whether a function is the identity,
+and you cannot fuse two consecutive shifts. The paper measures this
+directly:</p>
+<table>
+<thead>
+<tr>
+<th>Environment</th>
+<th>Time (nf)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Functional</code> (plain function)</td>
+<td>126 ms</td>
+</tr>
+<tr>
+<td><code>Lazy</code> (defunctionalized + smart composition)</td>
+<td>0.84 ms</td>
+</tr>
+</tbody>
+</table>
+<p>The defunctionalized representation is roughly <strong>150×
+faster</strong> for full normalization — almost entirely because it
+enables the smart composition rules described next.</p>
+<hr />
+<h2 id="smart-composition-comp-and-.">4. Smart Composition —
+<code>comp</code> and <code>.&gt;&gt;</code></h2>
+<p>The function <code>comp</code> (exposed as <code>.&gt;&gt;</code>)
+builds a composed environment, but applies a battery of algebraic
+simplifications before resorting to <code>(:&lt;&gt;)</code>:</p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ot">(.&gt;&gt;) ::</span> <span class="dt">Subst</span> v v <span class="ot">=&gt;</span> <span class="dt">Env</span> v p n <span class="ot">-&gt;</span> <span class="dt">Env</span> v n m <span class="ot">-&gt;</span> <span class="dt">Env</span> v p m</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>(<span class="op">.&gt;&gt;</span>) <span class="ot">=</span> comp</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="ot">comp ::</span> <span class="dt">SubstVar</span> a <span class="ot">=&gt;</span> <span class="dt">Env</span> a m n <span class="ot">-&gt;</span> <span class="dt">Env</span> a n p <span class="ot">-&gt;</span> <span class="dt">Env</span> a m p</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>comp <span class="dt">Zero</span>       _               <span class="ot">=</span> <span class="dt">Zero</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> k1)   (<span class="dt">Inc</span> k2)        <span class="ot">=</span> <span class="dt">Inc</span> (k1 <span class="op">+</span> k2)       <span class="co">-- merge two shifts</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> <span class="dt">SZ</span>)   s               <span class="ot">=</span> s                    <span class="co">-- shift by 0 = identity</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>comp s          (<span class="dt">Inc</span> <span class="dt">SZ</span>)        <span class="ot">=</span> s</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> (<span class="dt">SS</span> p)) (<span class="dt">Cons</span> _ r)    <span class="ot">=</span> comp (<span class="dt">Inc</span> p) r      <span class="co">-- skip the Cons head</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>comp (s1 <span class="op">:&lt;&gt;</span> s2) s3             <span class="ot">=</span> comp s1 (comp s2 s3) <span class="co">-- re-associate right</span></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Cons</span> t s1) s2             <span class="ot">=</span> <span class="dt">Cons</span> (applyE s2 t) (comp s1 s2)</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>comp s1          s2             <span class="ot">=</span> s1 <span class="op">:&lt;&gt;</span> s2            <span class="co">-- fallback</span></span></code></pre></div>
+<p>Key cases:</p>
+<ul>
+<li><strong>Shift fusion</strong>:
+<code>Inc k1 .&gt;&gt; Inc k2 = Inc (k1+k2)</code> — two consecutive
+shifts merge into one <code>Inc</code> without any traversal.</li>
+<li><strong>Identity elimination</strong>:
+<code>Inc SZ .&gt;&gt; s = s</code> and
+<code>s .&gt;&gt; Inc SZ = s</code> — shifting by zero is the identity;
+discard it.</li>
+<li><strong><code>Inc</code> and <code>Cons</code></strong>:
+<code>Inc (S p) .&gt;&gt; Cons _ r = Inc p .&gt;&gt; r</code> — a shift
+past the head of a <code>Cons</code> consumes the head and continues
+into the tail.</li>
+</ul>
+<p>These rules mean that common patterns like repeatedly weakening a
+term never accumulate deep <code>(:&lt;&gt;)</code> chains; they
+collapse to a single <code>Inc</code> at composition time.</p>
+<h3 id="how-much-does-smart-composition-contribute">How much does smart
+composition contribute?</h3>
+<p>The paper isolates each optimization with ablation benchmarks:</p>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>What is missing</th>
+<th>Time (nf)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Lazy</code> (full)</td>
+<td>—</td>
+<td>0.84 ms</td>
+</tr>
+<tr>
+<td><code>LazyA</code></td>
+<td>no <code>applyOpt</code> identity shortcut</td>
+<td>0.844 ms</td>
+</tr>
+<tr>
+<td><code>LazyB</code></td>
+<td>no smart composition</td>
+<td>2.36 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Removing smart composition (<code>LazyB</code>) gives a <strong>~2.8×
+slowdown</strong> on full normalization. Removing just the identity
+shortcut (<code>LazyA</code>) is almost unmeasurable — smart composition
+already handles most identity eliminations at construction time. The
+paper concludes: <em>“much of the speed up comes from ‘smart
+composition’.”</em></p>
+<hr />
+<h2 id="the-identity-shortcut-applyopt">5. The Identity Shortcut —
+<code>applyOpt</code></h2>
+<p>Even with smart composition, we still need to call
+<code>applyE</code> when forcing a binder. But a very common case is
+that the environment <em>is already the identity</em> — we are just
+retrieving a freshly-constructed body with no pending substitution.
+<code>applyOpt</code> detects this before touching the term:</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyOpt ::</span> (<span class="dt">Env</span> v n m <span class="ot">-&gt;</span> c n <span class="ot">-&gt;</span> c m) <span class="ot">-&gt;</span> (<span class="dt">Env</span> v n m <span class="ot">-&gt;</span> c n <span class="ot">-&gt;</span> c m)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>applyOpt f (<span class="dt">Inc</span> <span class="dt">SZ</span>) x <span class="ot">=</span> x</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>applyOpt f r        x <span class="ot">=</span> f r x</span></code></pre></div>
+<p>When the environment is <code>Inc SZ</code> (= <code>idE</code>,
+shift by zero), the term is returned untouched. This short-circuit fires
+routinely: every <code>bind1 name body</code> stores <code>idE</code> as
+the initial environment, so if no substitution has been composed in
+since construction, <code>getBody</code> returns the body with zero
+traversal.</p>
+<hr />
+<h2 id="the-up-and-upn-operations">6. The <code>up</code> and
+<code>upN</code> Operations</h2>
+<p>When a substitution must be applied <em>under</em> binders — as
+happens inside <code>getBody</code> — we need to <em>lift</em> it past
+the bound variables. The <code>up</code> function is the library’s
+version of <code>lift</code> from <code>Scratch.hs</code>:</p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v m n <span class="ot">-&gt;</span> <span class="dt">Env</span> v (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>up (<span class="dt">Inc</span> <span class="dt">SZ</span>) <span class="ot">=</span> <span class="dt">Inc</span> <span class="dt">SZ</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>up e        <span class="ot">=</span> var Fin.f0 <span class="op">.:</span> comp e (<span class="dt">Inc</span> s1)</span></code></pre></div>
+<p>The special case recognises the identity and returns it immediately —
+lifting the identity is still the identity. The general case is the
+familiar <code>lift</code>:</p>
+<ul>
+<li><code>FZ</code> maps to <code>Var FZ</code> (the newly-bound
+variable stays at index 0).</li>
+<li>Every other variable <code>x</code> maps to <code>env x</code>, then
+shifted up by one (<code>Inc s1</code>) to make room for the new
+binder.</li>
+</ul>
+<p><code>upN p env</code> lifts <code>env</code> under <code>p</code>
+binders by iterating this operation, producing an environment of type
+<code>Env v (p + m) (p + n)</code>. <code>getBody</code> calls
+<code>upN (size pat) env</code> to bring <code>env</code> into scope
+before applying it to the body.</p>
+<hr />
+<h2 id="putting-it-all-together">7. Putting It All Together</h2>
+<p>Let us trace what happens when the evaluator opens a lambda
+binder:</p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">App</span> m n) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    mv <span class="ot">&lt;-</span> eval m</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    nv <span class="ot">&lt;-</span> eval n</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b nv)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span></code></pre></div>
+<p><code>instantiate1 b nv</code> expands to:</p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>instantiate1 b v1 <span class="ot">=</span> Pat.instantiate b (v1 <span class="op">.:</span> zeroE)</span></code></pre></div>
+<p>which calls:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>instantiate b e <span class="ot">=</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    unbindWith b</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>        (\p r body <span class="ot">-&gt;</span> applyOpt applyE (withSNat (size p) <span class="op">$</span> e <span class="op">.++</span> r) body)</span></code></pre></div>
+<p>Breaking this down step by step:</p>
+<ol type="1">
+<li><p><strong><code>unbindWith</code></strong> extracts the stored
+environment <code>r :: Env v m n</code> and the body
+<code>body :: Tm (1 + m)</code> <em>without forcing the
+body</em>.</p></li>
+<li><p><strong><code>e .++ r</code></strong> appends the instantiation
+environment <code>e = (nv .: zeroE)</code> to the stored environment
+<code>r</code>, giving an environment of type
+<code>Env v (1 + m) n</code> that maps:</p>
+<ul>
+<li><code>FZ</code> → <code>nv</code> (the argument value)</li>
+<li><code>FS x</code> → <code>applyEnv r x</code> (outer variables via
+the stored <code>r</code>)</li>
+</ul></li>
+<li><p><strong><code>applyOpt applyE env body</code></strong> applies
+the combined environment to the body. If <code>r</code> was
+<code>idE</code> (common when <code>b</code> was freshly created with
+<code>bind1</code>), the combined environment simplifies to
+<code>nv .: idE</code>, and the full traversal proceeds once.</p></li>
+</ol>
+<p>The important observation: <em>building the binder</em>
+(<code>Lam b</code>) was O(1), and <em>every substitution that passed
+over this binder</em> while evaluating the outer context was O(1). The
+single traversal happens once, precisely when the binder is opened.</p>
+<hr />
+<h2 id="what-you-get-for-free-generic1">8. What You Get for Free —
+<code>Generic1</code></h2>
+<p>In <code>Tutorial.Scoped.Syntax</code>, the term type derives
+<code>Generic1</code>:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Tm</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Var</span><span class="ot">   ::</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Lam</span><span class="ot">   ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- ...</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>      <span class="kw">deriving</span> (<span class="dt">Generic1</span>, <span class="dt">Eq</span>, <span class="dt">Show</span>)</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SubstVar</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    var <span class="ot">=</span> <span class="dt">Var</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>    isVar (<span class="dt">Var</span> x) <span class="ot">=</span> <span class="dt">Just</span> (<span class="dt">Refl</span>, x)</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    isVar _       <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
+<p>The <code>Subst Tm Tm</code> instance has a default method body:</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> <span class="dt">Tm</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>applyE <span class="ot">=</span> gapplyE   <span class="co">-- dispatches through Generic1</span></span></code></pre></div>
+<p><code>gapplyE</code> first calls <code>isVar</code>: if the term is a
+variable, it looks it up in the environment directly via
+<code>applyEnv env x</code> — the fast path. Otherwise it calls the
+generic machinery to recurse over all fields, applying
+<code>applyE</code> recursively to each sub-term and the O(1) binder
+instance to each <code>Bind</code>.</p>
+<p>In contrast, <code>Scratch.hs</code> requires a hand-written
+<code>applyE</code> that explicitly dispatches on every constructor and
+manually calls <code>lift</code> at each binder. With
+<code>rebound</code> you write <code>deriving Generic1</code> and
+two-line <code>SubstVar</code>/<code>Subst</code> instances, and the
+library handles everything else.</p>
+<hr />
+<h2 id="summary">9. Summary</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Technique</th>
+<th>Where</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delayed substitution</td>
+<td><code>Bind v c pat n</code></td>
+<td>stores <code>Env v m n</code> in the binder; applying
+<code>applyE</code> is O(1)</td>
+</tr>
+<tr>
+<td>Pattern field</td>
+<td><code>LocalName</code> in <code>Bind</code></td>
+<td>carries name hints for pretty-printing; <code>Eq</code> ignores
+them</td>
+</tr>
+<tr>
+<td>Defunctionalized <code>Env</code></td>
+<td><code>Rebound.Env.Lazy</code></td>
+<td>substitutions are data; enables smart composition</td>
+</tr>
+<tr>
+<td>Smart composition</td>
+<td><code>comp</code> / <code>.&gt;&gt;</code></td>
+<td>fuses shifts, drops identities, re-associates</td>
+</tr>
+<tr>
+<td><code>applyOpt</code></td>
+<td><code>Rebound.Env.Lazy</code></td>
+<td>skips traversal when the environment is the identity</td>
+</tr>
+<tr>
+<td><code>upN</code> / <code>up</code></td>
+<td><code>Rebound.Env</code></td>
+<td>lifts an environment under <code>p</code> binders; recognises
+identity</td>
+</tr>
+<tr>
+<td><code>Generic1</code></td>
+<td><code>Rebound.Generics</code></td>
+<td>derives <code>applyE</code> over all constructors automatically</td>
+</tr>
+<tr>
+<td><code>isVar</code> shortcut</td>
+<td><code>Subst</code> class</td>
+<td>fast path: <code>applyE env (Var x)</code> →
+<code>applyEnv env x</code></td>
+</tr>
+</tbody>
+</table>
+<p>The combination of these techniques means that:</p>
+<ul>
+<li><strong>Building</strong> a binder (<code>bind1</code>,
+<code>Lam</code>) is O(1).</li>
+<li><strong>Passing</strong> a substitution over a binder
+(<code>applyE env (Lam b)</code>) is O(1).</li>
+<li><strong>Opening</strong> a binder (<code>getBody</code>,
+<code>instantiate1</code>) forces the accumulated substitution in a
+single pass over the body.</li>
+<li><strong>Identity environments</strong> are detected and discarded
+without touching the term.</li>
+<li><strong>Consecutive shifts</strong> are fused into a single
+<code>Inc</code> at composition time.</li>
+</ul>
+<p>These are the same optimisations found in mature normalisers and
+type-checkers; the <code>rebound</code> library packages them in a
+reusable, type-safe interface so that every new language implementation
+gets them for free.</p>
+</main>
+
+<footer>
+  &copy; 2025 Stephanie Weirich, Noe De Santo &mdash;
+  Tutorial code on <a href="https://github.com/sweirich/rebound">GitHub</a> &mdash;
+  <a href="https://hackage.haskell.org/package/rebound">rebound</a> library on Hackage
+</footer>
+
+</body>
+</html>

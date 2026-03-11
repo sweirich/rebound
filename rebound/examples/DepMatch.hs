@@ -324,6 +324,28 @@ tmid = lam (lam (Var f0))
 -- >>> tmid
 -- λ_. (λ_. 0)
 
+sigmaExample :: Exp (S Z)
+sigmaExample = Sigma star (bind1 (Sigma (Var f1) (bind1 (Var f1))))
+
+tyEx = Pi star (bind1 (Pi sigmaExample (bind1 (Var f1))))
+
+-- >>> :t Pat.bind
+-- Pat.bind :: (Sized pat, Subst v c) => pat -> c (Size pat + n) -> Bind v c pat n
+
+tmEx :: Exp Z
+tmEx = Match (Branch (Scoped.bind PVar
+                (Match (Branch (Scoped.bind (PPair PVar (PPair PVar PVar))
+                          (Var f1)) :< Nil))) :< Nil)
+
+-- >>> tyEx
+-- Pi *. (Sigma *. 1 * 1) -> 1
+
+-- >>> tmEx 
+-- λ_. (λ(_, (_, _)). 1)
+
+-- >>> (checkType zeroE tmEx tyEx :: Either Err ())
+-- Right ()
+
 --------------------------------------------------------
 
 -- * Show instances
@@ -602,10 +624,10 @@ checkPattern g (PPair (p1 :: Pat p1 n) (p2 :: Pat p2 (p1 + n))) (Sigma tyA tyB) 
   case axiomAssoc @p2 @p1 @n of
     Refl -> do
       (g', e1) <- checkPattern g p1 tyA
-      let tyB' = weakenBind' (size p1) tyB
+      let tyB' = shift (size p1) tyB
       let tyB'' = whnf (instantiate1 tyB' e1)
       (g'', e2) <- checkPattern g' p2 tyB''
-      let e1' = weaken' (size p2) e1
+      let e1' = shift (size p2) e1
       return (g'', Pair e1' e2)
 checkPattern g p ty = do
   (g', e, ty') <- inferPattern g p
