@@ -131,11 +131,7 @@ shift1E = shiftNE s1
 skip :: SubstVar v => Env v m n -> Env v m (S n)
 skip e = e .>> shift1E
 
-<<<<<<< HEAD
 -- | Shift an environment by size `p`
-=======
--- | Increment all free variables by @p@.
->>>>>>> tutorial
 upN ::
   forall v p m n.
   (SubstVar v) =>

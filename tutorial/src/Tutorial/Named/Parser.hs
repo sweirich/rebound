@@ -311,6 +311,14 @@ branch = do
   t <- tm
   return (p,t)
 
+-- | sequence
+seq :: Parser Tm 
+seq = do 
+  t1 <- tm
+  reservedOp ";"
+  t2 <- tm 
+  return (Case t1 [(unitTm, t2)])
+
 -- | Parse a term (entry point for expressions)
 tm :: Parser Tm
 tm = funapp <?> "expression" where

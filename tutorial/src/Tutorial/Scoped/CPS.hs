@@ -40,7 +40,7 @@ import Tutorial.Scoped.ScopeCheck
 -- | Apply the CPS translation to a closed term, using the identity
 -- continuation @λx. x@ so that the result is still a closed term.
 cps :: Tm Z -> Tm Z
-cps e = cpsExp CpsStart e (Obj (Lam (bind1 (LocalName "x") (Var FZ))))
+cps e = cpsExp CpsStart e (Meta (bind1 (LocalName "x") (Var FZ)))
 
 -- | __Correctness__: CPS preserves big-step evaluation.
 --
