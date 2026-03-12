@@ -62,6 +62,7 @@ library
     , Rebound.Env.StrictA
     , Rebound.Env.StrictB
     , Rebound.Env.Functional
+    , Rebound.Env.ShiftList
     , Rebound.Generics
     , Rebound.Lib
     , Rebound.MonadNamed
