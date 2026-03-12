@@ -66,15 +66,6 @@ t01 = App (Var f0) (Var f1)
 -- False
 instance FV Exp where
 
--- >>> :t weaken' s1 t00
--- weaken' s1 t00 :: Exp ('S ('S N1))
-
--- >>> weaken' s1 t00
--- 0 0
-
-weaken' :: SNat m -> Exp n -> Exp (m + n)
-weaken' m = applyE @Exp (weakenE' m)
-
 -- >>> strengthenRec s1 s1 snat t00
 -- Just (0 0)
 

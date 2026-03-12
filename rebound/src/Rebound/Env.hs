@@ -38,7 +38,6 @@ module Rebound.Env
     toVec,
     tabulate,
     fromTable,
-    weakenE',
     weakenER,
     shiftFromApplyE,
     skip
@@ -47,7 +46,7 @@ where
 
 -- The concrete implementation of environments can be changed by replacing
 -- this import with an alternative one.
-import Rebound.Env.Lazy
+import Rebound.Env.ShiftList
 
 import Rebound.Classes (Shiftable (..))
 import Rebound.Lib

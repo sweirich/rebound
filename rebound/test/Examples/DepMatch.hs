@@ -21,7 +21,6 @@ all =
         ((snat,) <$> patternMatch pat0 tm0) @?= Just (snat @N2, sig Star (Var f0) .: (Star .: zeroE)),
       testCase "Is f0 free in t00?" $ appearsFree f0 t00 @?= True,
       testCase "Is f1 free in t00?" $ appearsFree f1 t00 @?= False,
-      testCase "Weaken t00 by 1" $ weaken' s1 t00 @?= (Var f0 `App` Var f0),
       testCase "Strengthen t00 by 1/1" $ strengthenRec s1 s1 snat t00 @?= Just (Var f0 `App` Var f0),
       testCase "Strengthen t01 by 1/1" $ strengthenRec s1 s1 snat t01 @?= Nothing,
       testCase "Pretty-print t0" $ show t0 @?= "λ_. 0",

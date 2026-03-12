@@ -223,22 +223,6 @@ instance FV (Pat p) where
   freeVars (PAnnot p t) = freeVars p <> freeVars t
 
 ----------------------------------------------
--- weakening (convenience functions)
-----------------------------------------------
-
--- >>> :t weaken' s1 t00
--- weaken' s1 t00 :: Exp ('S ('S N1))
-
--- >>> weaken' s1 t00
--- 0 0
-
-weaken' :: SNat m -> Exp n -> Exp (m + n)
-weaken' m = applyE @Exp (weakenE' m)
-
-weakenBind' :: SNat m -> Bind1 Exp Exp n -> Bind1 Exp Exp (m + n)
-weakenBind' m = applyE @Exp (weakenE' m)
-
-----------------------------------------------
 -- strengthening
 ----------------------------------------------
 
