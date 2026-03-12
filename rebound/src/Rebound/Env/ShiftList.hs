@@ -54,7 +54,7 @@ class GSubst v (e :: Nat -> Type) where
 data Env a m n where
     Zero :: Env a Z n
     Inc  :: !(SNat k) -> Env a n (k + n)
-    Cons :: !(SNat k) -> a m -> !(Env a n m) -> Env a (S n) (k + m)
+    Cons :: !(SNat k) -> a m -> (Env a n m) -> Env a (S n) (k + m)
 
 instance (forall n. NFData (a n)) => NFData (Env a n m) where
   rnf :: (forall (n1 :: Nat). NFData (a n1)) => Env a n m -> ()
