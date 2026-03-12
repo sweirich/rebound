@@ -109,34 +109,6 @@ library rebound-examples
     , LinLC
   hs-source-dirs: examples
 
-library rebound-tutorials
-  import: 
-    common-stanza
-  build-depends:
-    base >=4.15, base < 5.0
-    , rebound
-    , mtl
-    , HUnit
-    , QuickCheck
-    , containers
-    , prettyprinter
-    , parsec
-    , template-haskell
-    , syb
-  exposed-modules:
-    Tutorial.Lib
-    Tutorial.Named.Syntax
-    Tutorial.Named.PP
-    Tutorial.Named.Parser
-    Tutorial.Scoped.Syntax
-    Tutorial.Scoped.Gen
-    Tutorial.Scoped.Eval
-    Tutorial.Scoped.ScopeCheck
-    Tutorial.Scoped.Scratch
-    Tutorial.Scoped.CPS
-    Tutorial.Scoped.TestEval
-  hs-source-dirs: tutorial
-
 test-suite rebound-tests
   import:
     common-stanza
@@ -176,19 +148,3 @@ test-suite rebound-tests
     Examples.PTS
     Examples.DepMatch
     Examples.LinLC
-
-test-suite tutorial-tests
-  import:
-    common-stanza
-  build-depends:
-      base
-    , rebound-tutorials
-    , QuickCheck
-    , tasty
-    , tasty-quickcheck
-  type:
-    exitcode-stdio-1.0
-  hs-source-dirs:
-    test
-  main-is:
-    TutorialTests.hs
