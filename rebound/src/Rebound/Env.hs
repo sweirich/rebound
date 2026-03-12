@@ -46,7 +46,7 @@ where
 
 -- The concrete implementation of environments can be changed by replacing
 -- this import with an alternative one.
-import Rebound.Env.ShiftList
+import Rebound.Env.Lazy
 
 import Rebound.Classes (Shiftable (..))
 import Rebound.Lib

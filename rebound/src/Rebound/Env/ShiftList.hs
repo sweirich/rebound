@@ -8,8 +8,7 @@ module Rebound.Env.ShiftList where
 import Data.Nat
 import Data.Fin
 
-import Rebound.Lib hiding (apply)
-import Unsafe.Coerce (unsafeCoerce)
+import Rebound.Lib 
 import GHC.Generics hiding (S)
 import Control.DeepSeq (NFData (..))
 
@@ -103,6 +102,7 @@ zeroE :: Env a Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
 
+-- TODO: add weakenER to this definition
 weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
 weakenER = undefined
 

@@ -87,7 +87,9 @@ instance Subst DB DB where
 
 {-# SPECIALIZE bind :: DB (S n) -> Bind DB DB n #-}
 
-{-# SPECIALIZE applyUnder :: (forall m n. Env DB m n -> DB m -> DB n)-> Env DB n1 n2 -> Bind DB DB n1 -> Bind DB DB n2 #-}
+
+{-# SPECIALIZE applyUnder :: (forall m. Env DB m (S n2) -> DB m -> DB (S n2))-> Env DB n1 n2 -> Bind DB DB n1 -> Bind DB DB n2 #-}
+
 
 ----------------------------------------------------------
 
