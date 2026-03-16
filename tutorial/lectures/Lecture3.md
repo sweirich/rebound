@@ -1,19 +1,19 @@
 # Lecture 3: CPS Conversion
 
-Lectures 1 and 2 built a well-scoped de Bruijn representation and showed how
-terms flow in from parsing and out to the pretty-printer.  This lecture adds a
-non-trivial *term-to-term transformation*: continuation-passing style (CPS)
-conversion.
+Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
+issues that occur when working with them in an implementation. In this lecture, we start to see 
+some of the payoff for working with this sort of representation: we can work with and reason about 
+open-code. 
 
-CPS is a good case study because:
+As an extended example, we will work with a non-trivial *term-to-term transformation*: 
+continuation-passing style (CPS) conversion.
 
-- It changes the *shape* of binders — each function gains an extra argument.
-- It requires carefully tracking how de Bruijn indices shift across the
-  transformation.
-- It produces terms in a richer scope, so we need a separate index-mapping
-  structure.
-- Its correctness properties illuminate the difference between big-step and
-  small-step semantics.
+CPS is a good case study because it changes the binding structure of its input — each function gains an extra argument.
+Therefore, when implementing this operation, we need to work in a changing scope -- the scope of 
+the input term is not necessarily the same as the scope of the output. Because we are working 
+with de Bruijn indices, we need to be careful what scope we are in, and the types help us with that. 
+At the same time, when we go to test our implementation, we don't need to worry about variable 
+names; we are naturally working with terms up to alpha-equivalence. 
 
 ---
 
@@ -25,7 +25,8 @@ In direct style, a function returns its result to its caller implicitly.  In
 returning, a function calls its continuation.
 
 The transformation is defined inductively on terms.  We write `[[e]] k` to
-mean "translate `e`, passing results to continuation `k`":
+mean "translate `e`, passing results to continuation `k`". An informal 
+definition of this operation is below:
 
 ```
 [[x]]          k = k x

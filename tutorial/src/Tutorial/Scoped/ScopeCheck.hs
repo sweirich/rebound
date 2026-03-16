@@ -31,7 +31,8 @@ module Tutorial.Scoped.ScopeCheck (
   prop_project_round_trip,
   prop_parse_round_trip,
   -- * pretty printer
-  pp
+  pp,
+  ppWith
 ) where
 
 import Test.QuickCheck
@@ -51,6 +52,9 @@ import Tutorial.Scoped.Gen
 -- | Pretty-print a closed term via the Named pretty printer
 pp :: S.Tm Z -> String
 pp = N.pp . injectTm
+
+ppWith :: Vec n String -> S.Tm n -> String
+ppWith e t = N.pp (injectTmWith e t)
 
 ------------------------------------------------------------------------
 -- * Type conversions

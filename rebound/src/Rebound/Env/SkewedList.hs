@@ -58,6 +58,13 @@ cons x (Cons (w1 :: SNat w) t1 (Cons w2 t2 (rest :: SkewedList m a)))
       Refl -> Cons (next (sPlus w1 w1)) (Node w1 x t1 t2) rest
 cons x list = Cons s1 (Leaf x) list
 
+-- | remove the first element of a non empty tree and return its tail
+unCons :: SkewedList (S n) a -> (a, SkewedList n a)
+unCons (Cons _ (Leaf x) sl) = (x, sl)
+unCons (Cons _ (Node (w1 :: SNat w1) x l r) (sl :: SkewedList m a)) 
+   | Refl <- axiomAssoc @w1 @w1 @m 
+   = (x, (Cons w1 l (Cons w1 r sl)))
+
 -- | Lookup the [i]-th element in a skewed list.
 -- The Fin index statically guarantees the lookup is in bounds.
 lookup :: Fin n -> SkewedList n a -> a

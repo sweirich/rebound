@@ -90,6 +90,10 @@ library
     DeBruijn.Par.P
     DeBruijn.Par.Scoped
     DeBruijn.TAPL
+    DeBruijn.Skew.Lazy
+    DeBruijn.Skew.ShiftList
+    DeBruijn.Skew.SkewList
+    DeBruijn.Skew.Suite
     Lennart.DeBruijn
     Lennart.HOAS
     Lennart.Simple

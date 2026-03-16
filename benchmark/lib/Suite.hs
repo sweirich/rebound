@@ -70,6 +70,7 @@ import qualified DeBruijn.Par.GB
 import qualified DeBruijn.Par.L
 import qualified DeBruijn.Par.P
 import qualified DeBruijn.Par.Scoped
+import qualified DeBruijn.Skew.Suite
 import qualified DeBruijn.TAPL
 import qualified Lennart.DeBruijn
 import qualified Lennart.HOAS
@@ -136,7 +137,7 @@ import Util.Impl (LambdaImpl)
 --    Table 1: rebound_comparison
 --    Table 2: rebound_strict_envV
 impls :: [LambdaImpl]
-impls = rebound_strict_envV
+impls = DeBruijn.Skew.Suite.impls
 
 ---------------------------------------------------------------------------------
 
