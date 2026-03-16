@@ -29,6 +29,7 @@ instance GSubst b V1 where
   {-# INLINE gsubst #-}
 
 instance (GSubst b f, GSubst b g) => GSubst b (f :*: g) where
+  gsubst :: (GSubst b f, GSubst b g) => Env b m n -> (:*:) f g m -> (:*:) f g n
   gsubst s (f :*: g) = gsubst s f :*: gsubst s g
   {-# INLINE gsubst #-}
 

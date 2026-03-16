@@ -15,6 +15,7 @@ The translation is defined by the following equations, where @[[e]] k@ means
 [[()]]                       k = k ()
 [[(e1, e2)]]                 k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 [[inj i e]]                  k = [[e]] (λx. k (inj i x))
+[[case e of () -> b]]      k = [[e]] (λz. case z of () -> [[b]] k)
 [[case e of (x,y) → b]]      k = [[e]] (λz. case z of (x,y) → [[b]] k)
 [[case e of {inj i → b_i}]]  k = [[e]] (λz. case z of {inj i → [[b_i]] k})
 @
@@ -57,53 +58,86 @@ isFirstOrder _ = False
 -- | Apply the CPS translation to a closed term, using the identity
 -- continuation @λx. x@ so that the result is still a closed term.
 cps :: Tm Z -> Tm Z
--- cps e = cpsExp idE e idTm
-cps = top
+cps e = cpsExp idE e idTm
+
 
 -- | __Correctness__: CPS preserves big-step evaluation
 --
 -- @eval(e) == eval(cps(e))@
 --
 -- If the result of eval(e) contains a function, then this is not true
+prop_cps_result :: Property
+prop_cps_result = forAll genFull $ \ e ->
+      let cps_e      = cps e
+          eval_e     = eval e 
+          eval_cps_e = eval (cps_e)
+       in
+         counterexample ("e          = " ++ pp e)          $
+         counterexample ("cps_e      = " ++ pp cps_e)      $
+         eval_e == eval_cps_e
+
+
+-- If the result of eval(e) contains a function, then this is not true
 -- so we discard all such cases
-prop_cps_eval :: Tm Z -> Property
-prop_cps_eval e =
-     counterexample ("e          = " ++ pp e)          $
-     counterexample ("eval_e     = " ++ pp eval_e)     $
-     counterexample ("cps_e      = " ++ pp cps_e)      $
-     counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
-     eval_e == eval_cps_e
-  where
-     cps_e = cps e
-     eval_e = case eval e of
-                 Nothing -> discard -- should be impossible for well-typed terms
-                 Just v -> if isFirstOrder v then v else discard
-     cps_eval_e = cps eval_e
-     eval_cps_e = case eval (cps_e) of
+prop_cps_result_firstorder :: Property
+prop_cps_result_firstorder = forAll genTypedFull $ \e ->
+    let
+       cps_e = cps e
+       eval_e = case eval e of
+                 Nothing -> discard
+                 Just v -> if isFirstOrder v then v else discard 
+       eval_cps_e = case eval cps_e of
                     Nothing -> discard
-                    Just v -> v
+                    Just v -> v 
+    in
+      counterexample ("e          = " ++ pp e)          $
+      counterexample ("eval_e     = " ++ pp eval_e)     $
+      counterexample ("cps_e      = " ++ pp cps_e)      $
+      counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+      eval_e == eval_cps_e
 
 
-{-      eval (cps e k) = cps (eval e) k 
--}
-prop_cps_eval2 :: Tm Z -> Property
-prop_cps_eval2 e =
-     counterexample ("e          = " ++ pp e)          $
-     counterexample ("eval_e     = " ++ pp eval_e)     $
-     counterexample ("cps_e      = " ++ pp cps_e)      $
-     counterexample ("cps_eval_e = " ++ pp cps_eval_e) $
-     counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
-     eval_cps_e == cps_eval_e
-  where
-     -- pp' = ppWith ("k" ::: VNil)
-     cps_e = cpsExp zeroE e idTm
-     eval_e = case eval e of
+------------------------------------------------------------------------------
+-- 
+-- 
+-- big-step simulation:
+--           e  =>  v 
+--           |      |
+--        cps e => cps v
+--
+--   we can write this property succinctly as:
+--      eval (cps e) = cps (eval e) 
+--
+-- NB: this is not true because the cps conversion of a value is not 
+-- a value
+prop_cps_eval_simulates :: Property
+prop_cps_eval_simulates = forAll genTypedFull $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
+
+-- alternative: if we use a "fresh variable" instead of the id function
+-- this property is true for pure lambda calculus terms. But it still 
+-- fails for the full language.
+prop_cps_eval_simulates_open :: Property
+prop_cps_eval_simulates_open = forAll genTypedPureLC $ \e ->
+   let 
+      pp' = ppWith ("k" ::: VNil)
+      cps_e = cpsExp zeroE e (Var FZ)
+      eval_e = case eval e of
                  Nothing -> discard -- should be impossible for well-typed terms
-                 Just v -> if isFirstOrder v then v else discard
-     cps_eval_e = cpsExp zeroE eval_e idTm 
-     eval_cps_e = case eval (cps_e) of
+                 Just v -> v 
+      cps_eval_e = cpsExp zeroE eval_e (Var FZ) 
+      eval_cps_e = case eval (cps_e) of
                     Nothing -> discard
                     Just v -> v
+    in
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("eval_e     = " ++ pp eval_e)     $
+       counterexample ("cps_e      = " ++ pp' cps_e)      $
+       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
+       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
+       eval_cps_e == cps_eval_e
 
 
 
@@ -163,25 +197,27 @@ cpsExp r (Var x) k = App k (applyEnv r x)
 cpsExp r Unit k    = App k Unit
 cpsExp r (Lam b) k = App k 
     (Lam (bind1 (getLocalName b) 
-      (Lam (bind1 kN
-          (cpsExp (skip (up r)) (getBody b) (Var FZ))))))
+      (Lam (bind1 (LocalName "k")
+          (cpsExp r' (getBody b) (Var FZ))))))
+    where 
+        r' = up r .>> wk
 cpsExp r (App t1 t2) k = 
-    cpsExp r t1 (Lam (bind1 (LocalName "v1")
-      (cpsExp r' t2 (Lam (bind1 (LocalName "v2")
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
           (App (App (Var (FS FZ)) (Var FZ)) k''))))))  
        where
          r'  = r .>> wk
          k'' = applyE (wk .>> wk) k
 cpsExp r (MatchUnit e1 e2) k = 
-    cpsExp r e1 (Lam (bind1 (LocalName "v1")
+    cpsExp r e1 (Lam (bind1 (LocalName "v")
        (MatchUnit (Var FZ) 
           (cpsExp r' e2 k'))))
     where
         r' = r .>> wk
         k' = applyE wk k
 cpsExp r (Pair t1 t2) k =
-    cpsExp r t1 (Lam (bind1 (LocalName "v1")
-       (cpsExp (skip r) t2 (Lam (bind1 (LocalName "v2")
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+       (cpsExp (skip r) t2 (Lam (bind1 (LocalName "w")
           (App k'' (Pair (Var (FS FZ)) (Var FZ))))))))
       where 
         r' :: Env Tm n (S m)
@@ -198,11 +234,11 @@ cpsExp r (MatchPair e1 b) k =
             x2 = names ! FS FZ
             k''' = applyE (wk .>> wk .>> wk) k
 cpsExp r (Inj i e) k = 
-    cpsExp r e (Lam (bind1 (LocalName "v1")
+    cpsExp r e (Lam (bind1 (LocalName "v")
        (App k' (Inj i (Var FZ))))) 
        where k' = applyE wk k
 cpsExp r (MatchSum e0 e1 e2) k = 
-    cpsExp r e0 (Lam (bind1 (LocalName "v1")
+    cpsExp r e0 (Lam (bind1 (LocalName "v")
        (MatchSum (Var FZ)
            (bind1 (getLocalName e1)
                   (cpsExp (up (skip r)) (getBody e1) k''))
@@ -221,6 +257,10 @@ cpsVal r (Lam b) =
     (Lam (bind1 (getLocalName b) 
       (Lam (bind1 kN
           (cpsExp (skip (up r)) (getBody b) (Var FZ))))))
+cpsVal r (Pair v1 v2) = 
+    Pair (cpsVal r v1) (cpsVal r v2)
+cpsVal r (Inj i v1) = 
+    Inj i (cpsVal r v1)
 
 colon :: Env Tm n1 n2 -> Tm n1 -> Tm n2 -> Tm n2
 colon r v k | isVal v = App k (cpsVal r v)
@@ -233,11 +273,72 @@ colon r (App v1 e2) k | isVal v1 =
           k'  = applyE wk k
 colon r (App e1 e2) k = 
     colon r e1 (Lam (bind1 (LocalName "v1")
-                 (cpsExp (r .>> wk) e2
+                 (colon(r .>> wk) e2
                      (Lam (bind1 (LocalName "v2")
                         (App (App (Var (FS FZ)) (Var FZ)) k'))))))
     where 
         k' = applyE (wk .>> wk) k
+colon r (Pair v1 v2) k | isVal v1 && isVal v2 = 
+    App k (Pair (cpsVal r v1) (cpsVal r v2))
+colon r (Pair v1 e2) k | isVal v1 = 
+    colon r e2 (Lam (bind1 (LocalName "v2")
+                  (App k' (Pair v1' (Var FZ)))))
+    where v1' = applyE wk (cpsVal r v1)
+          k'  = applyE wk k
+colon r (Pair e1 e2) k = 
+    colon r e1 (Lam (bind1 (LocalName "v1")
+                 (cpsExp (r .>> wk) e2
+                     (Lam (bind1 (LocalName "v2")
+                        (App k' (Pair (Var (FS FZ)) (Var FZ))))))))
+    where 
+        k' = applyE (wk .>> wk) k
+colon r (Inj i v1) k | isVal v1 = 
+    App k (Inj i (cpsVal r v1))
+colon r (Inj i e1) k =
+    colon r e1 (Lam (bind1 (LocalName "v2")
+                  (App k' (Inj i (Var FZ)))))
+    where k'  = applyE wk k
+colon r (MatchUnit v1 e2) k | isVal v1 = 
+    MatchUnit (cpsVal r v1) (colon r e2 k)
+colon r (MatchUnit e1 e2) k = 
+    colon r e1 (Lam (bind1 (LocalName "v1")
+                    (MatchUnit (Var FZ) (colon r' e2 k'))))
+    where r' = r .>> wk
+          k' = applyE wk k
+colon r (MatchPair v1 e2) k | isVal v1 = 
+    MatchPair (cpsVal r v1) 
+        (bind2 x y 
+           (colon r' (getBody2 e2) k'))
+    where
+        r' = up (up r)
+        k' = applyE (wk .>> wk) k
+        names = getLocalName2 e2
+        x = names ! FZ
+        y = names ! (FS FZ)
+colon r (MatchPair e1 b) k = 
+    colon r e1 (Lam (bind1 (LocalName "v1")
+      (MatchPair (Var FZ) (bind2 x1 x2 
+        (colon (up (up (r .>> wk))) (getBody2 b) k'''))))) 
+        where
+            names = getLocalName2 b
+            x1 = names ! FZ
+            x2 = names ! FS FZ
+            k''' = applyE (wk .>> wk .>> wk) k
+colon r (MatchSum v1 e1 e2) k | isVal v1 = 
+    (MatchSum (cpsVal r v1)
+           (bind1 (getLocalName e1)
+                  (colon (up r) (getBody e1) k'))
+           (bind1 (getLocalName e2)
+                  (colon (up r) (getBody e2) k')))
+    where k' = applyE wk k
+colon r (MatchSum e0 e1 e2) k = 
+    cpsExp r e0 (Lam (bind1 (LocalName "v1")
+       (MatchSum (Var FZ)
+           (bind1 (getLocalName e1)
+                  (colon (up (skip r)) (getBody e1) k''))
+           (bind1 (getLocalName e2)
+                  (colon (up (skip r)) (getBody e2) k'')))))
+    where k'' = applyE (wk .>> wk) k
 
 
 prop_a :: Tm Z -> Property
@@ -326,7 +427,7 @@ top e = cpsOpt zeroE e (Obj idTm)
 
 cpsOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
 cpsOpt r (Var x) k = applyCont k (applyEnv r x)
-cpsOpt r Unit k = applyCont k Unit
+cpsOpt r Unit k    = applyCont k Unit
 cpsOpt r (Lam b) k = applyCont k $ 
     Lam (bind1 (getLocalName b) 
       (Lam (bind1 kN
@@ -375,4 +476,9 @@ cpsOpt r (MatchSum e0 e1 e2) k =
            (bind1 (getLocalName e2)
                   (cpsOpt (up (skip r)) (getBody e2) k'')))))
     where k'' = applyE (wk .>> wk) k
-      
+    
+prop_cpsOpt_eval_simulates_open :: Property
+prop_cpsOpt_eval_simulates_open = forAll genTypedFull $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       eval (topK e) == (topK <$> eval e)   -- lift cps over Maybe type

@@ -88,12 +88,18 @@ projectTy = to where
 ------------------------------------------------------------------------
 
 -- | Test whether a name is already in a naming vector.
+-- >>> inVec "x" ("x" ::: VNil)
+-- True
 inVec :: String -> Vec n String -> Bool
 inVec _ VNil       = False
 inVec x (y ::: ys) = x == y || inVec x ys
 
 -- | Return @s@ if it does not appear in the vector, otherwise try
 -- @s0@, @s1@, @s2@, … until a fresh name is found.
+-- >>> freshen "x" ("x" ::: VNil)
+-- "x0"
+-- >>> freshen "x" (show (S.LocalName "x") ::: VNil)
+-- "x0"
 freshen :: String -> Vec n String -> String
 freshen s vs
     | not (inVec s vs) = s

@@ -83,6 +83,9 @@ genPureLC = QC.sized (genTm PureLC snat)
 genFull :: SNatI n => QC.Gen (Tm n)
 genFull = QC.sized (genTm PureLC snat)
 
+genLocalName :: QC.Gen LocalName
+genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
+
 -- | Generate a term of size 'sz' in scope 'n' for either just the lambda calculus (with unit)
 -- or the full language
 -- 
@@ -92,8 +95,8 @@ genTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
 genTm l n sz =
     let
         gen  = genTm l n (sz `div` 2)
-        gen1 = bind1 @Tm <$> arbitrary <*> genTm l (next n) (sz `div` 2)
-        gen2 = bind2 @Tm <$> arbitrary <*> arbitrary <*> genTm l (next (next n)) (sz `div` 2)
+        gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) (sz `div` 2)
+        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName <*> genTm l (next (next n)) (sz `div` 2)
         
         gens = case l of
           PureLC -> 
@@ -165,7 +168,7 @@ genTypedTm l n ctx ty sz =
             One       -> [ pure Unit ]
             Zero      -> []
             (a :-> b) ->
-                [ Lam <$> (bind1 @Tm <$> arbitrary
+                [ Lam <$> (bind1 @Tm <$> genLocalName
                                       <*> genTypedTm l (next n) (a ::: ctx) b sz') ]
             (a :* b)  -> case l of
                 PureLC -> []
@@ -190,15 +193,15 @@ genTypedTm l n ctx ty sz =
                              b <- QC.sized genTy
                              -- FZ maps to b (2nd component), FS FZ maps to a (1st)
                              MatchPair <$> gen (a :* b)
-                                       <*> (bind2 @Tm <$> arbitrary <*> arbitrary
+                                       <*> (bind2 @Tm <$> genLocalName <*> genLocalName
                                                       <*> genTypedTm l (next (next n))
                                                                      (b ::: a ::: ctx) ty sz')
                         , do a <- QC.sized genTy
                              b <- QC.sized genTy
                              MatchSum <$> gen (a :+ b)
-                                      <*> (bind1 @Tm <$> arbitrary
+                                      <*> (bind1 @Tm <$> genLocalName
                                                      <*> genTypedTm l (next n) (a ::: ctx) ty sz')
-                                      <*> (bind1 @Tm <$> arbitrary
+                                      <*> (bind1 @Tm <$> genLocalName
                                                      <*> genTypedTm l (next n) (b ::: ctx) ty sz')
                         ]
 

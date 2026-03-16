@@ -3,12 +3,12 @@
 Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
 issues that occur when working with them in an implementation. In this lecture, we start to see 
 some of the payoff for working with this sort of representation: we can work with and reason about 
-open-code. 
+open code. 
 
-As an extended example, we will work with a non-trivial *term-to-term transformation*: 
-continuation-passing style (CPS) conversion.
+As an extended example, we will us a nontrivial *term-to-term transformation*: 
+continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as compiler intermediate languages or for the implementation of cooperative multi-threading. If you haven't seen it before, you should learn more about it.
 
-CPS is a good case study because it changes the binding structure of its input — each function gains an extra argument.
+For our purposes, CPS is a good case study because it changes the binding structure of its input — each function gains an extra argument.
 Therefore, when implementing this operation, we need to work in a changing scope -- the scope of 
 the input term is not necessarily the same as the scope of the output. Because we are working 
 with de Bruijn indices, we need to be careful what scope we are in, and the types help us with that. 
@@ -35,27 +35,184 @@ definition of this operation is below:
 [[()]]         k = k ()
 [[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 [[inj i e]]    k = [[e]] (λx. k (inj i x))
+[[case e of () -> b]]      k = [[e]] (λz. case z of () -> [[b]] k)
 [[case e of (x,y) → b]]    k = [[e]] (λz. case z of (x,y) → [[b]] k)
 [[case e of inj i → b_i]]  k = [[e]] (λz. case z of inj i → [[b_i]] k)
 ```
 
-The top-level call uses the identity continuation: `cps(e) = [[e]] (λx. x)`.
+The top-level call typically uses the identity continuation: `cps e = [[e]] (λx. x)`.
+
+Note that this is a call-by-value translation: the evaluation of the result of the translation
+should occur in the same order as the call-by-value evaluation.
+
+-- 
+
+## 2. Implementation using rebound (pure lambda calculus)
+
+Let's look at how we could translate the definition above to executable Haskell code. 
+The difficult part of this translation is right there near the top: when we translate a function, we need to introduce a new argument `k'` to pass in the "continuation" of the function.
+
+```
+[[ \x.e ]] k = k (λx. λk'. [[e]] k')
+```
+
+That means that when we call the translation recursively, `e` might be in some scope `S n`, because 
+it is inside the body of a lambda expression. However, the result is going to be in some larger scope
+that binds not just `x` but also `k'`. What that means is that the *variable* case is also challenging. Even though with names above we say `[[x]]k` produces `k x`, the scope of the first `x`
+may be different than the scope of the second `x`, so they may be different indices.
+
+Therefore, we need to parameterize our cps conversion function with a substitution that talks about the scope change. If the input term is in some scope `n` and the output scope is `m`, then we need 
+an argument of type `Env Tm n m` to go between the two.  Furthermore, the continuation argument 
+should be in the *output* scope.  
+
+For the variable case, we apply this renaming to the variable, to get its version in the 
+output scope. We can then use it to construct the application of the continuation to this 
+new variable.
+
+```
+cpsExp :: Env Tm n m -> Tm n -> Tm m -> Tm m
+cpsExp r (Var x) k = App k (applyEnv r x)
+```
+
+For the lambda case, we will also apply the continutation `k` to a value. 
+But this value is the function of two parameters. The first parameter is the same 
+one as the original function, the second is a new parameter. We then call the 
+cps conversion function recursively on the body of the lambda expression, using 
+this new parameter (variable 0 in the output scope) as the continuation.
+
+```
+cpsExp r (Lam b) k = App k 
+    (Lam (bind1 (getLocalName b) 
+      (Lam (bind1 (LocalName "k")
+          (cpsExp r' (getBody b) (Var FZ))))))
+    where 
+        r' = up r .>> wk
+```
+What is the renaming for this recursive call? We need to translate this renaming 
+to be used under the body of the lambda expression, with `up r`, but then we also 
+need to account for the second binder for the continutation. This binder only 
+affects the output scope, as opposed to the first that is part of both. Therefore, 
+we need to shift the variables in the output, which we do by post-composing 
+the substiiution with `wk`.
+
+For applications, our original definition is 
+
+```
+[[e1 e2]]k = [[e1]] (λv. [[e2]] (λw. v w k))
+```
+
+Note that in this case, our output scope introduces two binders: `v` and `w`, naming 
+the values of `e1` and `e2`. Because `v` is a function, we can apply it to both 
+its argument `w` and the current continuation `k`.
+
+With CPS translation, we need to create the two lambda bindings, for `v` and `w` above, and 
+use them for the continuations as we translate `t1` and `t2`.  In the body of the 
+second continuation `v w k`, `v` is at index 1, `w` is at index 0, and k needs to 
+be shifted two steps.
+
+```
+cpsExp r (App t1 t2) k = 
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
+          (App (App (Var (FS FZ)) (Var FZ)) k''))))))  
+       where
+         r'  = r .>> wk
+         k'' = applyE (wk .>> wk) k
+```
+
+Note that this function is structurally recursive on the input. 
 
 ---
 
-## 2. Two Flavors of Continuation — `Cont`
+## 3. What does it mean for CPS conversion to be correct?
+
+If we implement the cps conversion algorithm, we want to know that we did so correctly. Intuitively, this means that when we apply this transformation to some code, the output should produce the same result when we run it.
+
+But what does that mean formally?  We can start with this simple statement, which asserts
+that we get the same result from evaluation for any term and its cps conversion:
+
+```
+prop_same_result e = eval e == eval (cps e)
+```
+
+But already we have a problem, here. This property is not true.
+```
+ghci> qc prop_cps_result
+*** Failed! Falsified (after 1 test):  
+Lam (bind1 (Var 0))
+e          = (λ x. x)
+cps_e      = (λ x. x) (λ x k. k x)
+```
+
+The result of evaluation after CPS translating the identity function is `(λ x k. k x)`. 
+And this is not the same as `(λ x. x)`. We can fix this by only looking at the cases 
+where the result of evaluation is "first-order", i.e. a value that does not contain 
+a function.
+
+This solves the issue, but we need to throwaway a lot of cases.
+
+```
+ghci> qc prop_cps_result_firstorder
++++ OK, passed 1000 tests; 1373 discarded.
+```
+
+### Simulation properties (big-step)
+
+We can do better by thinking about simulation properties.
+
+Another way to state the correctness of CPS conversion is through the use of a simulation relation. 
+If our source language (the lambda calculus) evaluates to a result (the CPS-converted language)
+evaluates to an equivalent result. We might draw a picture like this:
+
+```
+           e  =>  v 
+           |      |
+        cps e => cps v
+```
+
+In other words, we want to show that if `e` evaluates to `v`, then `cps e` evaluates to `cps v`.
+```
+prop_cps_eval_simulates :: Property
+prop_cps_eval_simulates = forAll genTypedFull $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       eval (cps e) == (cps <$> eval e)
+```
+
+Note that this property is not true. 
+
+```
+ghci> qc prop_cps_eval_simulates
+*** Failed! Falsified (after 1 test):  
+Unit
+e          = ()
+cps_e      = (λ x. x) ()
+```
+In this counter example, we have a value that translates to a non-value.
+
+We can (partially) repair it by keeping our "top-level" continuation abstract. Instead of 
+using the identity function, if we use a distinguished variable, then that solves the 
+problem for `()`.
+
+However, this solution will not scale to the full language.
+
+
+## 4. Optimized CPS conversion
 
 A naive implementation would represent every continuation `k` as a `Tm g`
 (an object-level lambda) and apply it with `App k v`.  But this introduces
 *administrative redexes* — beta redexes of the form `(λx. body) v` that were
 not present in the source and must be reduced away.
 
+
+### Introducing Meta continuations
+
 To avoid this we distinguish two cases:
 
 ```haskell
 data Cont (g :: Nat) where
-    Obj  :: Tm g          -> Cont g   -- object-level term
-    Meta :: Bind1 Tm Tm g -> Cont g   -- meta-level binder
+    Obj  :: Tm g          -> Cont g   -- object-level term (usual)
+    Meta :: Bind1 Tm Tm g -> Cont g   -- meta-level binder (new!)
 ```
 
 - **`Obj t`** — the continuation is an existing object-level term `t`.  To
@@ -91,329 +248,23 @@ the library can apply environments to it:
 instance Subst Tm Cont where
 ```
 
-The instance body is empty because `Generic1` is not derived for `Cont` — in
-practice the library's default generic machinery handles it, or the user can
-derive it.
+The instance body is empty because the library's default generic machinery 
+handles it.
+
+### Updating the translation to use Meta continuations
+
+To update the translation, we change the type of the continuation 
+argument to be a `Cont m` instead of a raw term. 
+
+```
+cpsOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
+```
+
+The Haskell typechecker then 
+points out all of the places where we need to change uses of `App` 
+to `applyCont`, and insert a use of `reifyCont` when we use 
+a `Cont m` as a `Tm m`.  Whenever we construct a continuation using 
+`Lam`, we have a choice: we can either wrap it with `Obj` or change 
+the `Lam` to `Meta`. We select the 
 
 ---
-
-## 3. The Scope Problem
-
-The CPS translation changes the scope.  Every `λ`-abstraction gains an extra
-argument (the continuation `k'`), so a term in scope `n` becomes a term in a
-*larger* scope.  Concretely:
-
-- A closed term (`Tm Z`) translates to a closed term (`Tm Z`): the top-level
-  call to the identity continuation is in scope 0.
-- Inside `λx. e`, the body `e` is in scope `S g`.  After CPS, the body lives
-  in scope `S (S g')` — one slot for `x`, one slot for `k'`.
-
-This means we cannot simply apply `cpsIdx` naively to variable indices.  A
-variable `FZ` in the source body might map to `FS FZ` in the CPS body (if the
-new continuation slot was inserted at position 0).
-
----
-
-## 4. Tracking Index Shifts — `CpsCtx`
-
-`CpsCtx g g'` is a GADT that records how variables in source scope `g` map
-to positions in CPS scope `g'`:
-
-```haskell
-data CpsCtx g g' where
-    CpsStart :: CpsCtx N0 N0
-    CpsLam   :: CpsCtx g g' -> CpsCtx (S g) (S (S g'))
-    CpsMeta  :: CpsCtx g g' -> CpsCtx (S g) (S g')
-    CpsLift  :: CpsCtx g g' -> CpsCtx (S g) (S (S g'))
-```
-
-The three non-trivial constructors correspond to three different binder
-situations:
-
-### `CpsLam` — inside a translated lambda body
-
-When we translate `λx. e`, the CPS output is `λx. λk'. body`.  Inside
-`body`, the scope has grown by two:
-
-- `FZ` is now the continuation `k'`
-- `FS FZ` is the original parameter `x`
-- `FS (FS v)` are the outer variables
-
-So `x` (which was `FZ` in the source body) maps to `FS FZ` in the CPS body,
-and every outer variable `v` maps to `FS (FS (cpsIdx gg v))`:
-
-```haskell
-cpsIdx (CpsLam gg) FZ     = FS FZ
-cpsIdx (CpsLam gg) (FS v) = FS (FS (cpsIdx gg v))
-```
-
-### `CpsMeta` — inside a meta-continuation body
-
-When we build an intermediate continuation `Meta (bind1 k body)`, inside
-`body` there is one extra variable (the value passed to the continuation).
-This variable maps to itself (`FZ → FZ`), and outer variables shift by one:
-
-```haskell
-cpsIdx (CpsMeta gg) FZ     = FZ
-cpsIdx (CpsMeta gg) (FS v) = FS (cpsIdx gg v)
-```
-
-### `CpsLift` — inside a case branch body
-
-When we translate `case e of { inj_i y_i → b_i }`, the output is:
-
-```
-[[e]] (λz. case z of { inj_i y_i → [[b_i]] k })
-```
-
-Inside the branch body, the scope is `S (S g')`:
-
-- `FZ` is `y_i` (the pattern variable, freshly bound by the case branch)
-- `FS FZ` is `z` (the scrutinee result, bound by the outer meta-lambda)
-- `FS (FS v)` are the outer CPS variables
-
-The source branch body has one extra variable (`y_i` at `FZ`).  We need to
-translate it to CPS scope `S (S g')` while:
-
-- keeping `FZ` (= `y_i`) at `FZ`
-- mapping outer variables `FS v` to `FS (FS (cpsIdx g v))` — skipping over
-  the scrutinee slot at `FS FZ`
-
-```haskell
-cpsIdx (CpsLift gg) FZ     = FZ
-cpsIdx (CpsLift gg) (FS v) = FS (FS (cpsIdx gg v))
-```
-
-Note that `CpsLift` and `CpsLam` have the *same* index mapping — both shift
-the outermost variable to position 0 and shift outer variables up by two.  The
-difference is semantic: `CpsLam` is used for lambda bodies (where the
-outer-scope variable is `k'`), while `CpsLift` is used for case branches
-(where the outer-scope variable is the scrutinee `z`).
-
----
-
-## 5. The Translation — `cpsExp`
-
-```haskell
-cpsExp :: CpsCtx g g' -> Tm g -> Cont g' -> Tm g'
-```
-
-`cpsExp ctx e k` translates expression `e` (in source scope `g`) to a CPS
-term in scope `g'`, threading results through continuation `k`.
-
-### Variables and unit
-
-```haskell
-cpsExp g (Var v) k = applyCont k (Var (cpsIdx g v))
-cpsExp g Unit    k = applyCont k Unit
-```
-
-Values are immediately passed to the continuation.  Variables are remapped
-through `cpsIdx`.
-
-### Lambda
-
-```haskell
-cpsExp g (Lam b) k =
-    let e' = Lam . bind1 (getLocalName b)
-               $ Lam . bind1 contName
-                 $ cpsExp (CpsLam g) (getBody1 b) (Obj (Var FZ))
-    in applyCont k e'
-```
-
-The translated lambda `e'` takes two arguments: the original parameter `x`
-and a fresh continuation `k'` (at `FZ`).  The body is translated with
-`CpsLam g` (which maps `x` to `FS FZ`) and the continuation `Obj (Var FZ)`
-(i.e. `k'`, the new innermost variable).  The whole lambda `e'` is then
-passed to `k`.
-
-Note that `Lam k` inside `reifyCont` uses the library's `Lam` constructor,
-which takes a `Bind1`.  The `bind1 contName` call stores the user-visible
-name `"k"` for pretty-printing.
-
-### Application
-
-```haskell
-cpsExp g (App e1 e2) k =
-    let k1 = Meta . bind1 contName $
-               cpsExp (CpsMeta g) (applyE weaken e2) k2
-        k2 = Meta . bind1 contName $
-               App (App (Var (FS FZ)) (Var FZ))
-                   (reifyCont (applyE (weaken .>> weaken) k))
-    in cpsExp g e1 k1
-```
-
-This implements `[[e1]] (λx. [[e2]] (λy. x y k))`.
-
-- We translate `e1` with intermediate continuation `k1`.
-- Inside `k1` (scope `S g'`), `x = Var FZ` is the result of `e1`.
-  We translate `e2` with `k2`.  Since `e2` is from scope `g` but we are now
-  in scope `S g'`, we weaken it with `applyE weaken e2`.  The context
-  `CpsMeta g` maps `e2`'s variables correctly into scope `S g'`.
-- Inside `k2` (scope `S (S g')`), `y = Var FZ` and `x = Var (FS FZ)`.
-  We emit the application `x y` forwarded to `k`.  The outer continuation `k`
-  is in scope `g'`, so we weaken it twice (`weaken .>> weaken`) to reach
-  scope `S (S g')`, then reify it as an object-level term.
-
-`weaken :: Env Tm n (S n)` is `shift1E` — the environment that shifts every
-variable up by one, i.e. `Var . FS`.  Composing it twice with `.>>` gives the
-environment that shifts up by two.
-
-### Pair
-
-```haskell
-cpsExp g (Pair e1 e2) k =
-    let k1 = Meta . bind1 contName $
-               cpsExp (CpsMeta g) (applyE weaken e2) k2
-        k2 = Meta . bind1 contName $
-               applyCont k' (Pair (Var (FS FZ)) (Var FZ))
-        k' = applyE (weaken .>> weaken) k
-    in cpsExp g e1 k1
-```
-
-The structure mirrors `App`: evaluate `e1` then `e2`, collect the two results
-as `Var (FS FZ)` and `Var FZ` in scope `S (S g')`, form the pair, and pass it
-to `k`.
-
-### Injection
-
-```haskell
-cpsExp g (Inj i e) k =
-    cpsExp g e (Meta . bind1 contName $
-        applyCont (applyE weaken k) (Inj i (Var FZ)))
-```
-
-Evaluate `e`, wrap the result in `Inj i`, pass to `k`.  We are inside one
-binder, so `k` must be weakened once.
-
-### Case on unit
-
-```haskell
-cpsExp g (MatchUnit e1 e2) k =
-    cpsExp g e1 (Meta . bind1 contName $
-        MatchUnit (Var FZ)
-            (cpsExp (CpsMeta g) (applyE weaken e2) (applyE weaken k)))
-```
-
-Evaluate the scrutinee, then emit `MatchUnit`.  The continuation body `e2` is
-from scope `g`; inside the meta-binder it is in scope `S g'`, so we weaken
-both `e2` and `k`.
-
-### Case on a sum
-
-```haskell
-cpsExp g (MatchSum e0 e1 e2) k =
-    cpsExp g e0 (Meta . bind1 contName $
-        MatchSum (Var FZ)
-            (bind1 (getLocalName e1)
-                (cpsExp (CpsLift g) (getBody e1)
-                    (applyE (weaken .>> weaken) k)))
-            (bind1 (getLocalName e2)
-                (cpsExp (CpsLift g) (getBody e2)
-                    (applyE (weaken .>> weaken) k))))
-```
-
-The scrutinee is evaluated and bound at `FZ` by the outer meta-binder.  Each
-branch then binds its pattern variable at the new `FZ`, pushing the scrutinee
-to `FS FZ`.  The `CpsLift` context (rather than `CpsMeta (CpsMeta g)`)
-handles this: it maps `FZ` → `FZ` (the pattern variable) and outer vars
-`FS v` → `FS (FS (cpsIdx g v))` (skipping the scrutinee slot at `FS FZ`).
-The continuation `k` is weakened twice (past the scrutinee and the pattern
-variable).
-
-### Case on a pair
-
-```haskell
-cpsExp g (MatchPair e1 b) k =
-    let b'  = getBody2 b
-        g'  = CpsMeta (CpsMeta g)
-        k'  = applyE (weaken .>> weaken) k
-        b'' = bind2 x1 x2 (cpsExp g' b' k')
-        k1  = Meta . bind1 contName $
-                MatchPair (Var FZ) (applyE weaken b'')
-    in cpsExp g e1 k1
-```
-
-`MatchPair` binds *two* variables simultaneously.  The body `getBody2 b` is
-in scope `S (S g)`.  We use `CpsMeta (CpsMeta g)` which maps both bound
-variables to themselves (`FZ → FZ`, `FS FZ → FS FZ`) and shifts outer vars up
-by two.  The translated body is re-wrapped in `bind2 x1 x2`, then weakened
-once (for the scrutinee meta-binder) before being placed inside `MatchPair`.
-
----
-
-## 6. Correctness Properties
-
-### Big-step: `prop_cps_eval`
-
-```haskell
-prop_cps_eval :: Tm Z -> Property
-prop_cps_eval e = ...
-    cps_eval_e == eval_cps_e
-  where
-    cps_eval_e = cps (eval e)   -- CPS the value
-    eval_cps_e = eval (cps e)   -- evaluate the CPS term
-```
-
-`cps(eval(e)) == eval(cps(e))`: applying CPS to the evaluated result gives the
-same thing as evaluating the CPS translation.  This is the standard
-*correctness* theorem for CPS: the translation preserves big-step semantics.
-
-QuickCheck confirms this:
-
-```
-ghci> qc prop_cps_eval
-+++ OK, passed 1000 tests; ...
-```
-
-### Small-step: `prop_cps_step` — a cautionary tale
-
-```haskell
-prop_cps_step :: Tm Z -> Property
-prop_cps_step e = ...
-    cps (step e) == step (cps e)   -- this is TOO STRONG
-```
-
-This property asks for a *syntactic* single-step simulation:
-`cps(step(e)) == step(cps(e))`.  It **fails**:
-
-```
-e      = let x = λz. () in x
-step_e = λz. ()
-cps_e  = (let x = λz k. k () in λk. k x) (λx. x)
-cps(step_e) = λz k. k ()
-step(cps_e) = let k = λx. x in k (λz k. k ())   -- NOT the same term
-```
-
-The CPS translation introduces *administrative redexes* — beta redexes that
-were not present in the source.  Here, after one direct-style step we get a
-value, but the CPS term needs one more step to eliminate the administrative
-`let`.  The two sides are equal only after further reduction.
-
-The correct small-step statement is:
-
-```
-eval(cps(step(e))) == eval(step(cps(e)))
-```
-
-Both sides reduce to the same final value: the left evaluates `cps` of the
-stepped term, and the right evaluates one step of the CPS term.  This follows
-from the big-step correctness theorem (`prop_cps_eval`) and the fact that
-`eval` is stable under single steps (`prop_evalStep` from Lecture 1).
-
----
-
-## 7. Summary
-
-| Concept | Implementation | Key idea |
-|---|---|---|
-| CPS translation | `cpsExp` | inductive on term structure; continuation is threaded through |
-| Two continuation forms | `Cont` (`Obj`/`Meta`) | `Meta` avoids administrative redexes by substituting directly |
-| `reifyCont` | turns `Meta k` into `Lam k` | needed when continuation must appear as an object-level value |
-| Index remapping | `CpsCtx` / `cpsIdx` | GADT tracks how source scope maps to CPS scope |
-| `CpsLam` | `FZ → FS FZ` | lambda body: continuation takes slot 0, param moves to slot 1 |
-| `CpsMeta` | `FZ → FZ` | meta-binder body: bound value stays at slot 0 |
-| `CpsLift` | `FZ → FZ`, `FS v → FS (FS ...)` | case branch: pattern var stays at 0, scrutinee is at 1 |
-| Weakening | `applyE weaken`, `applyE (weaken .>> weaken)` | lift arguments/continuations into larger scopes |
-| Big-step correctness | `prop_cps_eval` | `cps(eval(e)) == eval(cps(e))` — passes |
-| Small-step simulation | `prop_cps_step` as written | too strong; administrative redexes break syntactic equality |
