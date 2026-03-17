@@ -259,7 +259,7 @@ shrinkTm (Lam t)  = [ Lam (bind1 (getLocalName t) t') | t' <- shrinkTm (getBody1
 shrinkTm (App f a)  = [f,a] 
 shrinkTm (Pair a b) = shrinkTwo Pair a b 
 shrinkTm (Inj i a)  = [a]
-shrinkTm (MatchUnit a b) = [a, MatchUnit Unit b] ++ [MatchUnit a b' | b' <- shrink b] 
+shrinkTm (MatchUnit a b) = [a] ++ [MatchUnit a b' | b' <- shrink b] 
 shrinkTm (MatchPair a b) = 
    [a] ++ [ MatchPair a (bind2 x y b') | b' <- shrink (getBody2 b)]
     where x = names ! FZ

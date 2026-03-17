@@ -64,9 +64,10 @@ library
     , Tutorial.Scoped.Eval
     , Tutorial.Scoped.ScopeCheck
     , Tutorial.Scoped.Scratch
-    , Tutorial.Scoped.Solutions
     , Tutorial.Scoped.CPS
     , Tutorial.Top
+    , Tutorial.Exercise1
+    , Tutorial.Exercise3
   hs-source-dirs: src
 
 test-suite tutorial-tests

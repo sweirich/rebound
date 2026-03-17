@@ -265,6 +265,9 @@ points out all of the places where we need to change uses of `App`
 to `applyCont`, and insert a use of `reifyCont` when we use 
 a `Cont m` as a `Tm m`.  Whenever we construct a continuation using 
 `Lam`, we have a choice: we can either wrap it with `Obj` or change 
-the `Lam` to `Meta`. We select the 
+the `Lam` to `Meta` .... but using the `Meta` continuation is more 
+efficient.
 
 ---
+
+## 5. Exercises

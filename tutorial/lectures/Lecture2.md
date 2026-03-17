@@ -1,6 +1,7 @@
 # Lecture 2: Where Do Well-Scoped Terms Come From?
 
-In Lecture 1 we represented terms using  de Bruijn indices and implmented an evaluator. To make sure that our code was correct, we used 
+In Lecture 1 we represented terms using  de Bruijn indices and implmented an 
+evaluator. To make sure that our code was correct, we used 
 used QuickCheck to generate well-scoped terms to test the properties of 
 our evaluator. In the case that QC finds a bug, we converted the term to a 
 named representation for printing. We also want to use this named representation 

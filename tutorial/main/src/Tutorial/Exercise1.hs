@@ -2,7 +2,7 @@
 -- These solutions work with the hand-written infrastructure in
 -- Tutorial.Scoped.Scratch; they do not require the rebound library.
 
-module Tutorial.Scoped.Solutions where
+module Tutorial.Exercise1 where
 
 import Tutorial.Scoped.Scratch
 import Test.QuickCheck
