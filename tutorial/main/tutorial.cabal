@@ -56,7 +56,6 @@ library
     , template-haskell
     , syb
   exposed-modules:
-      Tutorial.Lib
     , Tutorial.Named.Syntax
     , Tutorial.Named.PP
     , Tutorial.Named.Parser
