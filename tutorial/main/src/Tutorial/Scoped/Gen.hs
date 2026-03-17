@@ -11,7 +11,7 @@ number of free variables in scope and a size parameter bounding term
 depth.  The 'SNatI' constraint on the 'Arbitrary' instance is satisfied
 automatically when using @arbitrary :: Gen (Tm n)@ at a concrete @n@.
 -}
-module Tutorial.Scoped.Gen(Gen(..), Arbitrary(..), genPureLC, genFull, genCtx, genTypedTm, genTypedFull, genTypedPureLC) where
+module Tutorial.Scoped.Gen where
 
 import Tutorial.Scoped.Syntax
 
@@ -80,11 +80,49 @@ data Language = PureLC | Full
 genPureLC :: SNatI n => QC.Gen (Tm n)
 genPureLC = QC.sized (genTm PureLC snat)
 
+genPureLCVal :: SNatI n => QC.Gen (Tm n)
+genPureLCVal = QC.sized (genVal PureLC snat)
+
 genFull :: SNatI n => QC.Gen (Tm n)
 genFull = QC.sized (genTm PureLC snat)
 
+genFullVal :: SNatI n => QC.Gen (Tm n)
+genFullVal = QC.sized (genVal Full snat)
+
 genLocalName :: QC.Gen LocalName
 genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
+
+-- | Generate a *value* of size 'sz' in scope 'n' for either just the lambda calculus (with unit)
+-- or the full language
+genVal :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
+genVal l n sz = 
+    let gen  = genVal l n (sz `div` 2)
+        gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) (sz `div` 2)
+        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName <*> genTm l (next (next n)) (sz `div` 2)
+        
+        gens = case l of
+          PureLC -> 
+              [ Lam <$> gen1 ]
+          Full -> 
+              [ Lam <$> gen1,
+                pure Unit,
+                Pair <$> gen <*> gen,
+                Inj  <$> QC.elements [0,1] <*> gen
+              ]
+    in
+    -- case analysis on number of free variables
+    case snat_ n of
+       SZ_ -> if sz <= 1
+                then pure (Lam (bind1 (LocalName "x") (Var FZ)))  -- smallest closed value
+                else QC.oneof gens  -- arbitrary closed value
+       SS_ x ->
+         let
+            genVar = withSNat x $ QC.elements $ map Var Fin.universe
+         in
+            if sz <= 1
+              then QC.oneof [genVar, pure Unit]  -- either a variable in scope or unit
+              else QC.oneof (genVar : gens)      -- arbitrary value in scope
+
 
 -- | Generate a term of size 'sz' in scope 'n' for either just the lambda calculus (with unit)
 -- or the full language

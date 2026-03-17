@@ -63,12 +63,11 @@ library
     , Tutorial.Scoped.Syntax
     , Tutorial.Scoped.Gen
     , Tutorial.Scoped.Eval
-    , Tutorial.Scoped.Eval.Test
     , Tutorial.Scoped.ScopeCheck
     , Tutorial.Scoped.Scratch
     , Tutorial.Scoped.Solutions
     , Tutorial.Scoped.CPS
-    , Tutorial.Scoped.CPSEC
+    , Tutorial.Top
   hs-source-dirs: src
 
 test-suite tutorial-tests

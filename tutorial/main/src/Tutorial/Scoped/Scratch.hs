@@ -1,32 +1,7 @@
 -- Module      : Scoped.Scratch
 -- Description : Complete definitions of well-scoped de Bruijn term representations from scratch.
 
-module Tutorial.Scoped.Scratch (
-  -- * Finite sets
-  Nat(..),
-  Fin(..),
-  -- * Substitution environments
-  Env,
-  idE,
-  (.:),
-  shift,
-  lift,
-  compE,
-  -- * Binders and instantiation
-  Bind1(..),
-  Bind2(..),
-  instantiate1,
-  instantiate2,
-  -- * Types, terms, and substitution
-  Ty(..),
-  Tm(..),
-  applyE,
-  -- * Examples
-  ex_id,
-  ex_const,
-  ex_comp,
-  ex_swap,
-) where
+module Tutorial.Scoped.Scratch where
 
 ------------------------------------------------------------------------
 -- * Finite sets
@@ -53,19 +28,21 @@ deriving instance (Show (Fin n))
 -- | A substitution environment mapping @m@ variables to terms in scope @n@.
 type Env m n = Fin m -> Tm n
 
--- | The identity environment: maps each variable to itself.
-idE :: Env n n
-idE = Var
+zeroE :: Env Z m
+zeroE = \f -> case f of {}
 
 -- | Extend an environment with a new term for the outermost variable.
 -- @t .: env@ maps @FZ@ to @t@ and @FS x@ to @env x@.
 -- Analogous to cons for lists of terms.
 infixr 5 .:
 (.:) :: Tm n -> Env m n -> Env (S m) n
-t .: env = \case
+t .: env = \f -> case f of
     FZ   -> t      -- the new outermost variable maps to t
     FS x -> env x  -- all others delegate to env
 
+-- | The identity environment: maps each variable to itself.
+idE :: Env n n
+idE = Var
 
 -- | The shifting environment: maps each variable @x@ to @Var (FS x)@,
 -- i.e. weakens a scope by introducing a fresh outermost variable.
@@ -170,3 +147,40 @@ ex_swap :: Tm Z
 ex_swap = Lam (Bind1
     (MatchPair (Var FZ)
         (Bind2 (Pair (Var (FS FZ)) (Var FZ)))))
+
+
+------------------------------------------------------------------------
+-- * Evaluator
+------------------------------------------------------------------------
+
+-- | (big-step) evaluation function 
+eval :: Tm Z -> Maybe (Tm Z)
+eval (Var x)      = case x of {}
+eval (Lam m)      = return (Lam m)
+eval Unit         = return Unit
+eval (Pair e1 e2) = Pair <$> eval e1 <*> eval e2
+eval (Inj i m) = do
+    t <- eval m
+    return (Inj i t)
+eval (App m n) = do 
+    mv <- eval m
+    nv <- eval n 
+    case mv of 
+           Lam n -> eval (instantiate1 n nv)
+           _ -> Nothing
+eval (MatchSum  e0 m m') = do
+    v <- eval e0
+    case v of
+        (Inj 0 v1) -> eval (instantiate1 m v1) 
+        (Inj 1 v1) -> eval (instantiate1 m' v1)
+        _ -> Nothing
+eval (MatchPair e m) = do 
+    v <- eval e 
+    case v of
+        Pair v1 v2 -> eval (instantiate2 m v2 v1)
+        _ -> Nothing
+eval (MatchUnit e m) = do
+    v <- eval e
+    case v of 
+        Unit -> eval m
+        _ -> Nothing

@@ -61,6 +61,7 @@ cps :: Tm Z -> Tm Z
 cps e = cpsExp idE e idTm
 
 
+
 -- | __Correctness__: CPS preserves big-step evaluation
 --
 -- @eval(e) == eval(cps(e))@
@@ -124,11 +125,11 @@ prop_cps_eval_simulates_open = forAll genTypedPureLC $ \e ->
    let 
       pp' = ppWith ("k" ::: VNil)
       cps_e = cpsExp zeroE e (Var FZ)
-      eval_e = case eval e of
+      eval_e = case reduce e of
                  Nothing -> discard -- should be impossible for well-typed terms
                  Just v -> v 
       cps_eval_e = cpsExp zeroE eval_e (Var FZ) 
-      eval_cps_e = case eval (cps_e) of
+      eval_cps_e = case reduce (cps_e) of
                     Nothing -> discard
                     Just v -> v
     in
@@ -187,6 +188,7 @@ step_star vv e e' =
     e == e' .||. case step e of 
                     Left _ -> property False  -- e should not get stuck
                     Right e1 -> step_star vv e1 e'
+
 
 ------------------------------------------------------------------------
 -- * CBV CPS translation 
@@ -341,6 +343,7 @@ colon r (MatchSum e0 e1 e2) k =
     where k'' = applyE (wk .>> wk) k
 
 
+
 prop_a :: Tm Z -> Property
 prop_a e =  
     step_star ("k" ::: VNil) (cpsExp zeroE e k) (colon zeroE e k) 
@@ -477,8 +480,10 @@ cpsOpt r (MatchSum e0 e1 e2) k =
                   (cpsOpt (up (skip r)) (getBody e2) k'')))))
     where k'' = applyE (wk .>> wk) k
     
+
 prop_cpsOpt_eval_simulates_open :: Property
 prop_cpsOpt_eval_simulates_open = forAll genTypedFull $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
-       eval (topK e) == (topK <$> eval e)   -- lift cps over Maybe type
+       reduce (topK e) == (topK <$> reduce e)   -- lift cps over Maybe type
+

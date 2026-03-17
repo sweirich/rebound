@@ -10,6 +10,7 @@ import Text.ParserCombinators.Parsec.Pos (SourcePos, sourceColumn, sourceLine, s
 
 import Test.QuickCheck
 
+{-
 -- * Injection/Projection pairs
 
 class Injection a b where
@@ -36,7 +37,7 @@ empty = \x -> case x of {}
 -- | extend a map with a new definition, enlarging its domain
 extend :: Map a n -> a -> Map a (S n)
 extend g a = \x -> case x of { FZ -> a ; FS y -> g y }
-
+-}
 -------------------------------------------------------------------------
 -- * Display class for pretty printing with associated state, such as prececence
 

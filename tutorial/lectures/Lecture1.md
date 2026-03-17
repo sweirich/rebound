@@ -2,7 +2,7 @@
 
 ## Overview
 
-This lecture covers the representation of lambda calculus terms with *variable binding* in Haskell. We build the infrastructure from scratch in `Tutorial.Scoped.Scratch`, use it in an evaluator in `Tutorial.Scoped.Eval`, and then show how to replace the hand-written infrastructure with the `rebound` library in `Tutorial.Scoped.Syntax`.
+This lecture covers the representation of lambda calculus terms with *variable binding*. We build the infrastructure from scratch in `Tutorial.Scoped.Scratch`, use it in an evaluator in `Tutorial.Scoped.Eval`, and then show how to replace the hand-written infrastructure with the `rebound` library in `Tutorial.Scoped.Syntax`.
 
 ---
 
@@ -133,37 +133,46 @@ A *substitution environment* maps variables in one scope to terms in another:
 type Env m n = Fin m -> Tm n
 ```
 
-An `Env m n` maps each of `m` variables to a term in scope `n`.
+An `Env m n` maps each of `m` variables to a term in scope `n`. You should think of this as 
+an abstract data structure that maps indices to terms. Above, we represent it as a function (with a finite 
+domain), but it could also be implemented with a length-indexed vector, array, tree, or other 
+structure. In the fourth lecture we will discuss various trade-offs in the representation. However, first let's talk about the interface that we need from this structure.
 
-### Identity
+The most important operation that we need for this data structure is to be able to apply it to a term, replacing all of the free variables in the term with their definitions in the environment.
+This operation is sometimes called *parallel substitution* because it performs multiple substitutions at once.
+
+```haskell
+applyE :: Env m n -> Tm m -> Tm n
+```
+
+### List-like structure: empty and extension
+
+```haskell
+zeroE :: Env Z m             
+zeroE = \n -> case n of {} 
+
+infixr 5 .:
+(.:) :: Tm n -> Env m n -> Env (S m) n
+t .: env = \f -> case f of
+              FZ   -> t
+              FS x -> env x
+```
+
+Like cons: `t .: env` extends `env` with a binding for the outermost variable. Right-associativity lets us write `t1 .: t2 .: env` naturally.
+
+
+### Identity and Shifting
 
 ```haskell
 idE :: Env n n
 idE = Var
-```
 
-### Extension
-
-```haskell
-infixr 5 .:
-(.:) :: Tm n -> Env m n -> Env (S m) n
-t .: env = \case
-    FZ   -> t
-    FS x -> env x
-```
-
-Like cons: `t .: env` extends `env` with a binding for the outermost variable. Right-associativity lets us write `t1 .: t2 .: idE` naturally.
-
-### Shift
-
-```haskell
 shift :: Env m (S m)
 shift = Var . FS
 ```
-
 Weakens a scope: applying `applyE shift` to a term in scope `n` produces the same term in scope `S n`, where `FZ` is fresh.
 
-### Lift
+### Lifting and Composition
 
 ```haskell
 lift :: Env m n -> Env (S m) (S n)
@@ -171,8 +180,6 @@ lift env = Var FZ .: (applyE shift . env)
 ```
 
 Lifts an environment under one binder. The new outermost variable maps to itself; every other variable `x` maps to `env x` weakened into the larger scope.
-
-### Composition
 
 ```haskell
 compE :: Env m n -> Env l m -> Env l n

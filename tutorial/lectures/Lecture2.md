@@ -126,12 +126,6 @@ projectTmWith vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)])
                           (S.bind1 (S.LocalName v2) b2'))
 ```
 
-Unsupported patterns return `Nothing`:
-
-```haskell
-projectTmWith vs _ = Nothing
-```
-
 ---
 
 ## 3. Printing: Scoped → Named (`injectTmWith`)

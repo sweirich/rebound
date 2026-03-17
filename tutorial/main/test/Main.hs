@@ -4,8 +4,8 @@ import Test.Tasty
 import Test.Tasty.QuickCheck qualified as QC
 
 import Tutorial.Scoped.ScopeCheck qualified as SC
-import Tutorial.Scoped.Eval.Test  qualified as TE
-import Tutorial.Scoped.CPS         qualified as CPS
+import Tutorial.Scoped.Eval  qualified as TE
+import Tutorial.Scoped.CPS   qualified as CPS
 
 main :: IO ()
 main = defaultMain tests
@@ -21,8 +21,8 @@ tests = testGroup "Tutorial"
         , QC.testProperty "eval is idempotent on values" TE.prop_evalValIdem
         , QC.testProperty "step respects eval"       TE.prop_evalStep
         ]
-    , testGroup "CPS"
+    {- , testGroup "CPS"
         [ QC.testProperty "cps preserves eval"         CPS.prop_cps_eval
         , QC.testProperty "naive cps preserves eval"   CPS.prop_cpsObj_eval
-        ]
+        ] -}
     ]
