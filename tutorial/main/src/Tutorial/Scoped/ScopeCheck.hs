@@ -66,20 +66,18 @@ injectTy :: S.Ty -> N.Ty
 injectTy = to where
     to (t1 S.:-> t2) = to t1 N.:-> to t2
     to S.One = N.unitTy
-    to S.Zero = N.voidTy
     to (t1 S.:* t2) = N.Prod [to t1, to t2]
     to (t1 S.:+ t2) = N.Sum [to t1, to t2]
 
 -- | Project a named type back to a simple binary type.
 -- Fails (@Nothing@) when the named type uses n-ary products or sums with
--- any arity other than 0 (unit/void) or 2 (binary product/sum).
+-- any arity other than 0 (unit) or 2 (binary product/sum).
 projectTy :: N.Ty -> Maybe S.Ty
 projectTy = to where
    to (t1 N.:-> t2) = (S.:->) <$> to t1 <*> to t2
    to (N.Prod []) = pure S.One
    to (N.Prod [t1,t2]) = (S.:*) <$> to t1 <*> to t2
    to (N.Prod _) = Nothing
-   to (N.Sum []) = pure S.Zero
    to (N.Sum [t1,t2]) = (S.:+) <$> to t1 <*> to t2
    to (N.Sum _) = Nothing
 

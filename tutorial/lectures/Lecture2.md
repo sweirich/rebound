@@ -461,3 +461,103 @@ scope-checking the named term recovers exactly the original de Bruijn term.
 In the next lecture we will add types to the picture: generating
 *well-typed* terms requires threading a typing context alongside the scope,
 producing terms that evaluate without getting stuck.
+
+---
+
+## Exercises
+
+**1. Tracing `projectTmWith`.** Manually trace through the following call, writing down the association list at each recursive step and the final de Bruijn term produced:
+
+```haskell
+projectTm (N.Lam "x" (N.Lam "y" (N.Var "x")))
+```
+
+- What is the association list when we recurse into the body of the outer `λx.`?
+- What is the association list when we recurse into the body of the inner `λy.`?
+- What is the final `S.Tm Z` that is returned?
+
+Now do the same for:
+
+```haskell
+projectTm (N.Case (N.Var "p")
+    [(N.Pair [N.Var "x", N.Var "y"], N.Var "x")])
+```
+
+Which variable maps to `FZ` inside the body — `x` or `y`?  Why?
+
+---
+
+**2. Extending the conversions with `let`.** Extend `projectTmWith` and `injectTmWith` in `Tutorial.Scoped.ScopeCheck` to handle a `let`-expression.  Assume you have already added `Let :: Tm n -> Bind1 Tm Tm n -> Tm n` to `Tutorial.Scoped.Syntax` and `N.Let :: String -> N.Tm -> N.Tm -> N.Tm` to the named syntax.
+
+For `projectTmWith`:
+
+```haskell
+projectTmWith vs (N.Let v e b) = do
+    e' <- projectTmWith vs e
+    b' <- projectTmWith ((v, FZ) : map (fmap FS) vs) b
+    return $ S.Let e' (S.bind1 (S.LocalName v) b')
+```
+
+For `injectTmWith`:
+
+```haskell
+injectTmWith vs (S.Let e b) =
+    N.Let s (injectTmWith vs e) (injectTmWith (s ::: vs) (S.getBody1 b))
+    where s = freshen (show (S.getLocalName b)) vs
+```
+
+- How does the treatment of `let` compare to `lam` in each direction?
+- Does `prop_project_round_trip` still pass after this change?  Why or why not?
+
+---
+
+**3. `LocalName` and α-equivalence.** The `Eq` instance for `LocalName` makes every two `LocalName` values equal:
+
+```haskell
+instance Eq LocalName where
+    x1 == x2 = True
+```
+
+(a) Evaluate the following in GHCi and explain the result:
+
+```haskell
+S.Lam (S.bind1 (S.LocalName "x") (S.Var FZ))
+  ==
+S.Lam (S.bind1 (S.LocalName "y") (S.Var FZ))
+```
+
+(b) What would go wrong with `prop_project_round_trip` if `LocalName` had a *real* `Eq` instance that distinguished `"x"` from `"y"`?  Construct a concrete term where the property would fail.
+
+(c) QuickCheck generates names from the pool `["x","y","z","w","v","u","t","s"]`, so the same name can appear in nested binders.  Give an example generated term where `freshen` is needed during `injectTm`, and show what name it would produce.
+
+---
+
+**4. Extending `genTm`.** After adding `Let` to the language (Exercises 2–3 in Lecture 1 and Exercise 2 above), extend `genTm` in `Tutorial.Scoped.Gen` to also generate `let`-expressions.
+
+```haskell
+-- In the Full branch of gens inside genTm:
+, Let <$> gen <*> gen1
+```
+
+where `gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) sz'`.
+
+- Why is `gen1` the right generator for the binder part of `Let`?
+- What scope does the body of the `let` run in?  How does this differ from `App`?
+- Check that `prop_project_round_trip` still passes after this change.
+
+---
+
+**5. An open-term round trip.** `projectTmWith` and `injectTmWith` work on open terms too.  Write a QuickCheck property analogous to `prop_project_round_trip` for terms with one free variable (`Tm (S Z)`), and test it:
+
+```haskell
+prop_project_round_trip_open :: S.Tm (S Z) -> Bool
+prop_project_round_trip_open t =
+    -- hint: use projectTmWith and injectTmWith with a suitable initial context
+    undefined
+```
+
+You will need to choose a name for the free variable and pass it to `injectTmWith`.  Likewise, you will need to prime `projectTmWith` with an association list that maps that name to `FZ`.
+
+- What initial `Vec (S Z) String` do you pass to `injectTmWith`?
+- What initial `[(String, Fin (S Z))]` do you pass to `projectTmWith`?
+- Does the choice of name matter?  Why or why not?

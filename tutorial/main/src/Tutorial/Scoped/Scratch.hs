@@ -90,7 +90,7 @@ instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 -- * Types, terms, and substitution
 ------------------------------------------------------------------------
 
-data Ty = One | Zero | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
+data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
 
 data Tm n where

@@ -23,8 +23,6 @@ import Data.LocalName
 data Ty
   -- | Unit type (terminal object)
   = One
-  -- | Void type (initial object)
-  | Zero
   -- | Function type
   | Ty :-> Ty
   -- | Binary product

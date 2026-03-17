@@ -32,12 +32,9 @@ instance QC.Arbitrary Ty  where
 
 
 -- | Use 'Gen' monad to generate a random type
--- 
--- The size argument ensures termination. In the base case, 
--- only small types (`Zero`, `One`) are generated.
--- 
--- >>>  QC.sample' (arbitrary :: Gen Ty)
--- [Zero,One,One,One,((One :* Zero) :+ One) :-> One,Zero,((One :+ Zero) :-> One) :* ((Zero :* One) :+ Zero),Zero,(One :* Zero) :-> ((Zero :-> Zero) :+ Zero),Zero,Zero]
+--
+-- The size argument ensures termination. In the base case,
+-- only small types (`One`) are generated.
 --
 genTy :: Int -> QC.Gen Ty
 genTy sz 
@@ -51,12 +48,12 @@ genTy sz
 
 -- | Example type, for doctest use
 t :: Ty
-t = ((One :+ Zero) :-> One) :* (Zero :+ Zero)
+t = (One :-> One) :* (One :+ One)
 
 -- | Produce a list of types smaller than the argument
 --
--- >>> shrinkTy ((One :* One) :+ Zero)
--- [Zero,One,One :* One,Zero,Zero :+ Zero,One :+ Zero,One :+ Zero,One :+ Zero]
+-- >>> shrinkTy ((One :* One) :+ One)
+-- [One,One :* One,One,One :+ One,One :+ One,One :+ One]
 
 shrinkTy :: Ty -> [Ty]
 shrinkTy (a :-> b) = One : shrinkTwo (:->) a b
@@ -190,8 +187,7 @@ genTypedFull = do
 -- The context 'ctx' maps each de Bruijn index to its type.  The generator is
 -- type-directed: it only produces terms that have exactly type 'ty' under 'ctx'.
 -- The size argument bounds term depth to ensure termination.
--- When the target type is uninhabited (e.g. 'Zero') and no variable matches,
--- falls back to 'Unit'.
+-- When no generators apply and no variable matches, falls back to 'Unit'.
 genTypedTm :: forall n. Language -> SNat n -> Vec n Ty -> Ty -> Int -> QC.Gen (Tm n)
 genTypedTm l n ctx ty sz =
     let
@@ -204,7 +200,6 @@ genTypedTm l n ctx ty sz =
         -- Introduction forms, selected by target type
         introGens = case ty of
             One       -> [ pure Unit ]
-            Zero      -> []
             (a :-> b) ->
                 [ Lam <$> (bind1 @Tm <$> genLocalName
                                       <*> genTypedTm l (next n) (a ::: ctx) b sz') ]
@@ -248,7 +243,7 @@ genTypedTm l n ctx ty sz =
         allGens = introGens ++ elimGens ++ varGens
     in
     if null allGens
-        then pure Unit   -- fallback for uninhabited types (e.g. Zero) at small size
+        then pure Unit   -- fallback when no generators apply at small size
         else QC.oneof allGens
 
 -- | Shrink a well-scoped term, keeping it in the same scope @n@.

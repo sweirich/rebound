@@ -26,7 +26,7 @@ cpsVal r (Var x) = applyEnv r x
 cpsVal r Unit    = Unit
 cpsVal r (Lam b) =  
     (Lam (bind1 (getLocalName b) 
-      (Lam (bind1 kN
+      (Lam (bind1 (LocalName "k")
           (cpsExp (skip (up r)) (getBody b) (Var FZ))))))
 cpsVal r (Pair v1 v2) = 
     Pair (cpsVal r v1) (cpsVal r v2)
