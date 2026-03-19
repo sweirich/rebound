@@ -17,7 +17,7 @@ module Tutorial.Named.PP where
 
 import Prettyprinter (Doc, (<+>))
 import Prettyprinter qualified as PP
-import Control.Monad.Reader ( MonadReader(local) )
+import Control.Monad.Reader ( MonadReader(local), asks )
 
 import Tutorial.Named.Syntax
 
@@ -33,85 +33,15 @@ oneline x = show (PP.group (display x initState))
 pp :: Display DispState a => a -> String
 pp x = show (display x initState)
 
+-- | For testing: run the pretty printer
+test :: Display DispState a => a -> Doc e
+test x = display x initState
 
 -------------------------------------------------------------------------
 -- * Display class for pretty printing with associated state, such as prececence
 
 class Display s d where
     display :: d -> s -> Doc e
-
--- | Display the list of elements in parentheses,
--- punctuated by the given string.
--- (If there is only one element, don't include the parentheses)
-multiple :: Display s a => String -> [a] -> s -> Doc e 
-multiple s [x] = display x
-multiple s xs =
-   PP.parens . PP.sep <$>
-       (PP.punctuate (PP.pretty s) <$> mapM display xs)
-
--------------------------------------------------------------------------
--- Display Instances for quoting, errors, source positions, names
--------------------------------------------------------------------------
-
-instance Display s ParseError where
-  display ps di = PP.pretty (show ps)
-
-instance Display s SourcePos where
-  display p di =
-    PP.pretty (sourceName p)
-      PP.<> PP.colon
-      PP.<> PP.pretty (sourceLine p)
-      PP.<> PP.colon
-      PP.<> PP.pretty (sourceColumn p)
-      PP.<> PP.colon
-
--------------------------------------------------------------------------
--- Disp Instances for Prelude types
--------------------------------------------------------------------------
-
-displayMaybe :: (t -> s -> Doc d) -> Maybe t -> s -> Doc d
-displayMaybe display m di = case m of
-  (Just a) -> PP.pretty "Just" <+> display a di
-  Nothing -> PP.pretty "Nothing"
-
-instance (Display s a) => Display s (Maybe a) where
-  display = displayMaybe display
-
-displayEither ::
-  (Display s a, Display s b) =>
-  (forall a. (Display s a) => a -> s -> Doc d) ->
-  Either a b ->
-  s ->
-  Doc d
-displayEither disp e di = case e of
-  (Left a) -> PP.pretty "Left" <+> disp a di
-  (Right a) -> PP.pretty "Right" <+> disp a di
-
-instance (Display s a, Display s b) => Display s (Either a b) where
-  display = displayEither display
-
-
-instance Display s String where
-  display = return . PP.pretty
-
-instance Display s Int where
-  display = return . PP.pretty . show
-
-instance Display s Integer where
-  display = return . PP.pretty . show
-
-instance Display s Double where
-  display = return . PP.pretty . show
-
-instance Display s Float where
-  display = return . PP.pretty . show
-
-instance Display s Char where
-  display = return . PP.pretty . show
-
-instance Display s Bool where
-  display = return . PP.pretty . show
-
 
 ------------------------------------------------
 -- * Pretty printing parameters and state
@@ -130,7 +60,9 @@ data DispState = DI {
     -- | printing style
     style :: Style, 
     -- | precedence level
-    prec  :: Int
+    prec  :: Int,
+    -- | display with syntactic sugar
+    sugar :: Bool
 }
 
 -- | Printing style controls how type names are displayed
@@ -141,8 +73,10 @@ data Style
     | Lang
 
 initState :: DispState
-initState = DI { style = Math, prec = levelBase }
+initState = DI { style = Math, prec = levelBase, sugar = True }
 
+------------------------------------------------
+-- * precedence
 
 -- | If the precedence of the current form (level)
 -- is less than the precedence of the context (prec s)
@@ -167,9 +101,16 @@ withPrec p = local (\d -> d {prec = p})
 display0 :: Display DispState a => a -> DispState -> Doc e
 display0 = withPrec 0 . display
 
--- | For testing: run the pretty printer
-test :: Display DispState a => a -> Doc e
-test x = display x initState
+
+-- | Display the list of elements in parentheses,
+-- punctuated by the given string.
+-- (If there is only one element, don't include the parentheses)
+multiple :: Display s a => String -> [a] -> s -> Doc e 
+multiple s [x] = display x
+multiple s xs =
+   PP.parens . PP.sep <$>
+       (PP.punctuate (PP.pretty s) <$> mapM display xs)
+
 
 ------------------------------------------------
 -- * Display instance for types
@@ -177,9 +118,9 @@ test x = display x initState
 -- | display the unit type
 dunit :: DispState -> Doc e
 dunit s = 
-  case style s of 
-     Math -> PP.pretty "1"
-     Lang -> PP.pretty "Unit"
+    case style s of 
+       Math -> PP.pretty "1"
+       Lang -> PP.pretty "Unit"
 
 -- | display the void type
 dvoid :: DispState -> Doc e 
@@ -251,40 +192,55 @@ instance Display DispState Tm where
     display (Inj 0 (Pair [])) = pure (PP.pretty "False")
     display (Inj 1 (Pair [])) = pure (PP.pretty "True")
     display (Inj i e) = do
-        s <- withPrec 0 (display e)
-        parens 0 (PP.pretty "Inj" <> PP.pretty i <+> s)
+        s <- withPrec (levelApp + 1) (display e)
+        parens 0 (PP.pretty "inj" <> PP.pretty i <+> s)
 
-    -- syntactic sugar for let
-    --display (App (Lam x e1) e2) = do
-    --    s1 <- withPrec 0 (display e1)
-    --    s2 <- withPrec 0 (display e2)
-    --    parens 0 (PP.pretty "let" <+> PP.pretty x <+> PP.equals <+> s2
-    --              <+> PP.pretty "in" <+> s1)
+    
     display (App e1 e2) = do
-        s1 <- withPrec levelApp (display e1)
-        s2 <- withPrec (levelApp+1) (display e2)
-        parens levelApp (s1 <+> s2)
+        useSugar <- asks sugar
+        case e1 of
+          Lam x b | useSugar -> do
+            -- syntactic sugar for let
+            s1 <- withPrec 0 (display b)
+            s2 <- withPrec 0 (display e2)
+            parens 0 (PP.pretty "let" <+> PP.pretty x <+> PP.equals <+> s2
+                  <+> PP.pretty "in" <+> s1)
+          _ -> do
+            s1 <- withPrec levelApp (display e1)
+            s2 <- withPrec (levelApp+1) (display e2)
+            parens levelApp (s1 <+> s2)
         
-    -- syntactic sugar for if
-    display (Case e [(Inj 0 (Pair []), e1), 
-                     (Inj 1 (Pair []), e2)]) = do
-        s0 <- withPrec 0 (display e)
-        s1 <- withPrec 0 (display e1)
-        s2 <- withPrec 0 (display e2)
-        parens 0 
-           (PP.pretty "if" <+> s0 <+> PP.pretty "then" <+> s1
-                  <+> PP.pretty "else" <+> s2)
-    --display (Case e1 [(Pair [], e2)]) = do
-    --    s1 <- withPrec 0 (display e1)
-    --    s2 <- withPrec 0 (display e2)
-    --    parens 0 
-    --       (s1 <> PP.semi <+> s2)
+
     display (Case e brs) = do
-        s1 <- withPrec 0 (display e)
-        s2 <- withPrec 0 (displayBrs brs)
-        parens 0 
-           (PP.hang 2 (PP.vsep 
-            (PP.pretty "case" <+> s1 <+> PP.pretty "of" : s2)))
+        useSugar <- asks sugar
+        case brs of
+          -- syntactic sugar for if
+          [(Inj 0 (Pair []), e1), 
+           (Inj 1 (Pair []), e2)] | useSugar -> do
+             s0 <- withPrec 0 (display e)
+             s1 <- withPrec 0 (display e1)
+             s2 <- withPrec 0 (display e2)
+             parens 0 
+                (PP.pretty "if" <+> s0 <+> PP.pretty "then" <+> s1
+                  <+> PP.pretty "else" <+> s2)
+          -- syntactic sugar for "e1 ; e2"
+          [(Pair [], e2)] | useSugar -> do
+             s1 <- withPrec 1 (display e)
+             s2 <- withPrec 0 (display e2)
+             parens 0
+                (s1 <> PP.semi <+> s2)
+          -- all case
+          _ -> do           
+            s1 <- withPrec 0 (display e)
+            s2 <- withPrec 0 (displayBrs brs)
+            parens 0
+              (PP.hang 2 (PP.vsep 
+                (PP.pretty "case" <+> s1 <+> PP.pretty "of" : s2)))
+
+    display (Ann e t) = do
+      s1 <- withPrec 0 (display e)
+      s2 <- withPrec 0 (display t)
+      parens 0 (s1 <+> PP.pretty ":" <+> s2)
 
 
 -- >>> test (App (Var "x") (App (Var "x") (Var "x")))
@@ -297,27 +253,112 @@ instance Display DispState Tm where
 -- x x x x
 
 -- >>> test (App (Var "x") (Inj 0 (Var "y")))
--- x (Inj0 y)
+-- x (inj0 y)
+
+-- >>> test (App (Lam "x" (Var "x")) unitTm)
+-- let x = () in x
+
+-- >>> test (App (Lam "x" (Var "x")) (Lam "y" (Var "y")))
+-- let x = λ y. y in x
+
+tm = Case (Case (Inj 1 unitTm) [(Inj 0 unitTm, unitTm),
+                                      (Inj 1 unitTm, Var "x")]) [(unitTm,unitTm)]
+-- >>> test tm                                      
+-- (if True then () else x); ()
 
 example :: Tm
 example = (Case (Var "x") [(Inj 0 (Pair [Var "y", Var "z"]), (App (Var "y") (Var "y"))),
                            (Inj 1 (Var "z"), (App (Var "z") (Var "z")))])
 -- >>> test example
 -- case x of
---   | Inj0 (y, z) -> y y
---   | Inj1 z -> z z
+--   | inj0 (y, z) -> y y
+--   | inj1 z -> z z
 
 -- >>> test (App example (Var "w"))
 -- (case x of
---    | Inj0 (y, z) -> y y
---    | Inj1 z -> z z) w
+--    | inj0 (y, z) -> y y
+--    | inj1 z -> z z) w
 
 -- >>> test (App (Var "w") example)
 -- w (case x of
---      | Inj0 (y, z) -> y y
---      | Inj1 z -> z z)
+--      | inj0 (y, z) -> y y
+--      | inj1 z -> z z)
 
 -- >>> test (App (Lam "x" (Lam "y" (Var "x"))) example)
 -- let x = case x of
---           | Inj0 (y, z) -> y y
---           | Inj1 z -> z z in λ y. x
+--           | inj0 (y, z) -> y y
+--           | inj1 z -> z z in λ y. x
+
+
+-- >>> test (seqTm unitTm unitTm)
+-- (); ()
+
+-- >>> test (seqTm unitTm (seqTm unitTm unitTm))
+-- (); (); ()
+
+-- >>> test (seqTm (seqTm unitTm unitTm) unitTm)
+-- ((); ()); ()
+
+-------------------------------------------------------------------------
+-- Display Instances for errors and source positions
+-------------------------------------------------------------------------
+
+
+instance Display s ParseError where
+  display ps di = PP.pretty (show ps)
+
+instance Display s SourcePos where
+  display p di =
+    PP.pretty (sourceName p)
+      PP.<> PP.colon
+      PP.<> PP.pretty (sourceLine p)
+      PP.<> PP.colon
+      PP.<> PP.pretty (sourceColumn p)
+      PP.<> PP.colon
+
+-------------------------------------------------------------------------
+-- Disp Instances for Prelude types
+-------------------------------------------------------------------------
+
+displayMaybe :: (t -> s -> Doc d) -> Maybe t -> s -> Doc d
+displayMaybe display m di = case m of
+  (Just a) -> PP.pretty "Just" <+> display a di
+  Nothing -> PP.pretty "Nothing"
+
+instance (Display s a) => Display s (Maybe a) where
+  display = displayMaybe display
+
+displayEither ::
+  (Display s a, Display s b) =>
+  (forall a. (Display s a) => a -> s -> Doc d) ->
+  Either a b ->
+  s ->
+  Doc d
+displayEither disp e di = case e of
+  (Left a) -> PP.pretty "Left" <+> disp a di
+  (Right a) -> PP.pretty "Right" <+> disp a di
+
+instance (Display s a, Display s b) => Display s (Either a b) where
+  display = displayEither display
+
+
+instance Display s String where
+  display = return . PP.pretty
+
+instance Display s Int where
+  display = return . PP.pretty . show
+
+instance Display s Integer where
+  display = return . PP.pretty . show
+
+instance Display s Double where
+  display = return . PP.pretty . show
+
+instance Display s Float where
+  display = return . PP.pretty . show
+
+instance Display s Char where
+  display = return . PP.pretty . show
+
+instance Display s Bool where
+  display = return . PP.pretty . show

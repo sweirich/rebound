@@ -27,7 +27,8 @@ module Tutorial.Named.Syntax(
   boolTy, 
   falseTm, 
   trueTm, 
-  ifTm
+  ifTm,
+  seqTm
 )
 where
 
@@ -58,6 +59,8 @@ data Tm where
     Inj   :: Int -> Tm -> Tm
     -- | Case analysis with list of pattern,branches
     Case  :: Tm -> [(Tm,Tm)] -> Tm
+    -- | Type annotation
+    Ann   :: Tm -> Ty -> Tm
       deriving (Show, Eq)
 
 -- * Syntactic sugar
@@ -103,3 +106,7 @@ trueTm = Inj 1 unitTm
 -- | If expression
 ifTm :: Tm -> Tm -> Tm -> Tm
 ifTm cond tru fls = Case cond [(falseTm, fls), (trueTm, tru)]
+
+-- | Sequence expression
+seqTm :: Tm -> Tm -> Tm
+seqTm e1 e2 = Case e1 [(unitTm, e2)]

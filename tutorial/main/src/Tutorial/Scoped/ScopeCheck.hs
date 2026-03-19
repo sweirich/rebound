@@ -14,11 +14,17 @@ The named representation is used for parsing and pretty-printing; the scoped
 representation is used for evaluation and transformation.  The two directions
 serve different purposes:
 
-* __inject__ (scoped → named): always succeeds; used for display.
+* __inject__ (scoped → named): always succeeds; used for pretty-printing.
 * __project__ (named → scoped): can fail; used after parsing.
 
 -}
 module Tutorial.Scoped.ScopeCheck (
+  -- * Scope-check errors
+  ScopeCheckError(..),
+  -- * Top-level parsing
+  Error(..),
+  parse,
+  parseWith,
   -- * Type conversions
   injectTy,
   projectTy,
@@ -47,12 +53,55 @@ import qualified Tutorial.Named.PP as N
 import qualified Tutorial.Named.Parser as N
 import qualified Tutorial.Scoped.Syntax as S
 import Tutorial.Scoped.Gen
+import Text.Parsec hiding (parse)
 
+
+------------------------------------------------------------------------
+-- * Parsing and Pretty Printing (top-level entry point)
+------------------------------------------------------------------------
+
+-- | Errors that can occur during scope-checking.
+data ScopeCheckError
+  = UnboundVariable String
+    -- ^ A variable name was not found in the current scope.
+  | UnsupportedInjection Int
+    -- ^ An injection index other than 0 or 1 was encountered.
+  | UnsupportedForm N.Tm
+    -- ^ The term uses a syntactic form that has no scoped equivalent,
+    --   e.g. a tuple of arity other than 0 or 2, or an unrecognised
+    --   pattern in a case expression.
+  deriving (Show, Eq)
+
+-- | Top-level errors from 'parse' / 'parseWith'.
+data Error = ScopeError ScopeCheckError | ParseError ParseError
+  deriving (Show)
+
+-- | Parse a closed term
+parse :: String -> Either Error (S.Tm Z)
+parse s = case N.parseTm s of
+              Left pe  -> Left (ParseError pe)
+              Right ne -> case projectTm ne of
+                            Left err -> Left (ScopeError err)
+                            Right se -> Right se
+
+-- >>> parse "\\ x y. x"
+-- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+-- >>> parse "λ y . x"
+-- Left (ScopeError (UnboundVariable "x"))
+
+-- | Parse an open term
+parseWith :: [(String, Fin n)] -> String -> Either Error (S.Tm n)
+parseWith vs s = case N.parseTm s of
+              Left pe  -> Left (ParseError pe)
+              Right ne -> case projectTmWith vs ne of
+                            Left err -> Left (ScopeError err)
+                            Right se -> Right se
 
 -- | Pretty-print a closed term via the Named pretty printer
 pp :: S.Tm Z -> String
 pp = N.pp . injectTm
 
+-- | Pretty-print an open term: requires names for the free variables
 ppWith :: Vec n String -> S.Tm n -> String
 ppWith e t = N.pp (injectTmWith e t)
 
@@ -141,14 +190,14 @@ injectTm = injectTmWith VNil
 -- | Convert a named term to a well-scoped term in scope @n@, given an
 -- association list mapping in-scope variable names to their de Bruijn
 -- indices.  Each binder prepends a new entry and shifts all existing
--- indices up by one.  Returns @Nothing@ if a free variable is
--- encountered or if the term uses syntactic forms not supported by the
+-- indices up by one.  Returns @Left err@ if a free variable is
+-- encountered or if the term uses a syntactic form not supported by the
 -- simple language (e.g. n-ary patterns).
-projectTmWith :: [(String, Fin n)] -> N.Tm -> Maybe (S.Tm n)
--- A variable must be in scope; fail if it is free
-projectTmWith vs (N.Var v) = do
-    x <- lookup v vs
-    return $ S.Var x
+projectTmWith :: [(String, Fin n)] -> N.Tm -> Either ScopeCheckError (S.Tm n)
+-- A variable must be in scope; fail with UnboundVariable if not found
+projectTmWith vs (N.Var v) = case lookup v vs of
+    Nothing -> Left (UnboundVariable v)
+    Just x  -> Right (S.Var x)
 -- λ-abstraction: extend the scope with the bound name
 projectTmWith vs (N.Lam v b) = do
     b' <- projectTmWith ((v, FZ) : map (fmap FS) vs) b
@@ -162,7 +211,9 @@ projectTmWith vs (N.Pair []) = return $ S.Unit
 -- Binary tuple maps to Pair
 projectTmWith vs (N.Pair [e1,e2]) = S.Pair <$> projectTmWith vs e1 <*> projectTmWith vs e2
 -- Only injections 0 and 1 are supported
-projectTmWith vs (N.Inj i e1) | i == 0 || i == 1 = S.Inj i <$> projectTmWith vs e1
+projectTmWith vs (N.Inj i e1)
+    | i == 0 || i == 1 = S.Inj i <$> projectTmWith vs e1
+    | otherwise        = Left (UnsupportedInjection i)
 -- case e of { () -> e' }  maps to MatchUnit
 projectTmWith vs (N.Case e [(N.Pair [], e1)]) =
     S.MatchUnit <$> projectTmWith vs e <*> projectTmWith vs e1
@@ -179,13 +230,13 @@ projectTmWith vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)])
     b2' <- projectTmWith ((v2, FZ) : map (fmap FS) vs) e2
     return (S.MatchSum a' (S.bind1 (S.LocalName v1) b1')
                           (S.bind1 (S.LocalName v2) b2'))
--- Any other pattern is not supported
-projectTmWith vs _ = Nothing
+-- Any other form is not supported
+projectTmWith vs t = Left (UnsupportedForm t)
 
 -- | Convert a named term to a closed well-scoped term.
--- Returns @Nothing@ if the named term contains free variables or uses
+-- Returns @Left err@ if the named term contains free variables or uses
 -- syntactic forms not supported by the simple language (e.g. n-ary patterns).
-projectTm :: N.Tm -> Maybe (S.Tm Z)
+projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
 projectTm = projectTmWith []
 
 ------------------------------------------------------------------------
@@ -195,7 +246,7 @@ projectTm = projectTmWith []
 -- | Injecting a scoped term into named form and projecting back yields
 -- the original term.
 prop_project_round_trip :: S.Tm Z -> Bool
-prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Just i
+prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Right i
 
 -- | Pretty-printing a term and parsing it back yields the original named term.
 prop_parse_round_trip :: S.Tm Z -> Bool

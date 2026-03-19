@@ -67,6 +67,7 @@ library
     , Tutorial.Scoped.CPS
     , Tutorial.Top
     , Tutorial.Exercise1
+    , Tutorial.Exercise2
     , Tutorial.Exercise3
   hs-source-dirs: src
 

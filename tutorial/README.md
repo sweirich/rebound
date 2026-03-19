@@ -4,11 +4,17 @@ This repository contains the companion code for the four-lecture tutorial on
 representing and manipulating lambda-calculus terms using well-scoped de Bruijn
 indices in Haskell.
 
+The goal of these lectures is to provide familiarity with dependently-typed programming 
+and well-scoped de Bruijn indices. While all of the examples are presented using the 
+Haskell language, and take advantage of many Haskell features, the *ideas* presented in these
+lectures should translate to programming in any typed-functional programming language, 
+such as OCaml, Rocq, Lean or Agda. 
+
 ## Lectures
 
 | Lecture | Topic |
 |---------|-------|
-| [Lecture 1](lectures/Lecture1.md) | Well-scoped De Bruijn representations |
+| [Lecture 1](lectures/Lecture1.md) | Working with well-scoped De Bruijn terms |
 | [Lecture 2](lectures/Lecture2.md) | Where do well-scoped terms come from? |
 | [Lecture 3](lectures/Lecture3.md) | CPS: A scope-preserving translation |
 | [Lecture 4](lectures/Lecture4.md) | Efficient implementation using delayed and defunctionalized substitutions |

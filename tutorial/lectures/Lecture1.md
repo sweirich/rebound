@@ -133,10 +133,10 @@ A *substitution environment* maps variables in one scope to terms in another:
 type Env m n = Fin m -> Tm n
 ```
 
-An `Env m n` maps each of `m` variables to a term in scope `n`. You should think of this as 
-an abstract data structure that maps indices to terms. Above, we represent it as a function (with a finite 
-domain), but it could also be implemented with a length-indexed vector, array, tree, or other 
-structure. In the fourth lecture we will discuss various trade-offs in the representation. However, first let's talk about the interface that we need from this structure.
+An `Env m n` maps each of `m` variables to a term in scope `n`. You should think of this as
+an abstract data structure that maps indices to terms. Above, we represent it as a function (with a finite
+domain), but it could also be implemented with a length-indexed vector, array, tree, or other
+structure. In the fourth lecture we will discuss various trade-offs in the representation. First, however, let's look at the interface we need from this structure.
 
 The most important operation that we need for this data structure is to be able to apply it to a term, replacing all of the free variables in the term with their definitions in the environment.
 This operation is sometimes called *parallel substitution* because it performs multiple substitutions at once.
@@ -343,6 +343,22 @@ ghci> qc prop_evalStep
 ```
 
 The high discard rate reflects the fact that randomly generated terms are often stuck (they are not well-typed). Random terms could in principle also diverge, but that is rare here. Importantly, all randomly generated terms are *well-scoped* — the type index guarantees that — so we at least avoid out-of-scope variable errors at runtime. Next time we will look at how to generate well-typed terms.
+
+---
+
+## Historical Notes
+
+**Named variables and capture-avoiding substitution.** The difficulty of substitution under binders — and the need for alpha-renaming — was already understood by Church (1941) and Kleene (1952). The *Barendregt convention* (assume all bound variables are distinct from free variables) is a paper-level workaround; implementing it correctly in software is error-prone and was a recognized problem in early theorem provers and language implementations.
+
+**De Bruijn indices.** Introduced by Nicolaas de Bruijn in "Lambda Calculus Notation with Nameless Dummies" (1972) specifically to give a *canonical* representation of lambda terms in which alpha-equivalent terms are syntactically identical. The name "de Bruijn index" (counting binders outward from the use site) is the convention adopted here; de Bruijn himself used the opposite convention in some papers. An alternative is *de Bruijn levels*, which count inward from the outermost binder and simplify some operations at the cost of others.
+
+**Parallel substitution.** The use of an environment `Fin m -> Tm n` that maps all variables simultaneously — rather than one at a time — is sometimes called *parallel substitution*. It was systematized in the substitution-lemma proofs of Martin-Löf type theory (Nordström, Petersson, and Smith, 1990) and is the foundation for the substitution calculi studied in Lecture 4.
+
+**Well-scoped de Bruijn terms.** Tracking the number of free variables at the type level using a natural-number index appears in Altenkirch and Reus, "Monadic Presentations of Lambda Terms Using Generalized Inductive Types" (1999), and in Bird and Paterson, "De Bruijn Notation as a Nested Datatype" (1999). 
+
+TODO: add mention of Kmett's "bound" library.
+
+**Renamings and the termination problem.** The mutual recursion between `applyE` and `lift` (noted in Section 6) is a real obstacle in proof assistants. The standard fix — define `applyRen` on renamings first, use it to implement `lift`, then build `applyE` on top — is described in, e.g., Benton, Hur, Kennedy, and McBride, "Strongly Typed Term Representations in Coq" (2012). Exercise 4 asks you to implement this version.
 
 ---
 

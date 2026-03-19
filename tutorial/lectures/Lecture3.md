@@ -5,8 +5,8 @@ issues that occur when working with them in an implementation. In this lecture, 
 some of the payoff for working with this sort of representation: we can work with and reason about 
 open code. 
 
-As an extended example, we will us a nontrivial *term-to-term transformation*: 
-continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as compiler intermediate languages or for the implementation of cooperative multi-threading. If you haven't seen it before, you should learn more about it.
+As an extended example, we will use a nontrivial *term-to-term transformation*:
+continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as a compiler intermediate language and for the implementation of cooperative multithreading. If you haven't seen it before, you should learn more about it.
 
 For our purposes, CPS is a good case study because it changes the binding structure of its input — each function gains an extra argument.
 Therefore, when implementing this operation, we need to work in a changing scope -- the scope of 
@@ -45,7 +45,7 @@ The top-level call typically uses the identity continuation: `cps e = [[e]] (λx
 Note that this is a call-by-value translation: the evaluation of the result of the translation
 should occur in the same order as the call-by-value evaluation.
 
--- 
+---
 
 ## 2. Implementation using rebound (pure lambda calculus)
 
@@ -59,7 +59,7 @@ The difficult part of this translation is right there near the top: when we tran
 That means that when we call the translation recursively, `e` might be in some scope `S n`, because 
 it is inside the body of a lambda expression. However, the result is going to be in some larger scope
 that binds not just `x` but also `k'`. What that means is that the *variable* case is also challenging. Even though with names above we say `[[x]]k` produces `k x`, the scope of the first `x`
-may be different than the scope of the second `x`, so they may be different indices.
+may be different from the scope of the second `x`, so they may be different indices.
 
 Therefore, we need to parameterize our cps conversion function with a substitution that talks about the scope change. If the input term is in some scope `n` and the output scope is `m`, then we need 
 an argument of type `Env Tm n m` to go between the two.  Furthermore, the continuation argument 
@@ -74,7 +74,7 @@ cpsExp :: Env Tm n m -> Tm n -> Tm m -> Tm m
 cpsExp r (Var x) k = App k (applyEnv r x)
 ```
 
-For the lambda case, we will also apply the continutation `k` to a value. 
+For the lambda case, we will also apply the continuation `k` to a value. 
 But this value is the function of two parameters. The first parameter is the same 
 one as the original function, the second is a new parameter. We then call the 
 cps conversion function recursively on the body of the lambda expression, using 
@@ -90,10 +90,10 @@ cpsExp r (Lam b) k = App k
 ```
 What is the renaming for this recursive call? We need to translate this renaming 
 to be used under the body of the lambda expression, with `up r`, but then we also 
-need to account for the second binder for the continutation. This binder only 
-affects the output scope, as opposed to the first that is part of both. Therefore, 
-we need to shift the variables in the output, which we do by post-composing 
-the substiiution with `wk`.
+need to account for the second binder for the continuation. This binder only
+affects the output scope, as opposed to the first that is part of both. Therefore,
+we need to shift the variables in the output, which we do by post-composing
+the substitution with `wk`.
 
 For applications, our original definition is 
 
@@ -160,9 +160,9 @@ ghci> qc prop_cps_result_firstorder
 
 We can do better by thinking about simulation properties.
 
-Another way to state the correctness of CPS conversion is through the use of a simulation relation. 
-If our source language (the lambda calculus) evaluates to a result (the CPS-converted language)
-evaluates to an equivalent result. We might draw a picture like this:
+Another way to state the correctness of CPS conversion is through a simulation relation:
+if the source language evaluates a term to a result, then the CPS-converted language
+evaluates the converted term to an equivalent result. We might draw a picture like this:
 
 ```
            e  =>  v 
@@ -188,7 +188,7 @@ Unit
 e          = ()
 cps_e      = (λ x. x) ()
 ```
-In this counter example, we have a value that translates to a non-value.
+In this counterexample, we have a value that translates to a non-value.
 
 We can (partially) repair it by keeping our "top-level" continuation abstract. Instead of 
 using the identity function, if we use a distinguished variable, then that solves the 
@@ -270,4 +270,128 @@ efficient.
 
 ---
 
-## 5. Exercises
+## 5. Historical Notes
+
+**The CPS transformation.** The idea of compiling programs into continuation-passing style has two early origins. Fischer ("Lambda Calculus Schemata", 1972; published in revised form 1993) and Plotkin ("Call-by-Name, Call-by-Value and the Lambda-Calculus", 1975) independently described the CPS translation as a way to explain evaluation order. Plotkin's paper is particularly influential: it proved that call-by-value and call-by-name evaluation correspond to two different CPS translations, and it coined the term *administrative redex* for the spurious beta-redexes introduced by a naive translation.
+
+**CPS as a compiler intermediate language.** Steele's "Rabbit: A Compiler for Scheme" (1978) first used CPS as a compiler intermediate representation, making continuations explicit so that tail calls, closures, and control effects could all be handled uniformly. This idea was further developed in the SML/NJ compiler (Appel, "Compiling with Continuations", 1992) and influenced many subsequent compiler designs.
+
+**One-pass CPS and administrative redexes.** A naive CPS translation produces many administrative redexes. Eliminating them requires a separate reduction pass. Danvy and Filinski ("Representing Control: A Study of the CPS Transformation", 1992) showed how to produce administrative-redex-free output in a single pass by distinguishing *meta-level* continuations (Haskell functions) from *object-level* continuations (lambda terms in the target). The `Cont` datatype with `Meta` and `Obj` constructors in Section 4 directly implements this idea. 
+
+**CPS and classical logic.** Griffin ("A Formulae-as-Types Notion of Control", 1990) observed that continuations correspond to classical logic under the Curry–Howard correspondence: the call/cc operator corresponds to the law of excluded middle. This connection was further developed by Parigot (λμ-calculus, 1992) and many others, giving a logical foundation for the computational behavior of control operators.
+
+
+---
+
+## 6. Exercises
+
+**1. Tracing `cpsExp` by hand.** Work through the following calls step by step, writing down the output term produced at each recursive call.  Verify your answers in GHCi using `pp (cps e)`.
+
+**(a)** Trace `cpsExp idE Unit idTm`.
+- What rule applies?
+- What is the output term?
+
+**(b)** Trace `cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm`:
+- When the rule for `Lam` calls `cpsExp r' (Var FZ) (Var FZ)` recursively, what is the environment `r'`?
+  - `r' = up idE .>> wk :: Env Tm (S Z) (S (S Z))`
+  - What does `r'` map `FZ` to?  (Hint: `up idE` is the identity on `Tm (S Z)`, then `.>> wk` shifts.)
+- What is the full output term?  Use `pp` to check your answer looks like `(λ x. x) (λ x. λ k. k x)`.
+
+**(c)** Trace `cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm`.
+The `App` case introduces two intermediate continuations.  Write down the complete output term and verify it matches `pp (cps (App (Lam ...) Unit))`.
+
+---
+
+**2. Scope arithmetic in the `App` case.**  The `App` case of `cpsExp` is:
+
+```haskell
+cpsExp r (App t1 t2) k =
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
+          (App (App (Var (FS FZ)) (Var FZ)) k''))))))
+    where
+      r'  = r .>> wk
+      k'' = applyE (wk .>> wk) k
+```
+
+Answer the following:
+
+**(a)** If the input scope is `n` and output scope is `m`, what is the output scope when translating `t2`?  The continuation for `t2` is a lambda we are *building*, so we are one binder deeper.
+
+**(b)** In the body `App (App (Var (FS FZ)) (Var FZ)) k''`, what do `Var (FS FZ)` and `Var FZ` name?
+
+**(c)** Why is `k` shifted by `wk .>> wk` to produce `k''`, but `r` is only shifted by a single `wk` to produce `r'`?  (Hint: `r` maps input variables to the output scope — how many new output binders have been crossed at each point?)
+
+**(d)** The `MatchPair` case shifts `k` by `wk .>> wk .>> wk`.  Why three shifts instead of two?
+
+---
+
+**3. Correctness properties — what fails and why.**
+
+**(a)** Run `qc prop_cps_result` in GHCi.  Record the counterexample.  Explain in one sentence why CPS-converting a function value does not preserve `eval`.
+
+**(b)** Run `qc prop_cps_result_firstorder`.  This passes, but with a high discard rate.  Why are so many test cases discarded?
+
+**(c)** Run `qc prop_cps_eval_simulates`.  The counterexample involves `Unit`.  Explain why `()` is the simplest failing case: what does `cps ()` reduce to, and why is that not equal to `cps (eval ())`?
+
+**(d)** Run `qc prop_cps_eval_simulates_open`.  This passes for the pure lambda calculus.  The property uses `cpsK` instead of `cps`.  Explain: why does replacing the identity-function continuation with a fresh variable `k` fix the `Unit` counterexample?
+
+**(e)** Change the generator in `prop_cps_eval_simulates_open` from `genTypedPureLC` to `genTypedFull` and run it.  Record the counterexample.  Which language construct causes it to fail, and why does the pure lambda calculus not have this problem?
+
+---
+
+**4. Meta continuations — counting administrative redexes.**
+
+**(a)** Evaluate the following in GHCi and compare the two outputs:
+
+```haskell
+ghci> pp (cps    (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit))
+ghci> pp (cpsOpt (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit))
+```
+
+Count the number of beta-redexes (sub-terms of the form `(λ x. body) arg`) in each.  Which version has fewer?
+
+**(b)** For `cpsExpOpt r Unit (Meta (bind1 (LocalName "x") body))`, show that `applyCont k Unit` directly substitutes `Unit` into `body`, producing `body[Unit/x]` with no `(λ x. body) ()` redex.
+
+**(c)** In the `Lam` case of `cpsExpOpt`, the continuation passed to the recursive call is `Obj (Var FZ)` — not `Meta`.  Explain why `Meta` cannot be used here.  (Hint: `Var FZ` is a *runtime* variable for the caller-supplied continuation `k'`, not a compile-time binder we control.)
+
+**(d)** Run `qc prop_cpsOpt_result_firstorder` and `qc prop_cpsOpt_eval_simulates_open`.  Do both pass?  What do they tell you about the correctness of the optimised translation?
+
+---
+
+**5. Extending `cpsExp` with `let`.**  Assume `Let :: Tm n -> Bind1 Tm Tm n -> Tm n` has been added to `Tm` (Lecture 1, Exercise 3).  The CPS rule for `let` is:
+
+```
+[[let x = e in b]] k  =  [[e]] (λx. [[b]] k)
+```
+
+**(a)** Add a case to `cpsExp`:
+
+```haskell
+cpsExp r (Let e b) k =
+    cpsExp r e (Lam (bind1 (getLocalName b)
+        (cpsExp r' (getBody1 b) k')))
+    where
+      r' = up r .>> wk
+      k' = applyE wk k
+```
+
+Explain each component:
+- Why is `r'` the right environment for the body of `b`?
+- Why is `k` shifted by `wk` to produce `k'`?
+- How does this compare to the `Lam` case?
+
+**(b)** Add the corresponding case to `cpsExpOpt`, replacing the `Lam`-built continuation with a `Meta` continuation:
+
+```haskell
+cpsExpOpt r (Let e b) k =
+    cpsExpOpt r e (Meta (bind1 (getLocalName b)
+        (cpsExpOpt r' (getBody1 b) k')))
+    where
+      r' = up r .>> wk
+      k' = applyE wk k
+```
+
+What administrative redex does the `Meta` here avoid compared to `cpsExp`?
+
+**(c)** After adding both cases, run `qc prop_cps_result_firstorder` and verify it still passes.

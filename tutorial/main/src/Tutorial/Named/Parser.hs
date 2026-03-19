@@ -5,38 +5,14 @@ Description : Parser for a named lambda calculus with n-ary products and sums
 A 'parsec'-based parser for the concrete syntax of the tutorial language,
 producing 'Tutorial.Named.Syntax.Tm' and 'Tutorial.Named.Syntax.Ty' values.
 
-The concrete syntax supports:
-
-  * Types: @Unit@\/@1@, @Void@\/@0@, @Bool@\/@2@, @t -> t@, @t * t@, @t + t@
-  * Terms: variables, lambda, application, pairs, injections, pattern matching,
-           @let@, @if@\/@then@\/@else@, type annotations
-  * Patterns: variables, unit, tuples, injections, annotated patterns
--}
-module Tutorial.Named.Parser where
-
-import Control.Monad (void)
---import qualified Data.Functor.Identity
-
-import Text.Parsec 
-import qualified Text.Parsec.Token as P
-import qualified Text.Parsec.Combinator as P
-import Text.Parsec.Language (haskellStyle)
-import Text.Parsec.Expr (Assoc (..), Operator (..), buildExpressionParser)
-
-
-import Tutorial.Named.Syntax
-
-{- Concrete syntax 
-
-This is the concrete syntax for a small lambda calculus with n-ary 
+This concrete syntax is for a small lambda calculus with n-ary 
 products and sums. 
-
 
 types 
 
    t ::= 
-      | Unit
-      | Void
+      | Unit              unit type
+      | Void              empty type 
       | t -> t            function type
       | t1 * .. * tn      product type
       | t1 + ... + tn     sum type
@@ -45,7 +21,7 @@ types
    -> is left associative 
    1 can also be used for Unit
    0 can also be used for Void
-   Bool/2 is syntactic sugar for 1+1
+   Bool or 2 is syntactic sugar for 1+1
 
 terms
 
@@ -57,9 +33,11 @@ terms
       | e1 e2             application
       | case e of brs     pattern match
       | ( e )             parentheses
+      | ( e : t )         type annotation
 
       (syntactic sugar)
-      | True | False | if e1 then e2 else e3
+      | True | False 
+      | if e1 then e2 else e3
       | \x1 ... xn . e    
       | let x = e1 in e2 
       | e1 ; e2
@@ -80,6 +58,17 @@ patterns
       | (p)
       
 -}
+module Tutorial.Named.Parser where
+
+import Control.Monad (void)
+
+import Text.Parsec 
+import qualified Text.Parsec.Token as P
+import qualified Text.Parsec.Combinator as P
+import Text.Parsec.Language (haskellStyle)
+import Text.Parsec.Expr (Assoc (..), Operator (..), buildExpressionParser)
+
+import Tutorial.Named.Syntax
 
 -----------------------------------------------------------
 -- * Top-level
@@ -114,7 +103,7 @@ tokenizer :: P.TokenParser u
 tokenizer = P.makeTokenParser haskellStyle {
     P.reservedOpNames = ["*", "+", ",", "=", "\\", "|", "->", ";" ,"."], 
     P.reservedNames   = ["case","of","let","in","if","then","else", "λ", 
-                         "True", "False", "Bool", "Void", "Unit", "Inj"] }
+                         "True", "False", "Bool", "Void", "Unit", "inj"] }
 
 -- see the documentation in 
 -- https://hackage.haskell.org/package/parsec-3.1.18.0/docs/Text-Parsec-Token.html
@@ -132,9 +121,11 @@ whiteSpace = P.whiteSpace tokenizer
 lexeme :: Parser a -> Parser a
 lexeme = P.lexeme tokenizer
 
-dot, comma :: Parser ()
+dot, comma, colon, semi :: Parser ()
 dot = void (P.dot tokenizer)
 comma = void (P.comma tokenizer)
+colon = void (P.colon tokenizer)
+semi = void (P.semi tokenizer)
 
 parens, brackets, braces :: Parser a -> Parser a
 parens = P.parens tokenizer
@@ -175,10 +166,10 @@ prodOrSumTy p = do
      <|> seq "+" Sum
      <|> return x
 
--- >>> testParser (prodOrSumTy unitTy) "Unit * Unit * Unit"
+-- >>> testParser (prodOrSumTy unitP) "Unit * Unit * Unit"
 -- Right (Prod [Prod [],Prod [],Prod []])
 
--- >>> testParser (prodOrSumTy unitTy) "Unit"
+-- >>> testParser (prodOrSumTy unitP) "Unit"
 -- Right (Prod [])
 
 -- | toplevel parser for types
@@ -212,19 +203,18 @@ var = Var <$> identifier
 -- | Parse an injection: @Inj i e@, @True@, or @False@
 inj :: Parser Tm -> Parser Tm
 inj p =
-        (symbol "Inj" >> Inj <$> lexeme natural <*> p)
+        (symbol "inj" >> Inj <$> lexeme natural <*> p)
     <|> (reserved "True" >> return (Inj 1 (Pair []))) 
     <|> (reserved "False" >> return (Inj 0 (Pair [])))
 
--- >>> testParser (inj var) "Inj0 x"
+-- >>> testParser (inj var) "inj0 x"
 -- Right (Inj 0 (Var "x"))
 
--- >>> testParser (inj var) "Inj 1 x"
+-- >>> testParser (inj var) "inj 1 x"
 -- Right (Inj 1 (Var "x"))
 
 -- >>> testParser (inj var) "True"
--- Right (Inj 0 (Pair []))
-
+-- Right (Inj 1 (Pair []))
 
 -- | Parse a parenthesised tuple: @()@, @(e)@, or @(e1, ..., en)@
 tuple :: Parser Tm -> Parser Tm
@@ -235,17 +225,18 @@ tuple p = do xs <- P.sepBy p comma
                (_:_) -> return (Pair xs)
 
 -- >>> testParser (parens (tuple var)) "()"
--- Right Unit
+-- Right (Pair [])
 
 -- >>> testParser (parens (tuple var)) "(x,y)"
 -- Right (Pair [Var "x",Var "y"])
+
 
 -- >>> testParser (parens (tuple var) <|> tuple var) "x,y"
 -- Right (Pair [Var "x",Var "y"])
 
 
--- | Parse a term that may be a product or a single term.
--- Both forms begin with a single term; we commit after seeing @,@.
+-- | Parse a term that may be a product, type annotation, sequence or a single term.
+-- All forms begin with a single term; we commit after seeing punctuation.
 multiple :: Parser Tm -> Parser Tm
 multiple p = try one <|> return (Pair []) where
   one = p >>= \x ->
@@ -254,6 +245,13 @@ multiple p = try one <|> return (Pair []) where
                      case xs of
                         [] -> return x
                         _  -> return $ Pair (x:xs))
+            <|> 
+            (colon >> Ann x <$> ty)
+                 
+            <|> 
+            (semi >>
+                 do e <- tm
+                    return $ Case x [(unitTm, e)])
             <|> return x
 
 -- >>> testParser (parens (multiple var)) "(x)"
@@ -261,6 +259,12 @@ multiple p = try one <|> return (Pair []) where
 
 -- >>> testParser (parens (multiple var)) "(x,y,z)"
 -- Right (Pair [Var "x",Var "y",Var "z"])
+
+-- >>> testParser (parens (multiple var)) "(x : 1)"
+-- Right (Ann (Var "x") (Prod []))
+
+-- >>> testParser (parens (multiple var)) "(x ; y)"
+-- Right (Case (Var "x") [(Pair [],Var "y")])
 
 -- | A pattern produces an element of the term datatype 
 -- but in a restricted set
@@ -277,7 +281,7 @@ pat = term <?> "pattern" where
 -- >>> testParser pat "()"
 -- Right (Pair [])
 
--- >>> testParser pat "Inj1 ((x,Inj 0 y),())"
+-- >>> testParser pat "inj1 ((x,inj 0 y),())"
 -- Right (Inj 1 (Pair [Pair [Var "x",Inj 0 (Var "y")],Pair []]))
 
 
@@ -311,30 +315,29 @@ branch = do
   t <- tm
   return (p,t)
 
--- | sequence
-seq :: Parser Tm 
-seq = do 
-  t1 <- tm
-  reservedOp ";"
-  t2 <- tm 
-  return (Case t1 [(unitTm, t2)])
-
 -- | Parse a term (entry point for expressions)
 tm :: Parser Tm
 tm = funapp <?> "expression" where
 
-  funapp = do 
+  funapp = do
     f <- factor
-    foldl App f <$> many factor
+    fs <- many factor
+    let app = foldl App f fs
+    (semi >> do e <- tm
+                return $ Case app [(unitTm, e)])
+      <|>
+      return app
+
 
   factor = parens (multiple tm)
-      <|> inj tm
+      <|> try (inj factor)
       <|> iftm
       <|> casetm
       <|> lambda
       <|> lettm
       <|> iftm
       <|> var
+      
 
 -- >>> testParser tm "(x y) z"
 -- Right (App (App (Var "x") (Var "y")) (Var "z"))
@@ -344,6 +347,18 @@ tm = funapp <?> "expression" where
 
 -- >>> testParser tm "\\ x . \\ y . (x y) (x x)"
 -- Right (Lam "x" (Lam "y" (App (App (Var "x") (Var "y")) (App (Var "x") (Var "x")))))
+
+-- >>> testParser tm "z \\x . (x ; y) w"
+-- Right (App (Var "z") (Lam "x" (App (Case (Var "x") [(Pair [],Var "y")]) (Var "w"))))
+
+-- >>> testParser tm "let x = () in q"
+-- Right (App (Lam "x" (Var "q")) (Pair []))
+
+-- >>> testParser tm "let x = \\ y . y in x"
+-- Right (App (Lam "x" (Var "x")) (Lam "y" (Var "y")))
+
+-- >>> testParser tm "if True then () else x; ()"
+-- Right (Case (Inj 1 (Pair [])) [(Inj 0 (Pair []),Pair []),(Inj 1 (Pair []),Case (Var "x") [(Pair [],Pair [])])])
 
 -- | Parse a @let@ expression: @let x = e1 in e2@  (sugar for @(\ x . e2) e1@)
 lettm :: Parser Tm

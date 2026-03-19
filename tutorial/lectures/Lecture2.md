@@ -1,13 +1,12 @@
 # Lecture 2: Where Do Well-Scoped Terms Come From?
 
-In Lecture 1 we represented terms using  de Bruijn indices and implmented an 
-evaluator. To make sure that our code was correct, we used 
-used QuickCheck to generate well-scoped terms to test the properties of 
-our evaluator. In the case that QC finds a bug, we converted the term to a 
-named representation for printing. We also want to use this named representation 
-for parsing: users do not want to write their code using de Bruijn indices... instead
-we should let them use good-old-fashioned variable names and check for them 
-that these names are in scope.
+In Lecture 1 we represented terms using de Bruijn indices and implemented an
+evaluator. To make sure that our code was correct, we used QuickCheck to generate
+well-scoped terms to test the properties of our evaluator. If QC finds a bug, we
+convert the term to a named representation for printing. We also want to use this
+named representation for parsing: users do not want to write their code using de
+Bruijn indices — instead we should let them use good-old-fashioned variable names
+and verify that those names are in scope.
 
 So that means that there are two sources of *well-scoped* terms that we want to 
 consider:
@@ -39,8 +38,8 @@ out-of-scope variables entirely.
 `ScopeCheck.hs` bridges the gap.  The top-level entry points are:
 
 ```haskell
-injectTm  :: S.Tm Z -> N.Tm           -- always succeeds
-projectTm :: N.Tm   -> Maybe (S.Tm Z) -- fails for free variables / unsupported patterns
+injectTm  :: S.Tm Z -> N.Tm                              -- always succeeds
+projectTm :: N.Tm   -> Either ScopeCheckError (S.Tm Z)   -- fails for free variables / unsupported patterns
 ```
 
 Each is a one-liner that delegates to a worker that carries an explicit
@@ -48,7 +47,7 @@ context, making the workers usable independently:
 
 ```haskell
 injectTmWith  :: Vec n String      -> S.Tm n -> N.Tm
-projectTmWith :: [(String, Fin n)] -> N.Tm   -> Maybe (S.Tm n)
+projectTmWith :: [(String, Fin n)] -> N.Tm   -> Either ScopeCheckError (S.Tm n)
 ```
 
 ---
@@ -66,9 +65,9 @@ recursion.  Each entry records a name and the de Bruijn index it is currently
 bound to in scope `n`.
 
 ```haskell
-projectTmWith :: [(String, Fin n)] -> N.Tm -> Maybe (S.Tm n)
+projectTmWith :: [(String, Fin n)] -> N.Tm -> Either ScopeCheckError (S.Tm n)
 
-projectTm :: N.Tm -> Maybe (S.Tm Z)
+projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
 projectTm = projectTmWith []
 ```
 
@@ -78,13 +77,13 @@ the result is a *closed* term `S.Tm Z`.
 ### Variable lookup
 
 ```haskell
-projectTmWith vs (N.Var v) = do
-    x <- lookup v vs
-    return $ S.Var x
+projectTmWith vs (N.Var v) = case lookup v vs of
+    Nothing -> Left (UnboundVariable v)
+    Just x  -> Right (S.Var x)
 ```
 
 If `v` is not in the association list the term has a free variable and we
-return `Nothing`.
+return `Left (UnboundVariable v)` with the offending name.
 
 ### Crossing a binder
 
@@ -271,14 +270,11 @@ returning a length-2 vector of names.
 QuickCheck generates random names from a small pool:
 
 ```haskell
-instance Arbitrary LocalName where
-    arbitrary = do
-        str <- elements ["x", "y", "z", "w"]
-        num <- elements [1,2,3,4,5,0]
-        return (LocalName (str ++ show num))
+genLocalName :: QC.Gen LocalName
+genLocalName = LocalName <$> QC.elements ["x", "y", "z", "w", "v", "u", "t", "s"]
 ```
 
-This intentionally produces name collisions (e.g. `x1` can be generated
+This intentionally produces name collisions (e.g. `"x"` can be generated
 multiple times in one term), which is why `injectTm` must be able to
 freshen names before extending the context.
 
@@ -401,7 +397,7 @@ transformations:
 
 ```
 generate           inject              pretty-print         parse              scope-check
-Tm Z    ────────►  N.Tm   ──────────►  String  ──────────►  N.Tm  ──────────►  Maybe (Tm Z)
+Tm Z    ────────►  N.Tm   ──────────►  String  ──────────►  N.Tm  ──────────►  Either ScopeCheckError (Tm Z)
 ```
 
 Two QuickCheck properties verify this:
@@ -410,7 +406,7 @@ Two QuickCheck properties verify this:
 -- inject then project recovers the original term
 prop_project_round_trip :: S.Tm Z -> Bool
 prop_project_round_trip i =
-    projectTm (injectTm i) == Just i
+    projectTm (injectTm i) == Right i
 
 -- pretty-print then parse recovers the named term
 prop_parse_round_trip :: S.Tm Z -> Bool
@@ -438,7 +434,7 @@ We can inspect a single randomly generated term end-to-end:
 ghci> t <- generate (arbitrary :: Gen (Tm Z))
 ghci> putStrLn (PP.pp (injectTm t))
 λ x1. case x1 of | Inj0 y2 -> (λ z3. z3) y2 | Inj1 w4 -> ()
-ghci> projectTm (injectTm t) == Just t
+ghci> projectTm (injectTm t) == Right t
 True
 ```
 
@@ -456,11 +452,23 @@ scope-checking the named term recovers exactly the original de Bruijn term.
 | Scoped → named | `injectTmWith` | `Vec n String` naming context; retrieve `LocalName` hint, freshen if shadowed |
 | α-equivalence | `LocalName` | `Eq` instance makes all names equal; de Bruijn does the real comparison |
 | Well-scoped generation | `genTm` | scope tracked as `SNat n`; binders widen scope with `next`; variables from `Fin.universe` |
-| Round-trip | `prop_project_round_trip` | inject ∘ project = id on closed terms |
+| Round-trip | `prop_project_round_trip` | `projectTm (injectTm t) == Right t` for all closed terms |
 
 In the next lecture we will add types to the picture: generating
 *well-typed* terms requires threading a typing context alongside the scope,
 producing terms that evaluate without getting stuck.
+
+---
+
+## 8. Historical Notes
+
+**Scope checking as a compiler pass.** The idea of converting named surface syntax to an internal nameless or index-based form is standard in compiler design. Early Lisp interpreters used association lists (`alist`) to map symbol names to values at runtime — the direct ancestor of the `[(String, Fin n)]` context used in `projectTmWith`. In modern compilers this conversion is a distinct front-end pass, often called *name resolution* or *scope analysis*, that runs after parsing and before type checking.
+
+**Singleton types and `SNatI`.** To use a type-level natural number `n :: Nat` at runtime — e.g., to enumerate `Fin n` — one needs a *singleton*: a runtime value that mirrors the type. Simulating this in Haskell was described by McBride ("Faking It: Simulating Dependent Types in Haskell", 2002) and later systematized in the `singletons` library (Eisenberg and Weirich, 2012). The `SNatI` typeclass and `SNat` type used by `genTm` follow this pattern.
+
+**QuickCheck.** Koen Claessen and John Hughes introduced QuickCheck in "QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs" (2000). Property-based testing is now widely used across languages. The technique of generating *well-scoped* (or well-typed) terms directly — rather than generating strings and parsing them — avoids a large class of trivially-failing test cases and is the standard approach for testing language implementations.
+
+TODO: add citation for well-scoped and well-typed term generation
 
 ---
 

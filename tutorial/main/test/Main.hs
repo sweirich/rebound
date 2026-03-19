@@ -14,12 +14,8 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tutorial"
-    [ testGroup "ScopeCheck"
-        [ QC.testProperty "project round-trip"  SC.prop_project_round_trip
-        , QC.testProperty "parse round-trip"    SC.prop_parse_round_trip
-        ]
-    , testGroup "Eval"
+tests = testGroup "Tutorial" [
+     testGroup "Eval"
         [ QC.testProperty "genVal produces values"        (TE.prop_genVal @Z)
         , QC.testProperty "val closed under subst"        (TE.prop_val_closed @Z)
         , QC.testProperty "eval produces a value"         TE.prop_evalVal
@@ -27,6 +23,10 @@ tests = testGroup "Tutorial"
         , QC.testProperty "reduce produces inert terms"   (TE.prop_reduce_inert @Z)
         , QC.testProperty "step produces a value"         TE.prop_stepVal
         , QC.testProperty "step respects eval"            TE.prop_evalStep
+        ]
+    , testGroup "ScopeCheck"
+        [ QC.testProperty "project round-trip"  SC.prop_project_round_trip
+        , QC.testProperty "parse round-trip"    SC.prop_parse_round_trip
         ]
     , testGroup "CPS"
         [ 
@@ -45,8 +45,6 @@ tests = testGroup "Tutorial"
         , QC.testProperty "instantiate/weaken" Ex1.prop_instantiate_weaken
         ]
     , testGroup "Exercise3"
-        [ -- QC.testProperty "colon reduces to cps"        Ex3.prop_a
-          QC.testProperty "plotkin cps step*"           Ex3.prop_plotkin
-        --, QC.testProperty "colon step simulation"       Ex3.prop_simulation
+        [ QC.testProperty "plotkin cps step*"           Ex3.prop_plotkin
         ]
     ]

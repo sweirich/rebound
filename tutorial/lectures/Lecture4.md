@@ -52,7 +52,7 @@ There is a classical solution, known since at least Abadi, Cardelli, Curien,
 and Lévy's *Explicit Substitutions* (1991): **delay** the
 substitution in the term instead of applying it immediately.
 
-In that calculus, substitutions could be stored anywhere in the term. But here, we would
+In that calculus, substitutions can be stored anywhere in the term. But here, we would
 like to hide the delayed substitution from users. Therefore, we will only store substitutions in the
 binder type.
 
@@ -353,7 +353,7 @@ The paper isolates each optimization with ablation benchmarks:
 
 Removing smart composition (`LazyB`) gives a **~2.8× slowdown** on full
 normalization.  Removing just the identity shortcut (`LazyA`) is almost
-unmeasurable — smart composition already handles most identity eliminations at
+negligible — smart composition already handles most identity eliminations at
 construction time.  The paper concludes: *"much of the speed up comes from
 'smart composition'."*
 
@@ -517,6 +517,22 @@ The combination of these techniques means that:
   term.
 - **Consecutive shifts** are fused into a single `Inc` at composition time.
 
-These are the same optimisations found in mature normalisers and type-checkers;
+These are the same optimizations found in mature normalizers and type-checkers;
 the `rebound` library packages them in a reusable, type-safe interface so that
 every new language implementation gets them for free.
+
+---
+
+## 10. Historical Notes
+
+**Explicit substitutions.** The idea of making substitutions first-class objects that can be stored inside terms dates to Abadi, Cardelli, Curien, and Lévy, "Explicit Substitutions" (1991), which introduced the λσ-calculus. Their calculus allows substitutions to appear anywhere in a term, enabling lazy evaluation of substitutions. Storing the pending substitution *only at binders* (as `rebound` does) is a restricted form of this idea that hides the implementation detail from users of the binder type.
+
+**The λυ and σ families.** Several explicit-substitution calculi followed λσ, addressing properties such as confluence and strong normalization: λs (Kamareddine and Ríos, 1995), λυ (Lescanne, 1994), and the suspension calculus (Nadathur and Wilson, 1998). The smart composition rules in `comp` (Section 4) correspond to the reduction rules of these calculi applied at composition time rather than during term traversal.
+
+**Defunctionalized environments.** Representing environments as *data* rather than functions so that they can be inspected and simplified is an instance of *defunctionalization* (Reynolds, "Definitional Interpreters for Higher-Order Programming Languages", 1972). Applied to de Bruijn substitutions, this idea appears in work on closure representations for the lambda calculus (Hardin, Maranget, and Pagano, "Functional Runtime Systems within the Lambda-Sigma Calculus", 1998) and in implementations of proof assistants such as Agda's kernel.
+
+TODO: read the Hardin paper
+
+**Shift fusion.** The observation that consecutive weakenings can be merged (`Inc k1 .>> Inc k2 = Inc (k1+k2)`) is closely related to the use of *relative* (offset-based) de Bruijn shifts in some implementations, e.g., the suspension calculus mentioned above and the environments used in the Caml Light and OCaml bytecode interpreters.
+
+**The `rebound` library.** The specific combination of delayed substitutions, defunctionalized environments, smart composition, and GHC's `Generic1` machinery for deriving `applyE` automatically was described and benchmarked in the `rebound` paper (Weirich et al.). The benchmark results quoted in Sections 1 and 3 are taken from that paper.
