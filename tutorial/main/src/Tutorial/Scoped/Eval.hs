@@ -15,7 +15,10 @@ eval :: Tm Z -> Maybe (Tm Z)
 eval (Var x)      = case x of {}
 eval (Lam m)      = return (Lam m)
 eval Unit         = return Unit
-eval (Pair e1 e2) = Pair <$> eval e1 <*> eval e2
+eval (Pair e1 e2) = do
+    v1 <- eval e1
+    v2 <- eval e2
+    return (Pair v1 v2)
 eval (Inj i m) = do
     t <- eval m
     return (Inj i t)
@@ -52,6 +55,9 @@ isVal (Inj i e) = isVal e
 isVal (Pair e1 e2) = isVal e1 && isVal e2
 isVal e = False
 
+-------------------------------------------------------------------
+-- Properties of `eval`
+-------------------------------------------------------------------
 
 -- make sure that our generator for values only 
 -- produces values
@@ -66,12 +72,11 @@ prop_val_closed =
     forAll (genFullVal :: Gen (Tm n))     $ \ u -> 
         isVal (applyE (u .: idE) t)
 
--- must use a typed generator to avoid infinite loops
--- but if we do so, can observe that all well-typed terms
--- produce values
+-- all *well-typed* terms produce values
 prop_evalVal :: Property
 prop_evalVal = forAll genTypedFull $ \t ->
     counterexample ("term: " ++ pp t) $
+    within 1000000 $
     case eval t of
         Just v -> 
             counterexample ("not a value: " ++ pp v) $
@@ -92,8 +97,55 @@ prop_evalValIdem = forAll genFullVal $ \v ->
           v == v'
 
 
--- | an inert term is open but cannot reduce any further
--- using weak CBV reduction (may be stuck)
+-------------------------------------------------------------------
+-- CBV reduction for open terms
+-------------------------------------------------------------------
+
+-- | weak *call-by-value* reduction
+-- only beta-reduce if the argument is a value
+-- do not reduce under lambda terms
+-- returns 'Nothing' if the term is inert 
+-- (i.e. has been reduced as far as possible)
+
+reduce :: Tm n -> Maybe (Tm n)
+reduce (Var x)      = return (Var x)
+reduce (Lam m)      = return (Lam m)
+reduce Unit         = return Unit
+reduce (Pair e1 e2) = do
+    v1 <- reduce e1 
+    v2 <- reduce e2
+    return (Pair v1 v2)
+reduce (Inj i m) = do
+    t <- reduce m
+    return (Inj i t)
+reduce (App m n) = do 
+    mv <- reduce m
+    nv <- reduce n 
+    case mv of 
+           Lam n | isVal nv   -> reduce (instantiate1 n nv)
+           _     | isInert mv -> return (App mv nv)
+           _                  -> Nothing
+reduce (MatchSum  e0 m m') = do
+    v <- reduce e0
+    case v of
+        (Inj 0 v1) | isVal v1  -> reduce (instantiate1 m v1) 
+        (Inj 1 v1) | isVal v1  -> reduce (instantiate1 m' v1)
+        _          | isInert v -> return (MatchSum v m m')
+        _                      -> Nothing
+reduce (MatchPair e m) = do 
+    v <- reduce e 
+    case v of
+        Pair v1 v2 | isVal v   -> reduce (instantiate2 m v2 v1)
+        _          | isInert v -> return (MatchPair v m)
+        _                      -> Nothing
+reduce (MatchUnit e m) = do
+    v <- reduce e
+    case v of 
+        Unit          -> reduce m
+        _ | isInert v -> return (MatchUnit v m)
+        _             -> Nothing
+
+-- | an inert term cannot reduce any further
 isInert :: Tm n -> Bool
 isInert (Var x) = True
 isInert (Lam b) = True
@@ -109,48 +161,32 @@ isInert (Inj i e) = isInert e
 isInert (MatchSum t@(Inj _ _) _ _) | isVal t = False
 isInert (MatchSum t u1 u2) = isInert t
 
--- | weak CBV reduction: produces an *inert* result
-reduce :: Tm n -> Maybe (Tm n)
-reduce (Var x)      = return (Var x)
-reduce (Lam m)      = return (Lam m)
-reduce Unit         = return Unit
-reduce (Pair e1 e2) = Pair <$> reduce e1 <*> reduce e2
-reduce (Inj i m) = do
-    t <- reduce m
-    return (Inj i t)
-reduce (App m n) = do 
-    mv <- reduce m
-    nv <- reduce n 
-    case mv of 
-           Lam n | isVal nv   -> reduce (instantiate1 n nv)
-           _     | isInert mv -> return (App mv nv)
-           _ -> Nothing
-reduce (MatchSum  e0 m m') = do
-    v <- reduce e0
-    case v of
-        (Inj 0 v1) | isVal v1 -> reduce (instantiate1 m v1) 
-        (Inj 1 v1) | isVal v1 -> reduce (instantiate1 m' v1)
-        _ | isInert v -> return (MatchSum v m m')
-        _ -> Nothing
-reduce (MatchPair e m) = do 
-    v <- reduce e 
-    case v of
-        Pair v1 v2 | isVal v1 && isVal v2 -> reduce (instantiate2 m v2 v1)
-        _ | isInert v -> return (MatchPair v m)
-        _ -> Nothing
-reduce (MatchUnit e m) = do
-    v <- reduce e
-    case v of 
-        Unit -> reduce m
-        _ | isInert v -> return (MatchUnit v m)
-        _ -> Nothing
+-------------------------------------------------------------------
+-- Properties of 'reduce' 
+-------------------------------------------------------------------
 
-
+-- | If reduce produces a term, it is inert
 prop_reduce_inert :: forall n. SNatI n => Property
 prop_reduce_inert = forAll (genTypedFull :: Gen (Tm n)) $ \t ->
     case reduce t of
         Just v -> property (isInert v)
         Nothing -> discard
+
+-- | reduce agrees with eval on closed, well-typed terms
+prop_eval_reduce :: Property
+prop_eval_reduce = forAll (genTypedFull :: Gen (Tm Z)) $ \t ->
+    counterexample ("term: " ++ pp t) $
+    case eval t of 
+        Just v -> counterexample ("evals t: " ++ pp v) $
+            case reduce t of 
+            Just i -> counterexample ("reduces to: " ++ pp i) $
+                      property (v == i)
+            Nothing -> property False
+        Nothing -> discard
+
+-------------------------------------------------------------------
+-- Small-step evaluation & reduction
+-------------------------------------------------------------------
 
 -- | A term can fail to step if it is a value or if it is stuck
 data Outcome = Value | Stuck | Inert
@@ -159,6 +195,7 @@ data Outcome = Value | Stuck | Inert
 step :: Tm n -> Either Outcome (Tm n)
 step (Var x) = Left Value
 step (Lam b) = Left Value
+step (App (Lam b) a) | isVal a = return (instantiate1 b a)
 step (App f a) = case step f of 
     Left Stuck -> Left Stuck
     Left Inert -> Left Inert

@@ -1,12 +1,27 @@
 # Lecture 2: Where Do Well-Scoped Terms Come From?
 
+## Modules referenced in this lecture
+
+- [Tutorial.Scoped.Syntax](Tutorial/Scoped/Syntax.hs)
+- [Tutorial.Scoped.Eval](Tutorial/Scoped/Eval.hs)
+- [Tutorial.Scoped.ScopeCheck](Tutorial/Scoped/ScopeCheck.hs)
+- [Tutorial.Scoped.Gen](Tutorial/Scoped/Gen.hs)
+- [Tutorial.Named.Syntax](Tutorial/Named/Syntax.hs)
+- [Tutorial.Named.Parser](Tutorial/Named/Parser.hs)
+- [Tutorial.Named.Parser](Tutorial/Named/PP.hs)
+
+## Overview and Goals
+
 In Lecture 1 we represented terms using de Bruijn indices and implemented an
-evaluator. To make sure that our code was correct, we used QuickCheck to generate
-well-scoped terms to test the properties of our evaluator. If QC finds a bug, we
-convert the term to a named representation for printing. We also want to use this
-named representation for parsing: users do not want to write their code using de
-Bruijn indices — instead we should let them use good-old-fashioned variable names
-and verify that those names are in scope.
+evaluator. 
+
+How do we know that our evaluator is correct? We use property-based testing,
+of course.  However, to using Haskell's Quickcheck library we need to generate
+well-scoped terms. If QC finds a bug, we convert the term to a named
+representation for printing. We also want to use this named representation for
+parsing: users do not want to write their code using de Bruijn indices —
+instead we should let them use good-old-fashioned variable names and verify
+that those names are in scope.
 
 So that means that there are two sources of *well-scoped* terms that we want to 
 consider:
@@ -18,6 +33,14 @@ consider:
 
 This lecture covers both, and uses QuickCheck to ensure that we are treating 
 variable names consistently.
+
+The goals of this lecture are to:
+
+- cover more practical aspects of working with de Bruijn indices: maintaining user-supplied variable names and generating well-scoped syntax trees
+
+- show how to convert between syntax representations
+
+- demonstrate the use of Quickcheck for property-based testing
 
 ---
 
@@ -569,3 +592,11 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 - What initial `Vec (S Z) String` do you pass to `injectTmWith`?
 - What initial `[(String, Fin (S Z))]` do you pass to `projectTmWith`?
 - Does the choice of name matter?  Why or why not?
+
+**5. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
+
+- *Identity*: `applyE idE t == t`
+- *Composition*: `applyE f (applyE g t) == applyE (compE f g) t`
+- *Instantiate-shift*: `instantiate1 (Bind1 (weaken t)) u == t` for any `t u :: Tm Z`
+
+For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`, or build simple environments with `(.:)`. Can you find a counterexample to any of these properties if you get the implementation of `lift` wrong?

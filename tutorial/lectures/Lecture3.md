@@ -1,5 +1,9 @@
 # Lecture 3: CPS Conversion
 
+## Modules referenced in this lecture
+
+## Overview and Goals
+
 Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
 issues that occur when working with them in an implementation. In this lecture, we start to see 
 some of the payoff for working with this sort of representation: we can work with and reason about 
@@ -8,12 +12,14 @@ open code.
 As an extended example, we will use a nontrivial *term-to-term transformation*:
 continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as a compiler intermediate language and for the implementation of cooperative multithreading. If you haven't seen it before, you should learn more about it.
 
-For our purposes, CPS is a good case study because it changes the binding structure of its input — each function gains an extra argument.
-Therefore, when implementing this operation, we need to work in a changing scope -- the scope of 
-the input term is not necessarily the same as the scope of the output. Because we are working 
-with de Bruijn indices, we need to be careful what scope we are in, and the types help us with that. 
-At the same time, when we go to test our implementation, we don't need to worry about variable 
-names; we are naturally working with terms up to alpha-equivalence. 
+For our purposes, CPS is a good case study because it changes the binding
+structure of its input — each function gains an extra argument.  Therefore,
+when implementing this operation, we need to work in a changing scope -- the
+scope of the input term is not necessarily the same as the scope of the
+output. Because we are working with de Bruijn indices, we need to be careful
+what scope we are in, and the types help us with that.  At the same time, when
+we go to test our implementation, we don't need to worry about variable names;
+we are naturally working with terms up to alpha-equivalence.
 
 ---
 
@@ -47,7 +53,7 @@ should occur in the same order as the call-by-value evaluation.
 
 ---
 
-## 2. Implementation using rebound (pure lambda calculus)
+## 2. Implementation using `rebound` (pure lambda calculus)
 
 Let's look at how we could translate the definition above to executable Haskell code. 
 The difficult part of this translation is right there near the top: when we translate a function, we need to introduce a new argument `k'` to pass in the "continuation" of the function.

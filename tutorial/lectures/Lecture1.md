@@ -1,10 +1,33 @@
 # Lecture 1: Well-Scoped De Bruijn Representations
 
-## Overview
+## Modules referenced in this lecture
 
-This lecture covers the representation of lambda calculus terms with *variable binding*. We build the infrastructure from scratch in `Tutorial.Scoped.Scratch`, use it in an evaluator in `Tutorial.Scoped.Eval`, and then show how to replace the hand-written infrastructure with the `rebound` library in `Tutorial.Scoped.Syntax`.
+- [Tutorial.Scoped.Scratch](Tutorial/Scoped/Scratch.hs)
+- [Tutorial.Scoped.Syntax](Tutorial/Scoped/Syntax.hs)
+- [Tutorial.Scoped.Eval](Tutorial/Scoped/Eval.hs)
 
----
+## Overview and Goals
+
+This lecture covers a well-scoped representation of lambda calculus terms. By
+well-scoped, we mean that the type system statically tracks the scope of each
+term. If the type of the term says that its scope is empty, then it will be a
+type error to reference a free variable in the term.
+
+During the next fifty minutes, we will define this representation using de
+Bruijn indices (i.e. natural numbers) to represent variables. We will also
+implement a substitution-based interpreter with this representation, where
+type checking ensures that we haven't made any scope errors.
+
+The goals of this lecture are to: 
+
+- cover the building blocks of working with the lambda calculus and
+  implementing capture-avoiding substitution
+    
+- convince you that the small amount of dependently-typed programming needed
+  for well-scoped lambda terms pays off, even in Haskell 
+    
+- show-off the `rebound` library 
+
 
 ## 1. The Problem: Variable Binding
 
@@ -20,11 +43,11 @@ we substitute `42` for `x` in `x + x`. But substitution in the presence of free 
 (λx. λy. x) y   →   λz. y     -- must rename inner binder to avoid capturing y
 ```
 
-*Capture-avoiding substitution* handles this by tracking free variables and renaming binders that would capture them. Correct implementations are tedious and a notorious source of bugs.
+*Capture-avoiding substitution* handles this by tracking free variables and renaming binders that would capture them. Unfortunately, implementations of this operation are a notorious source of bugs.
 
-A separate nuisance: with named variables, `λx. x` and `λy. y` are *alpha-equivalent* but structurally different, so a naive `Eq` instance is wrong.
+Furthermore, with named variables, `λx. x` and `λy. y` are *alpha-equivalent* but structurally different. When implementing lambda calculus terms, we want to decide when terms are equivalent up-to the names of bound variables.
 
-**De Bruijn indices** solve both problems. Replace variable names with numbers counting the binders between a use and its binding site:
+**De Bruijn indices** solve both problems, i.e. we replace variable names with numbers counting the binders between a use and its binding site:
 
 ```
 λx. x          becomes   λ. 0
@@ -32,19 +55,31 @@ A separate nuisance: with named variables, `λx. x` and `λy. y` are *alpha-equi
 λx. λy. x + y  becomes   λ. λ. 1 + 0
 ```
 
-Alpha-equivalence collapses to structural equality — we get a correct `Eq` instance for free. And because there are no names, there is nothing to capture. The substitution function still requires care, as we will see, but at least the problem is well-defined.
+Alpha-equivalence collapses to structural equality — we get a correct
+implementation in Haskell for free (by deriving the `Eq` type class). And
+because there are no names, there is nothing to capture. While, we will still
+need to do some work to define our substitution function, statically checking
+the scopes will help us develop a correct implementation.
 
 ---
 
 ## 2. Finite Sets and Scopes — `Nat` and `Fin`
 
-The *well-scoped* approach tracks the number of variables in scope at the type level, ruling out out-of-scope variable references statically.
+The *well-scoped* approach tracks the number of variables in scope at the type level, ruling out out-of-scope variable references statically. Let's start with the definition of natural numbers, zero and successor.
 
 ```haskell
 data Nat = Z | S Nat
 ```
 
-A term in scope `n` may refer to variables `0` through `n-1`. We represent this finite set as a GADT:
+In Haskell, we can use these numbers in types. For example, here are some names that we can use for type-level numbers: 
+
+```haskell
+type N1 = S Z
+type N2 = S (S Z)
+type N3 = S (S (S Z))
+```
+
+A term in scope `n` may refer to variables `0` through `n-1`. We represent numbers in this finite scope as a GADT:
 
 ```haskell
 data Fin n where
@@ -60,7 +95,7 @@ data Fin n where
 
 ---
 
-## 3. Terms and Types — `Ty` and `Tm`
+## 3. Types, Terms and Binders
 
 Our object language is a simply-typed lambda calculus with binary products and sums:
 
@@ -84,10 +119,6 @@ data Tm (n :: Nat) where
 ```
 
 Although written in GADT syntax, `Tm` is not a proper GADT — all constructors produce `Tm n` for the same `n`. The interesting type-level work happens in `Fin n`. A term of type `Tm Z` is closed.
-
----
-
-## 4. Binders — `Bind1` and `Bind2`
 
 When we cross a binder, the scope grows. `Bind1 n` packages a body that lives in scope `S n`:
 
@@ -125,9 +156,11 @@ ex_comp = Lam (Bind1 (Lam (Bind1 (Lam (Bind1
 
 ---
 
-## 5. Substitution Environments
+## 4. Substitution Environments
 
-A *substitution environment* maps variables in one scope to terms in another:
+*Substitution* is an operation replaces the free variables in terms with other terms. We will use a data structure, called an environment, as part of this mapping. It stores the association between every variable in some scope `m` to terms that all must be in the same scope `n`.
+
+The simplest way to express a *substitution environment* is using a function with the following type:
 
 ```haskell
 type Env m n = Fin m -> Tm n
@@ -145,7 +178,12 @@ This operation is sometimes called *parallel substitution* because it performs m
 applyE :: Env m n -> Tm m -> Tm n
 ```
 
+However, we also need to be able to build substitutions, using the following operations.
+
 ### List-like structure: empty and extension
+
+Another way to think about an environment is like a list, where the *i*th position 
+in the list is a mapping for index *i*. 
 
 ```haskell
 zeroE :: Env Z m             
@@ -158,43 +196,48 @@ t .: env = \f -> case f of
               FS x -> env x
 ```
 
-Like cons: `t .: env` extends `env` with a binding for the outermost variable. Right-associativity lets us write `t1 .: t2 .: env` naturally.
+Like cons: `t .: env` extends `env` with a binding for the outermost variable. Right-associativity lets us write `t1 .: t2 .: env` like list cons.
 
+For example, we can create an environment using the example terms above. Here,
+the type of the environment tells us that there are exactly three closed
+terms.
 
-### Identity and Shifting
+```haskell
+exampleE :: Env N3 Z
+exampleE = ex_id .: ex_const .: ex_comp .: zeroE
+```
+
+### More operations
+
+Here's another example environment: an identity substitution for terms with three free 
+-- variables. We map each index to a variable with that index.
+
+```haskell
+id3E :: Env N3 N3
+id3E = Var f0 .: Var f1 .: Var f2 .: zeroE
+```
+But that is overly complicated. We can also create an identity substitution for 
+every scope, with the following definition:
 
 ```haskell
 idE :: Env n n
 idE = Var
+```
 
-shift :: Env m (S m)
+Furthermore, this definition hints at how we might update *all* free variables in a term. The *shift* environemnt increments every index by one. 
+
+```haskell
+shift :: Env n (S n)
 shift = Var . FS
 ```
-Weakens a scope: applying `applyE shift` to a term in scope `n` produces the same term in scope `S n`, where `FZ` is fresh.
+Weakens a scope: applying `applyE shift` to a term in scope `n` produces the same term in scope `S n`. In this scope, the variable `Var FZ` is not used.
 
-### Lifting and Composition
-
-```haskell
-lift :: Env m n -> Env (S m) (S n)
-lift env = Var FZ .: (applyE shift . env)
-```
-
-Lifts an environment under one binder. The new outermost variable maps to itself; every other variable `x` maps to `env x` weakened into the larger scope.
-
-```haskell
-compE :: Env m n -> Env l m -> Env l n
-compE f g x = applyE f (g x)
-```
-
-Satisfies `applyE (compE f g) = applyE f . applyE g`.
-
----
-
-## 6. Applying a Substitution — `applyE`
+## 5. Applying a Substitution
 
 `applyE` traverses a term, replacing variables via the environment and lifting under each binder:
 
 ```haskell
+-- | Apply a substitution environment to a term
 applyE :: Env m n -> Tm m -> Tm n
 applyE env (Var x)               = env x
 applyE env (Lam (Bind1 b))       = Lam (Bind1 (applyE (lift env) b))
@@ -210,17 +253,20 @@ applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
              (Bind1 (applyE (lift env) b1))
              (Bind1 (applyE (lift env) b2))
 applyE env (Ann t ty)            = Ann (applyE env t) ty
+
+-- | Lift an environment under one binder
+lift :: Env m n -> Env (S m) (S n)
+lift env = Var FZ .: (applyE shift . env)
 ```
 
 The key cases are the binders. For `Lam (Bind1 b)`, the body lives in scope `S m`, so we apply `lift env :: Env (S m) (S n)`. For `MatchPair (Bind2 b)`, which binds two variables, we apply `lift (lift env)`.
 
-Note that `applyE` and `lift` are mutually recursive. In a proof assistant like Agda or Rocq, this mutual recursion through non-structural calls causes problems for the termination checker. The standard fix is to first define a *renaming* function (mapping variables to variables, not terms), use that for shifting, and then define substitution separately. We sidestep this here since Haskell has no termination checker.
+In the `lift` environment, the new outermost variable maps to itself; every other variable `x` maps to `env x` weakened into the larger scope.
 
----
+Note that `applyE` and `lift` are mutually recursive. In a proof assistant like Agda or Rocq, this mutual recursion through non-structural calls makes termination checking difficult. The standard fix is to first define a *renaming* function (mapping variables to variables, not terms), use that for shifting, and then define substitution separately. We sidestep this here since Haskell has no termination checker.
 
-## 7. Opening Binders — `instantiate1` and `instantiate2`
-
-To evaluate `(λx. body) arg` we *instantiate* the binder: substitute `arg` for `FZ` in `body`. An environment that does this is `arg .: idE`, which maps `FZ → arg` and `FS x → Var x`:
+Finally, let's define a helper function for instantiating binders.
+If we were to evaluate `(λx. body) arg` we need to *instantiate* the binder: substitute `arg` for `FZ` in `body`. An environment that does this is `arg .: idE`, which maps `FZ → arg` and `FS x → Var x`:
 
 ```haskell
 instantiate1 :: Bind1 n -> Tm n -> Tm n
@@ -234,25 +280,34 @@ instantiate2 :: Bind2 n -> Tm n -> Tm n -> Tm n
 instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 ```
 
----
+## 6. Working with well-scoped terms
 
-## 8. Using the Infrastructure — `Eval.hs`
+Now let's write a function that uses our well-scoped representation!
 
-The evaluator in `Tutorial.Scoped.Eval` applies these primitives. The type signature
+The end of the file includes a substitution-based evaluator for closed terms. This evaluator could encounter a runtime type error; for simplicty we return `Nothing` in that case.
 
 ```haskell
-eval :: Tm Z -> Either String (Tm Z)
+eval :: Tm Z -> Maybe (Tm Z)
 ```
 
-reflects that we only evaluate closed terms. A few representative cases:
+The type of the evaluator also reflects that we only evaluate *closed* terms. The argument must type check in a scope that contains no variables.
+As a result, the variable case is impossible. Since `Tm Z` contains no variables, `Fin Z` is uninhabited, and the empty pattern match is vacuously exhaustive:
+
+```haskell
+eval (Var x) = case x of {}
+```
+In other cases, we use @instantiate1@ and @instantiate2@ to 
+substitute for the arguments in binders. Observe for the order of 
+instantiation when working with pairs. This function requires that 
+the first component of the pair has index 0 and the second 
+component has index 1.
 
 **Function application:**
 ```haskell
 eval (App m n) = do
     mv <- eval m
-    nv <- eval n
     case mv of
-        Lam b -> eval (instantiate1 b nv)
+        Lam b -> eval (instantiate1 b n)
         _     -> Nothing
 ```
 
@@ -265,38 +320,23 @@ eval (MatchPair e m) = do
         _          -> Nothing
 ```
 
-**Sum elimination:**
-```haskell
-eval (MatchSum e0 m m') = do
-    v <- eval e0
-    case v of
-        Inj 0 v1 -> eval (instantiate1 m  v1)
-        Inj 1 v1 -> eval (instantiate1 m' v1)
-        _        -> Nothing
-```
-
-The variable case requires no clause at all. Since `Tm Z` contains no variables, `Fin Z` is uninhabited, and the pattern match is vacuously exhaustive:
-
-```haskell
-eval (Var x) = case x of {}
-```
-
 ---
 
-## 9. Using `rebound` — `Scoped.Syntax`
+## 7. Using `rebound` 
 
-The infrastructure in `Scratch.hs` — `Bind1`, `Bind2`, `applyE`, `idE`, `(.:)`, `shift`, `lift`, `instantiate1`, `instantiate2` — is entirely generic: none of it depends on the specific constructors of `Tm`. The `rebound` library packages this machinery so you do not have to rewrite it for each new language.
+Some of the infrastructure in `Scratch.hs` is entirely generic: it doesn't depend on the specific constructors of `Tm`. The `rebound` library packages this machinery so you do not have to rewrite it for each new language.
 
 The file `Tutorial.Scoped.Syntax` shows the updated version. The differences are:
 
 - Import the relevant modules from `rebound`
 - Provide the type parameter to `Bind1`/`Bind2` in the `Tm` definition
 - Derive `Generic1` for `Tm`
-- Give instances of `SubstVar Tm` and `Subst Tm Tm` (the `Generic1` machinery fills in `applyE` automatically)
+- Give instances of `SubstVar Tm` and `Subst Tm Tm` 
+  (the `Generic1` machinery fills in `applyE` automatically)
 
 ---
 
-## 10. Testing with QuickCheck — `TestEval.hs`
+## 8. Testing with QuickCheck — `TestEval.hs`
 
 With the evaluator in hand we can state and test natural correctness properties. Two main properties:
 
@@ -342,7 +382,12 @@ ghci> qc prop_evalStep
 +++ OK, passed 1000 tests; 543 discarded.
 ```
 
-The high discard rate reflects the fact that randomly generated terms are often stuck (they are not well-typed). Random terms could in principle also diverge, but that is rare here. Importantly, all randomly generated terms are *well-scoped* — the type index guarantees that — so we at least avoid out-of-scope variable errors at runtime. Next time we will look at how to generate well-typed terms.
+The high discard rate reflects the fact that randomly generated terms are
+often stuck (they are not well-typed). Random terms could in principle also
+diverge, but that is rare here. Importantly, all randomly generated terms are
+*well-scoped* — the type index guarantees that — so we at least avoid
+out-of-scope variable errors at runtime. Next time we will look at how to
+generate well-typed terms.
 
 ---
 
@@ -370,11 +415,11 @@ TODO: add mention of Kmett's "bound" library.
 - `ex_snd :: Tm Z` — the projection `λp. match p with (x, y) → y`
 - `ex_s :: Tm Z` — the S combinator `λf. λg. λx. f x (g x)`
 
-Pay attention to the variable ordering inside `Bind2`. In `MatchPair e (Bind2 body)`, `FZ` refers to the *first* pair component and `FS FZ` to the second — you can verify this against `ex_swap` in `Scratch.hs`. (The reason: `instantiate2 m v1 v2` maps `FZ → v1`, and `eval` calls it with `v1` = first component.)
+Pay attention to the variable ordering inside `Bind2`. In `MatchPair e (Bind2 body)`, `FZ` refers to the *first* pair component and `FS FZ` to the second.
 
 ---
 
-**2. Weakening.** Define a function
+**2. Weakening.** Consider the following function:
 
 ```haskell
 weaken :: Tm n -> Tm (S n)
@@ -396,13 +441,14 @@ Let :: Tm n -> Bind1 n -> Tm n
 `Let e b` binds the value of `e` in the body `b`. You will need to:
 1. Add the constructor to `Tm`
 2. Add a case to `applyE` — what environment do you pass into the binder?
-3. Add a case to `eval` in `Tutorial.Scoped.Eval` — `let x = e in b` is a by-value let, so evaluate `e` first, then instantiate `b`
+3. Add a case to `eval`. We have `let x = e in b` is a by-value let, so evaluate `e` first, then instantiate `b`
 
 Check: is `Let e b` equivalent to `App (Lam b) e`? Do both evaluate the same way?
 
 ---
 
-**4. Renamings.** A *renaming* is an environment that maps variables to variables rather than terms:
+**4. Renamings.** A *renaming* is an environment that maps variables to
+variables rather than terms:
 
 ```haskell
 type Ren m n = Fin m -> Fin n
@@ -410,16 +456,9 @@ type Ren m n = Fin m -> Fin n
 
 Define `applyRen :: Ren m n -> Tm m -> Tm n` by structural recursion, analogous to `applyE`. You will also need `liftRen :: Ren m n -> Ren (S m) (S n)`.
 
-Now observe: every renaming `r :: Ren m n` induces a substitution `Var . r :: Env m n`, and `applyRen r = applyE (Var . r)`. Verify this equality as a QuickCheck property on `Tm Z` for the specific case `r = FS` (i.e., `shift`).
+Now observe: every renaming `r :: Ren m n` induces a substitution `Var . r :: Env m n`, and `applyRen r = applyE (Var . r)`.
 
 The reason proof assistants define `applyRen` separately is that `applyRen` *is* structurally recursive (it produces variables, not terms), so it can be used to define `lift` without the mutual recursion that troubles Agda and Rocq.
 
----
 
-**5. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
 
-- *Identity*: `applyE idE t == t`
-- *Composition*: `applyE f (applyE g t) == applyE (compE f g) t`
-- *Instantiate-shift*: `instantiate1 (Bind1 (weaken t)) u == t` for any `t u :: Tm Z`
-
-For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`, or build simple environments with `(.:)`. Can you find a counterexample to any of these properties if you get the implementation of `lift` wrong?

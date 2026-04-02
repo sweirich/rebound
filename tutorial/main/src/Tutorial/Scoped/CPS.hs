@@ -13,13 +13,14 @@ The translation is defined by the following equations, where @[[e]] k@ means
 [[e1 e2]]                    k = [[e1]] (λx. [[e2]] (λy. x y k))
 [[()]]                       k = k ()
 [[(e1, e2)]]                 k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
-[[inj i e]]                  k = [[e]] (λx. k (inj i x))
-[[case e of () -> b]]      k = [[e]] (λz. case z of () -> [[b]] k)
-[[case e of (x,y) → b]]      k = [[e]] (λz. case z of (x,y) → [[b]] k)
-[[case e of {inj i → b_i}]]  k = [[e]] (λz. case z of {inj i → [[b_i]] k})
+[[inj i e]]                  k = [[e]]  (λx. k (inj i x))
+[[case e of () -> b]]        k = [[e]]  (λz. case z of () -> [[b]] k)
+[[case e of (x,y) → b]]      k = [[e]]  (λz. case z of (x,y) → [[b]] k)
+[[case e of {inj i → b_i}]]  k = [[e]]  (λz. case z of {inj i → [[b_i]] k})
 @
 
-The top-level entry point 'cps' uses the identity continuation @λx. x@.
+The top-level entry point uses the identity continuation @λx. x@. We can also 
+observe what happens when we use a free variable @k@ for the top-level continuation.
 -}
 module Tutorial.Scoped.CPS where
 
@@ -31,20 +32,6 @@ import Tutorial.Scoped.Eval
 import Tutorial.Scoped.ScopeCheck
 
 
-wk :: Env Tm n (S n)
-wk = shift1E 
-
--- | Identity function  "\x.x"
-idTm :: Tm Z
-idTm = Lam (bind1 (LocalName "x") (Var FZ))
-
-isFirstOrder :: Tm n -> Bool
-isFirstOrder (Var x) = True
-isFirstOrder Unit = True
-isFirstOrder (Pair v1 v2) = isFirstOrder v1 && isFirstOrder v2
-isFirstOrder (Inj i v) = isFirstOrder v
-isFirstOrder _ = False
-
 ------------------------------------------------------------------------
 -- * Top-level entry point 
 ------------------------------------------------------------------------
@@ -54,151 +41,21 @@ isFirstOrder _ = False
 cps :: Tm Z -> Tm Z
 cps e = cpsExp idE e idTm
 
+-- | Identity function  "\x.x"
+idTm :: Tm Z
+idTm = Lam (bind1 (LocalName "x") (Var FZ))
+
 -- | Apply the CPS translation to a closed term, using a variable
 -- as the continuation so that the result has one free variable.
 cpsK :: Tm Z -> Tm (S Z)
 cpsK e = cpsExp zeroE e (Var FZ) 
 
 ------------------------------------------------------------------------
--- * Properties
-------------------------------------------------------------------------
-
--- | CPS preserves big-step evaluation
---
--- @eval(e) == eval(cps(e))@
---
--- NB: If the result of eval(e) contains a function, then this is not true
-prop_cps_result :: Property
-prop_cps_result = forAll genTypedFull $ \ e ->
-      let cps_e      = cps e
-          eval_e     = eval e 
-          eval_cps_e = eval (cps_e)
-       in
-         counterexample ("e          = " ++ pp e)          $
-         counterexample ("cps_e      = " ++ pp cps_e)      $
-         eval_e == eval_cps_e
-
--- | CPS preserves big-step evaluation for *firstorder* values
---
--- If @v = eval(e)@ and v is firstorder then @v == eval(cps(e))@ 
--- 
-prop_cps_result_firstorder :: Property
-prop_cps_result_firstorder = forAll genTypedFull $ \e ->
-    let
-       cps_e = cps e
-       eval_e = case eval e of
-                 Nothing -> discard
-                 Just v -> if isFirstOrder v then v else discard 
-       eval_cps_e = case eval cps_e of
-                    Nothing -> discard
-                    Just v -> v 
-    in
-      counterexample ("e          = " ++ pp e)          $
-      counterexample ("eval_e     = " ++ pp eval_e)     $
-      counterexample ("cps_e      = " ++ pp cps_e)      $
-      counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
-      eval_e == eval_cps_e
-
-
-------------------------------------------------------------------------------
--- 
--- 
--- big-step simulation:
---           e  =>  v 
---           |      |
---        cps e => cps v
---
---   we can write this property succinctly as:
---      eval (cps e) = cps (eval e) 
---
--- NB: this is not true because the cps conversion of a value is not 
--- a value
-prop_cps_eval_simulates :: Property
-prop_cps_eval_simulates = forAll genTypedFull $ \e ->
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("cps_e      = " ++ pp (cps e))    $
-       eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
-
--- alternative: if we use a "fresh variable" instead of the id function
--- this property is true for pure lambda calculus terms. 
--- (But note that it fails for the full language.)
-prop_cps_eval_simulates_open :: Property
-prop_cps_eval_simulates_open = forAll genTypedPureLC $ \e ->
-   let 
-      pp' = ppWith ("k" ::: VNil)
-      cps_e = cpsK e 
-      eval_e = case reduce e of
-                 Nothing -> discard -- should be impossible for well-typed terms
-                 Just v -> v 
-      cps_eval_e = cpsK eval_e 
-      eval_cps_e = case reduce cps_e of
-                    Nothing -> discard
-                    Just v -> v
-    in
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("eval_e     = " ++ pp eval_e)     $
-       counterexample ("cps_e      = " ++ pp' cps_e)      $
-       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
-       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
-       eval_cps_e == cps_eval_e
-
-
-
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cps e -> cps e'
---                   
--- NB: not true     
-prop_cps_step :: Tm Z -> Property
-prop_cps_step e =
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp cps_e) $
-     counterexample ("cps_e' = " ++ pp cps_e') $
-     cps_e == cps_e'
-  where
-     cps_e = cps e
-     e' = case step e of
-            Left _ -> discard -- if e does not step, ignore this test
-            Right v -> v
-     cps_e' = cps e'
-
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cps e ->* cps e'
---      
--- NB: not true, not even for PureLC                  
-prop_cps_steps :: Tm Z -> Property
-prop_cps_steps e =
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp' cps_e) $
-     counterexample ("cps_e' = " ++ pp' cps_e') $
-     step_star vv cps_e cps_e'
-  where
-     e' = case step e of
-            Left _ -> discard -- if e does not step, ignore this test
-            Right v -> v
-     cps_e  = cpsK e
-     cps_e' = cpsK e'
-     vv  = ("k" ::: VNil)
-     pp' = ppWith ("k" ::: VNil)
-
-     
--- | does e ->* e' hold?     
-step_star :: Vec n String -> Tm n -> Tm n -> Property
-step_star vv e e' = 
-    counterexample ("steps to  => " ++ ppWith vv e) $
-    e == e' .||. case step e of 
-                    Left _ -> property False  -- e should not get stuck
-                    Right e1 -> step_star vv e1 e'
-
-
-------------------------------------------------------------------------
 -- * CBV CPS translation 
 ------------------------------------------------------------------------
+
+wk :: Env Tm n (S n)
+wk = shift1E 
 
 cpsExp :: forall n m. Env Tm n m -> Tm n -> Tm m -> Tm m
 cpsExp r (Var x) k = App k (applyEnv r x)
@@ -252,15 +109,190 @@ cpsExp r (MatchSum e0 e1 e2) k =
                   (cpsExp (up (skip r)) (getBody e2) k'')))))
     where k'' = applyE (wk .>> wk) k
 
-
-
 ------------------------------------------------------------------------
--- * Object and Meta continuations
+-- * Properties
 ------------------------------------------------------------------------
 
--- | A continuation in scope @n@.  Two representations are maintained to
--- control whether a lambda is emitted in the output term:
+-- | CPS preserves big-step evaluation
 --
+-- @eval(e) == eval(cps(e))@
+--      
+--  i.e.       e =>  v     <->   [[e]]_id => v
+--         
+-- 
+-- NB: this is not true, what is a counter example?
+prop_cps_result :: Property
+prop_cps_result = forAll genTypedFull $ \ e ->
+      let cps_e      = cps e
+          eval_e     = eval e 
+          eval_cps_e = eval (cps_e)
+       in
+         counterexample ("e          = " ++ pp e)          $
+         counterexample ("cps_e      = " ++ pp cps_e)      $
+         eval_e == eval_cps_e
+
+-- | CPS preserves big-step evaluation for *firstorder* values
+--
+-- If @v = eval(e)@ and v is firstorder then @v == eval(cps(e))@ 
+-- 
+prop_cps_result_firstorder :: Property
+prop_cps_result_firstorder = forAll genTypedFull $ \e ->
+    let
+       cps_e = cps e
+       eval_e = case eval e of
+                 Nothing -> discard
+                 Just v -> if isFirstOrder v then v else discard 
+       eval_cps_e = case eval cps_e of
+                    Nothing -> discard
+                    Just v -> v 
+    in
+      counterexample ("e          = " ++ pp e)          $
+      counterexample ("eval_e     = " ++ pp eval_e)     $
+      counterexample ("cps_e      = " ++ pp cps_e)      $
+      counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+      eval_e == eval_cps_e
+
+-- | a first-order value does not contain any functions
+isFirstOrder :: Tm n -> Bool
+isFirstOrder (Var x) = True
+isFirstOrder Unit = True
+isFirstOrder (Pair v1 v2) = isFirstOrder v1 && isFirstOrder v2
+isFirstOrder (Inj i v) = isFirstOrder v
+isFirstOrder _ = False
+
+
+
+------------------------------------------------------------------------------
+-- Can we do better for results that include functions? Here is another 
+-- property that cps converts the value
+-- 
+--           e  =>  v 
+--           |      |
+--        cps e => cps v
+--
+--   we can write this property succinctly as:
+--      eval (cps e) = cps (eval e) 
+--
+-- NB: this is not true because the cps conversion of a value is not 
+-- a value, it is id applied to the translated value
+prop_cps_eval_cps :: Property
+prop_cps_eval_cps = forAll genTypedFull $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
+
+-- alternative: we use a "fresh variable" instead of the id function
+-- this property is true for pure lambda calculus terms. But we need to 
+-- use reduction instead of evaluation. 
+-- NB: this fails for terms that use pattern matching
+prop_cps_reduce_cps :: Property
+prop_cps_reduce_cps = forAll genTypedFull $ \e ->
+   let 
+      cps_e = cpsK e 
+      eval_e = case reduce e of
+                 Nothing -> discard -- should be impossible for well-typed terms
+                 Just v -> v 
+      cps_eval_e = cpsK eval_e 
+      eval_cps_e = case reduce cps_e of
+                    Nothing -> discard
+                    Just v -> v
+      pp' = ppWith ("k" ::: VNil) -- name for index zero
+    in
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("eval_e     = " ++ pp eval_e)     $
+       counterexample ("cps_e      = " ++ pp' cps_e)      $
+       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
+       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
+       eval_cps_e == cps_eval_e
+
+-- OK: let's just test the property for pure lambda calculus terms
+prop_cps_reduce_cps_pure :: Property
+prop_cps_reduce_cps_pure = forAll genTypedPureLC $ \e ->
+   let 
+      cps_e = cpsK e 
+      eval_e = case reduce e of
+                 Nothing -> discard -- should be impossible for well-typed terms
+                 Just v -> v 
+      cps_eval_e = cpsK eval_e 
+      eval_cps_e = case reduce cps_e of
+                    Nothing -> discard
+                    Just v -> v
+      pp' = ppWith ("k" ::: VNil)
+    in
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("eval_e     = " ++ pp eval_e)     $
+       counterexample ("cps_e      = " ++ pp' cps_e)      $
+       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
+       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
+       eval_cps_e == cps_eval_e
+
+------------------------------------------------------------------------------
+-- what about small-step evaluation?
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cps e -> cps e'
+--                   
+-- NB: not true, due to administrative redexes     
+prop_cps_step :: Tm Z -> Property
+prop_cps_step e =
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     cps_e == cps_e'
+  where
+     cps_e = cps e
+     e' = case step e of
+            Left _ -> discard -- if e does not step, ignore this test
+            Right v -> v
+     cps_e' = cps e'
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cps e ->* cps e'
+--      
+-- NB: not true, not even for PureLC                  
+prop_cps_steps :: Tm Z -> Property
+prop_cps_steps e =
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp' cps_e) $
+     counterexample ("cps_e' = " ++ pp' cps_e') $
+     step_star vv cps_e cps_e'
+  where
+     e' = case step e of
+            Left _ -> discard -- if e does not step, ignore this test
+            Right v -> v
+     cps_e  = cpsK e
+     cps_e' = cpsK e'
+     vv  = ("k" ::: VNil)
+     pp' = ppWith ("k" ::: VNil)
+
+     
+-- | does e ->* e' hold?     
+step_star :: Vec n String -> Tm n -> Tm n -> Property
+step_star vv e e' = 
+    counterexample ("steps to  => " ++ ppWith vv e) $
+    e == e' .||. case step e of 
+                    Left _ -> property False  -- e should not get stuck
+                    Right e1 -> step_star vv e1 e'
+
+
+
+
+------------------------------------------------------------------------
+-- * Optimized CPS translation
+------------------------------------------------------------------------
+
+-- We can define a better translation that does not introduce "administrative" 
+-- reductions into the output. To do so, we need to generalize the continuation
+-- argument to the translation.
+
+-- | A "continuation" in scope @n@
+--  
 -- * 'Obj' holds an existing object-level term; applying it emits @App@.
 -- * 'Meta' holds a Haskell-level binder; applying it substitutes directly,
 --   avoiding an administrative reduction in the output.
@@ -272,11 +304,8 @@ data Cont (n :: Nat) where
     deriving (Generic1)
 
 -- | Apply a continuation to a value.
---
--- * @applyCont (Obj  f) v = App f v@          - create an application
--- * @applyCont (Meta k) v = instantiate1 k v@ — direct substitution
 applyCont :: Cont g -> Tm g -> Tm g
-applyCont (Obj o)  v  = App o v
+applyCont (Obj o)  v  = App o v  
 applyCont (Meta k) v  = instantiate1 k v
 
 -- | Convert a continuation to an object-level term, introducing a lambda
@@ -291,16 +320,17 @@ reifyCont (Meta k) = Lam k
 instance Subst Tm Cont where
 
 ------------------------------------------------------------------------
--- * CPS translation (One-pass meta/obj continuations)
+-- * Optimized CPS translation (One-pass meta/obj continuations)
 ------------------------------------------------------------------------
-
--- This translation avoids creating (some) administrative reductions
    
+-- | entry point with identity function
+cpsOpt :: Tm Z -> Tm Z
+cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
+
+-- | entry point with free variable "k"
 cpsOptK :: Tm Z -> Tm (S Z)
 cpsOptK e = cpsExpOpt zeroE e (Obj (Var FZ))
 
-cpsOpt :: Tm Z -> Tm Z
-cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
 
 cpsExpOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
 cpsExpOpt r (Var x) k = applyCont k (applyEnv r x)
@@ -354,7 +384,10 @@ cpsExpOpt r (MatchSum e0 e1 e2) k =
                   (cpsExpOpt (up (skip r)) (getBody e2) k'')))))
     where k'' = applyE (wk .>> wk) k
     
-
+------------------------------------------------------------------------
+-- * Properties of Optimized CPS translation
+------------------------------------------------------------------------
+  
 -- | __Correctness__: CPS opt preserves big-step evaluation
 --
 -- @eval(e) == eval(cps(e))@ for firstorder values

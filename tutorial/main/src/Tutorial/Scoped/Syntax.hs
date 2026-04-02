@@ -10,14 +10,12 @@ pretty-printing hints stored in 'LocalName' values.
 -}
 module Tutorial.Scoped.Syntax(
     Ty(..), Tm(..), 
-    tmSize, maxScope, height,
+    -- tmSize, maxScope, height,
     module Rebound, 
-    module Data.LocalName, 
     module Rebound.Bind.Local) where
 
 import Rebound hiding (Ctx)
 import Rebound.Bind.Local
-import Data.LocalName
 
 -- | Types of the simply-typed lambda calculus
 data Ty
@@ -32,10 +30,8 @@ data Ty
   deriving (Eq, Show)
 
 
--- | Terms of the simply-typed lambda calculus, parameterised by the number of
--- free variables @n@ in scope.  Variable occurrences are de Bruijn indices
--- ('Fin n'); binders use 'Bind1' (one new variable) or 'Bind2' (two new
--- variables).
+-- | Terms of the simply-typed lambda calculus, indexed by the number of
+-- free variables @n@ in scope.  
 data Tm (n :: Nat) where
     -- | Variable occurrence — a de Bruijn index into scope @n@
     Var   :: Fin n -> Tm n
@@ -68,7 +64,7 @@ instance Subst Tm Tm where
   isVar (Var x) = Just (Refl, x)
   isVar _ = Nothing
 
- 
+{-
 tmSize :: Tm n -> Int
 tmSize (Var x)            = 1
 tmSize (Lam b)            = 1 + tmSize (getBody1 b)
@@ -103,3 +99,4 @@ height (App e1 e2)        = 1 + max (height e1) (height e2)
 height (MatchUnit e1 e2)  = 1 + max (height e1) (height e2)
 height (MatchPair e b)    = 1 + max (height e) (height (getBody2 b))
 height (MatchSum e b1 b2) = 1 + maximum [height e, height (getBody1 b1), height (getBody1 b2)]
+-}

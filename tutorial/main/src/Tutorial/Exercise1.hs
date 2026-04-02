@@ -170,6 +170,10 @@ prop_idE t = applyE idE t == t
 prop_idE_open :: Tm1 -> Bool
 prop_idE_open (Tm1 t) = applyE idE t == t
 
+
+compE :: Env m n -> Env l m -> Env l n
+compE f g x = applyE f (g x)
+
 -- | Composition law: applying f after g equals applying compE f g directly.
 --
 -- We test with a concrete environment g that closes the one free variable.
