@@ -7,6 +7,7 @@
 module Rebound.Bind.Local
   ( module Rebound,
     module Data.Vec,
+    module Data.LocalName,
 
     -- * Single binder --
     type Bind,
@@ -61,12 +62,14 @@ module Rebound.Bind.Local
   )
 where
 
-import Rebound
-import Rebound.Bind.Pat qualified as Pat
-import Rebound.Env qualified as Env
 import Data.Fin qualified as Fin
 import Data.Vec qualified as Vec
 import Data.Vec (Vec(..))
+import Data.LocalName
+import Rebound
+import Rebound.Bind.Pat qualified as Pat
+import Rebound.Env qualified as Env
+
 
 
 -- * -- Single Binder
