@@ -46,7 +46,7 @@ library
     common-stanza
   build-depends:
       base >= 4.15 && < 5.0
-    , rebound >= 0.1
+    , rebound >= 0.1.2
     , mtl
     , HUnit
     , QuickCheck >= 2.14.3 && < 2.15
