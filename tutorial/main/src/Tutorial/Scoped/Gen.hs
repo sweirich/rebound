@@ -69,6 +69,52 @@ shrinkTy = shrink
 
 
 ---------------------------------------------------------------------
+-- * Simple version: well-scoped, pure lambda calculus terms
+---------------------------------------------------------------------
+
+
+-- | Generate an arbitrary name for a variable
+-- These are only for printing, so ok if we reuse the same name in a scope
+genLocalName :: Gen LocalName
+genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
+
+-- | Identity function, the smallest closed term
+tmId :: Tm n
+tmId = Lam (bind1 (LocalName "x") (Var FZ))
+
+
+-- | Generate a well-scoped term of language 'l' in scope 'n' of size 'sz'
+-- 
+-- >>> fmap height <$> QC.sample' (genScopedPureLC :: Gen (Tm Z))
+-- [2,2,2,4,2,3,2,3,6,2,8]
+
+-- >>> fmap tmSize <$> QC.sample' (genScopedPureLC :: Gen (Tm Z))
+-- [2,5,2,2,5,9,2,2,5,17,2]
+
+
+genScopedPureLC :: forall n. SNatI n => QC.Gen (Tm n)
+genScopedPureLC = QC.sized (go snat)
+    where
+        go :: forall n. SNat n -> Int -> QC.Gen (Tm n)
+        go n sz | sz <= 1 = genBase n
+        go n sz = 
+            let
+              -- binders generate a random name and increment the number of free variables
+              gen1 = bind1 @Tm <$> genLocalName <*> go (next n) (sz - 1)
+
+              -- recursive calls for App divide size by two
+              gen  = go n (sz `div` 2)
+            in 
+              QC.oneof [genBase n, Lam <$> gen1, App <$> gen <*> gen ]
+            
+
+        -- base case: either a variable or "\x.x" depending on scope
+        genBase :: forall n. SNat n -> Gen (Tm n) 
+        genBase SZ = return tmId
+        genBase SS = Var <$> QC.elements Fin.universe
+
+
+---------------------------------------------------------------------
 -- * Entry point for term generators
 ---------------------------------------------------------------------
 
@@ -81,12 +127,28 @@ shrinkTy = shrink
 data Constraint = Scoped | Typed
 data Language = PureLC | Full
 
+-- | generate a term with 'n' free variables 
 genTm :: SNatI n => Constraint -> Language -> Gen (Tm n)
 genTm Scoped l = QC.sized (genScopedTm l snat)
 genTm Typed  l = do
     ctx <- genCtx snat
     ty  <- arbitrary
     QC.sized (genTypedTm l snat ctx ty)
+
+-- | shrink a term with 'n' free variables
+shrinkTm :: SNatI n => Constraint -> Tm n -> [Tm n]
+shrinkTm Scoped = shrinkScoped
+shrinkTm Typed  = shrinkTyped
+
+genVec :: forall n. SNatI n => Gen (Vec n LocalName)
+genVec = gen snat where
+    gen :: forall n. SNat n -> Gen (Vec n LocalName)
+    gen SZ = return VNil
+    gen SS = do
+        v <- arbitrary
+        vs <- gen snat
+        return (v ::: vs)
+
 
 instance SNatI n => QC.Arbitrary (Tm n) where
   arbitrary :: SNatI n => QC.Gen (Tm n)
@@ -95,27 +157,10 @@ instance SNatI n => QC.Arbitrary (Tm n) where
   shrink :: SNatI n => Tm n -> [Tm n]
   shrink = shrinkTyped
 
+
 ---------------------------------------------------------------------
 -- * Well-scoped generators 
 ---------------------------------------------------------------------
-
--- | Generate an arbitrary name for a variable
--- These are only for printing, so ok if we reuse the same name in a scope
-genLocalName :: QC.Gen LocalName
-genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
-
--- | Identity function, the smallest closed term
-tmId :: Tm n
-tmId = Lam (bind1 (LocalName "x") (Var FZ))
-
-
--- | Generate a well-scoped term of language 'l' in scope 'n' of size 'sz'
--- 
--- >>> fmap height <$> QC.sample' (genFull :: Gen (Tm Z))
--- [2,2,3,2,4,2,4,2,2,2,4]
-
--- >>> fmap tmSize <$> QC.sample' (genFull :: Gen (Tm Z))
--- [2,2,2,3,11,17,15,2,14,5,3]
 
 
 genScopedTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)

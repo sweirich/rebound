@@ -13,17 +13,21 @@
 ## Overview and Goals
 
 In Lecture 1 we represented terms using de Bruijn indices and implemented an
-evaluator. 
+evaluator. We also saw that we could use `rebound` to implement substitution 
+and alpha-conversion automatically for our well-scoped syntax.
 
 How do we know that our evaluator is correct? We use property-based testing,
 of course.
 
 However, to using Haskell's Quickcheck library we need to generate
-well-scoped terms. If QC finds a bug, we want to convert the term to a named
-representation for printing. We will also want to use this named representation for
-parsing: users do not want to write their code using de Bruijn indices —
-instead we should let them use good-old-fashioned variable names and verify
-that those names are in scope.
+well-scoped terms. Furthermore, if QC finds a bug, we want to see it in 
+the most convenient form: with indices replaced by variable names and converted
+to a concise concrete syntax.
+
+We also want to use this named representation for parsing: users do not want
+to write their code using abstract syntax and de Bruijn indices — instead we
+should let them use good-old-fashioned variable names and verify that those
+names are in scope.
 
 So that means that there are two sources of *well-scoped* terms that we want to 
 consider:
@@ -119,7 +123,14 @@ t2 = S.Lam (S.bind (S.LocalName "y") (S.Var FZ))
 
 ### The `Bind1` interface
 
-`Bind1 Tm Tm n` is an abstract type; the library provides smart
+`Bind1 Tm Tm n` is an abstract type defined in `Rebound.Bind.Local`, re-exported
+by `Tutorial.Scoped.Syntax`. It is a specific instance of *pattern binding*:
+the pattern is a single local name, stored alongside the body. The abstract
+type enforces that you access the body only through the provided smart
+constructors and accessors, never by pattern-matching on the internal
+representation directly.
+
+`Bind1 Tm Tm n` is also the abstract type; the library provides smart
 constructors and accessors instead of exposing the data constructor:
 
 | Function | Type | Description |
@@ -134,31 +145,118 @@ The `Bind2` interface is analogous, with `getLocalName2 :: Bind2 Tm Tm n -> Vec 
 returning a length-2 vector of names.
 
 
-
-
-
-
-
-### The `Arbitrary LocalName` instance
-
-QuickCheck generates random names from a small pool:
-
-```haskell
-genLocalName :: QC.Gen LocalName
-genLocalName = LocalName <$> QC.elements ["x", "y", "z", "w", "v", "u", "t", "s"]
-```
-
-This intentionally produces name collisions (e.g. `"x"` can be generated
-multiple times in one term), which is why `injectTm` must be able to
-freshen names before extending the context.
-
 ---
 
-## 5. Generating Arbitrary Well-Scoped Terms
+## 3. Quick check properties 
 
-The `Arbitrary (Tm n)` instance for the scoped representation does not go
-through parsing: it generates de Bruijn terms directly, using a *scope*
-parameter to know which variables are available.
+We can connect parsing and generation — via a chain of
+transformations:
+
+```
+
+        inject            scope-check
+Tm Z    ────────►  N.Tm   ──────────►  Either ScopeCheckError (Tm Z)
+
+
+         inject            pretty-print          parse             scope-check
+Tm Z    ────────►  N.Tm   ──────────►  String  ──────────► Either ParseError N.Tm  ──────────►  Either ScopeCheckError (Tm Z)
+```
+
+Two QuickCheck properties verify that our transformations are correct
+
+```haskell
+-- inject then project recovers the original term
+prop_project_round_trip :: S.Tm Z -> Bool
+prop_project_round_trip i =
+    projectTm (injectTm i) == Right i
+
+-- pretty-print then parse recovers the named term
+prop_parse_round_trip :: S.Tm Z -> Bool
+prop_parse_round_trip i =
+    N.parseTm (show (N.test (injectTm i))) == Right (injectTm i)
+```
+
+However, to run QuickCheck properties we need a way to generate random `S.Tm Z`
+values!  QuickCheck provides two central abstractions for property-based testing:
+
+- **`Gen a`** — a probability distribution over values of type `a`.
+  Combinators like `QC.sized`, `QC.oneof`, and `QC.elements`, and the 
+  monad operations build generators compositionally.
+
+- **`Arbitrary a`** — a typeclass that packages a default generator
+  (`arbitrary :: Gen a`) and a shrinker (`shrink :: a -> [a]`):
+
+  ```haskell
+  class Arbitrary a where
+      arbitrary :: Gen a
+      shrink    :: a -> [a]
+      shrink _  = []   -- default: no shrinking
+  ```
+
+  QuickCheck uses `arbitrary` to generate test inputs and `shrink` to
+  reduce a failing case to a smaller one. 
+
+
+The goal of this section is to implement  `Gen (S.Tm n)` — a generator
+that only ever produces well-scoped de Bruijn terms, so that every
+randomly generated term is a legitimate input to our properties.
+
+The key idea is to carry the *scope* — the number of variables currently
+in scope — as a runtime parameter for the generator.  When the generator recurses under a
+binder it increments the scope, making the newly bound variable available.
+
+### A well-scoped generator for pure lambda calculus terms
+
+The simplest well-scoped generator targets only pure lambda calculus terms
+(`Lam`, `App`, `Var`).  It is a good warm-up before tackling the full language.
+
+```haskell
+genScopedPureLC :: forall n. SNatI n => QC.Gen (Tm n)
+genScopedPureLC = QC.sized (go snat)
+  where
+    go :: forall n. SNat n -> Int -> QC.Gen (Tm n)
+    go n sz | sz <= 1 = genBase n
+    go n sz =
+        let
+          gen1 = bind1 @Tm <$> genLocalName <*> go (next n) (sz - 1)
+          gen  = go n (sz `div` 2)
+        in
+          QC.oneof [genBase n, Lam <$> gen1, App <$> gen <*> gen]
+
+    genBase :: forall n. SNat n -> Gen (Tm n)
+    genBase SZ = return tmId
+    genBase SS = Var <$> QC.elements Fin.universe
+```
+
+The generator is parameterized by the number of free variables in scope `n ::
+Nat`, which is a *type*-level natural number.  To use it at runtime we need a
+*singleton* — the `SNatI n` constraint (explained below) provides one.
+
+`QC.sized` passes the current size budget to the inner function `go`.  The
+`snat` call converts the `SNatI n` constraint into an explicit `SNat n` value
+that `go` can inspect and pass to recursive calls.
+
+The local helper `go :: SNat n -> Int -> QC.Gen (Tm n)` carries both the
+scope witness and the size budget:
+
+- **Base case** (`sz <= 1`): delegate to `genBase`, which either returns
+  `tmId` (the identity function `λx.x`, the smallest closed term) when the
+  scope is empty (`SZ`), or picks a random variable from the scope (`SS`).
+  Falling back to `tmId` rather than failing ensures the generator always
+  produces a *closed* term when `n = Z`.
+
+- **Recursive case**: three choices via `QC.oneof`:
+  - `genBase n` — a variable or `tmId` (same as base, but available at any size)
+  - `Lam <$> gen1` — wrap a binder; `gen1` generates the body in scope `S n`
+    by calling `go (next n) (sz - 1)`.  The budget decreases by 1 (not halved)
+    because a lambda chain `λx.λy.λz.…` is a linear sequence, not a tree.
+  - `App <$> gen <*> gen` — apply two sub-terms, each in the *same* scope `n`
+    but with budget `sz `div` 2` so that both branches together stay within budget.
+
+- **Binders increment the scope**: `gen1` calls `go (next n) …`, where `next ::
+  SNat n -> SNat (S n)` adds one to the runtime scope witness.  Inside the
+  body of a `Lam`, the new variable `FZ` is automatically available because
+  `Fin.universe` for `S n` includes `FZ`.
 
 ### The `SNatI` typeclass
 
@@ -195,98 +293,97 @@ Fin.universe :: SNatI n => [Fin n]
 For `n = S (S (S Z))` this gives `[FZ, FS FZ, FS (FS FZ)]` — all three
 variables in scope.
 
-### The generator
+Binders need names for pretty-printing.  QuickCheck draws them from a small pool:
 
 ```haskell
-genTm :: forall n. SNat n -> Int -> QC.Gen (Tm n)
-genTm n sz =
-    let sz' = sz `div` 2
-        gens = [ Lam <$> (bind1 <$> arbitrary <*> genTm (next n) sz')
-               , App <$> genTm n sz' <*> genTm n sz'
-               , pure Unit
-               , MatchUnit <$> genTm n sz' <*> genTm n sz'
-               , Pair <$> genTm n sz' <*> genTm n sz'
-               , MatchPair <$> genTm n sz'
-                           <*> (bind2 <$> arbitrary <*> arbitrary
-                                      <*> genTm (next (next n)) sz')
-               , Inj <$> QC.elements [0,1] <*> genTm n sz'
-               , MatchSum <$> genTm n sz'
-                          <*> (bind1 <$> arbitrary <*> genTm (next n) sz')
-                          <*> (bind1 <$> arbitrary <*> genTm (next n) sz')
-               ]
-    in
-    case snat_ n of
-        SZ_ ->    -- closed scope: no variables available
-            if sz <= 1 then pure Unit
-                       else QC.oneof gens
-        SS_ x ->  -- open scope: can generate a variable
-            let genVar = withSNat x $ QC.elements (map Var Fin.universe)
-            in  if sz <= 1 then QC.oneof [genVar, pure Unit]
-                           else QC.oneof (genVar : gens)
+genLocalName :: QC.Gen LocalName
+genLocalName = LocalName <$> QC.elements ["x", "y", "z", "w", "v", "u", "t", "s"]
+```
+
+This intentionally produces name collisions (e.g. `"x"` can appear in
+nested binders), which is why `injectTm` must freshen names when the same
+name is already in scope.  Correctness is unaffected because
+`LocalName` equality ignores the stored string.
+
+### Two dimensions of generation
+
+The generator is parameterized over two orthogonal dimensions:
+
+```haskell
+data Constraint = Scoped | Typed
+data Language   = PureLC | Full
+```
+
+- **`Scoped`** — generate any well-scoped term; types are ignored.
+- **`Typed`** — generate a well-typed term by first picking a random type and context, then generating a term of that type.
+- **`PureLC`** — only use `Lam`, `App`, and `Var` (the pure lambda calculus).
+- **`Full`** — also include `Unit`, `Pair`, `MatchPair`, `Inj`, `MatchUnit`, and `MatchSum`.
+
+The top-level entry point dispatches accordingly:
+
+```haskell
+genTm :: SNatI n => Constraint -> Language -> Gen (Tm n)
+genTm Scoped l = QC.sized (genScopedTm l snat)
+genTm Typed  l = do
+    ctx <- genCtx snat
+    ty  <- arbitrary
+    QC.sized (genTypedTm l snat ctx ty)
+```
+
+
+### Extending to the full language
+
+`genScopedTm` generates any structurally well-formed term without caring about types.  It takes a `Language` flag, a scope `SNat n`, and a size bound:
+
+```haskell
+genScopedTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
+genScopedTm l n sz =
+    let
+        gen  = genScopedTm l n (sz `div` 2)
+        gen1 = bind1 @Tm <$> genLocalName <*> genScopedTm l (next n) (sz `div` 2)
+        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName
+                         <*> genScopedTm l (next (next n)) (sz `div` 2)
+
+        gens = case l of
+          PureLC ->
+              [ Lam <$> gen1
+              , App <$> gen <*> gen
+              ]
+          Full ->
+              [ Lam <$> gen1
+              , App <$> gen <*> gen
+              , MatchUnit <$> gen <*> gen
+              , Pair      <$> gen <*> gen
+              , MatchPair <$> gen <*> gen2
+              , Inj       <$> QC.elements [0,1] <*> gen
+              , MatchSum  <$> gen <*> gen1 <*> gen1
+              ]
+
+        genVar :: forall n. SNat n -> Gen (Tm n) -> Gen (Tm n)
+        genVar SZ def = def
+        genVar SS def = Var <$> QC.elements Fin.universe
+
+        base = case l of
+            PureLC -> genVar n (return tmId)
+            Full   -> genVar n (return Unit)
+
+    in if sz <= 1
+        then base
+        else QC.oneof (base : gens)
 ```
 
 Key observations:
 
-- **Binders increase the scope**: generating a `Lam` body uses `genTm (next n) sz'`, which runs in scope `S n`.  The fresh variable `FZ` is automatically in scope inside.
+- **Binders increase the scope**: generating a `Lam` body uses `gen1`, which calls `genScopedTm l (next n) sz'`, running in scope `S n`.  The fresh variable `FZ` is automatically in scope inside.
 
-- **Two binders**: `MatchPair` uses `next (next n)` for its body, binding two variables at once.
+- **Two binders**: `gen2` uses `next (next n)` for `MatchPair`'s body, binding two variables at once.
 
-- **Variables use `Fin.universe`**: once we have the `SNatI n` witness (via `withSNat x`), `Fin.universe` gives all valid indices.  We wrap each one in `Var` and pick uniformly.
+- **Variables use `Fin.universe`**: `genVar` picks uniformly among all variables in scope.  In a closed scope (`SZ`) there are none, so the base case falls back to `Unit` (or `tmId` for pure LC).
 
-- **Base case**: when `sz <= 1` we only generate a variable (if available) or `Unit`, preventing infinite recursion.
+- **Base case**: when `sz <= 1` we only generate a variable or the base term, preventing infinite recursion.
 
-- **Names are generated independently**: `arbitrary :: Gen LocalName` generates a random name for each binder, with no freshness guarantee.  That is fine — `LocalName` equality ignores names, so correctness is unaffected.
+- **Names are generated independently**: `genLocalName` draws from a small pool with no freshness guarantee.  That is fine — `LocalName` equality ignores names, so correctness is unaffected.
 
-### The `Arbitrary` instance
-
-```haskell
-instance SNatI n => QC.Arbitrary (Tm n) where
-    arbitrary = QC.sized (genTm snat)
-    shrink    = shrinkTm
-```
-
-`QC.sized` passes a size parameter controlled by QuickCheck's test runner.
-`snat :: SNat n` is the scope witness retrieved from the `SNatI n` instance.
-For generating *closed* terms we use `n = Z`, so the instance becomes
-`Arbitrary (Tm Z)`.
-
-### Shrinking
-
-`shrinkTm` produces smaller terms by:
-
-- For `Var FZ`: no smaller variable, return `[]`.
-- For `Var (FS x)`: return `[Var (pred x)]` — a variable with a smaller index.
-- For `Lam b`: shrink the body, wrapping back in `Lam` with the same name.
-- For `App`, `Pair`, etc.: return each sub-term alone, then all pairwise shrinks.
-- For `MatchPair`: return the scrutinee, all scrutinee shrinks, and all body shrinks.
-
-Crucially, shrinking preserves the scope: a shrunken `Tm n` is still a `Tm n`.
-
----
-
-## 6. Demo: The Round Trip
-
-We can connect both sources — parsing and generation — via a chain of
-transformations:
-
-```
-generate           inject              pretty-print         parse              scope-check
-Tm Z    ────────►  N.Tm   ──────────►  String  ──────────►  N.Tm  ──────────►  Either ScopeCheckError (Tm Z)
-```
-
-Two QuickCheck properties verify this:
-
-```haskell
--- inject then project recovers the original term
-prop_project_round_trip :: S.Tm Z -> Bool
-prop_project_round_trip i =
-    projectTm (injectTm i) == Right i
-
--- pretty-print then parse recovers the named term
-prop_parse_round_trip :: S.Tm Z -> Bool
-prop_parse_round_trip i =
-    N.parseTm (show (N.test (injectTm i))) == Right (injectTm i)
-```
 
 Running these:
 
@@ -318,7 +415,189 @@ scope-checking the named term recovers exactly the original de Bruijn term.
 
 ---
 
+## 4. Testing the evaluator 
+
+All properties in this section use `arbitrary :: Gen (Tm Z)`, which by
+default generates well-typed closed terms (see Section 6).  This means
+QuickCheck will never generate a stuck term, and `eval` is guaranteed to
+return a value on every test input.
+
+### Big-step properties
+
+The most basic property is that every well-typed term evaluates to a value:
+
+```haskell
+prop_evalVal :: Property
+prop_evalVal = forAll (arbitrary :: Gen (Tm Z)) $ \t ->
+    case eval t of
+        Just v  -> property (isVal v)
+        Nothing -> property False     -- well-typed terms must not get stuck
+```
+
+The multi-step (`reduce`) function is a call-by-value big-step evaluator that
+also works on open terms.  For closed, well-typed terms it should agree with
+`eval`:
+
+```haskell
+prop_eval_reduce :: Property
+prop_eval_reduce = forAll (arbitrary :: Gen (Tm Z)) $ \t ->
+    case eval t of
+        Just v  -> reduce t == Just v
+        Nothing -> discard
+```
+
+We also test that `reduce` produces an *inert* term (one that cannot step
+further).  This property is checked at both the closed scope `Z` and the
+open scope `S Z` (one free variable):
+
+```haskell
+prop_reduce_inert :: forall n. SNatI n => Property
+prop_reduce_inert = forAll (arbitrary :: Gen (Tm n)) $ \t ->
+    case reduce t of
+        Just v  -> property (isInert v)
+        Nothing -> discard
+```
+
+### Small-step properties
+
+The small-step function `step` either returns a reduct or `Nothing` (the term
+is already a value).  Two properties connect it to `eval` and `reduce`:
+
+```haskell
+-- for well-typed closed terms, step always reaches a value
+prop_stepVal :: Property
+prop_stepVal = forAll (arbitrary :: Gen (Tm Z)) $
+    let loop e =
+          if isVal e then property True
+          else case step e of
+                 Nothing -> counterexample ("stuck at: " ++ pp e) (property False)
+                 Just e' -> loop e'
+    in loop
+
+-- stepping preserves the final evaluation result
+prop_evalStep :: Property
+prop_evalStep = forAll (arbitrary :: Gen (Tm Z)) $ \e ->
+    case step e of
+        Nothing -> property (isVal e)
+        Just e' -> eval e == eval e'
+```
+
+## 5. A well-typed generator?
+
+The well-scoped generator (`genScopedTm`) produces any structurally valid
+term — but "well-scoped" does not mean "well-typed".  In an untyped
+setting, terms like the ω combinator
+
+```haskell
+-- (λx. x x) (λx. x x)
+omega :: Tm Z
+omega = let self = Lam (bind1 (LocalName "x") (App (Var FZ) (Var FZ)))
+        in App self self
+```
+
+are perfectly well-scoped and will be generated regularly.  Running
+`eval omega` diverges: the evaluator loops forever.
+
+This means properties tested with `genScopedTm` can hang rather than
+fail, making it nearly impossible to get useful QuickCheck output.  The
+solution is to restrict generation to *well-typed* terms.  In the
+simply-typed lambda calculus every term is strongly normalizing, so
+`eval` is guaranteed to terminate on every well-typed input.
+
+This also lets us state stronger type-soundness properties.  For example,
+every well-typed closed term must evaluate to a value:
+
+```haskell
+prop_evalVal :: Property
+prop_evalVal = forAll0 Typed Full $ \t ->
+    case eval t of
+        Just v  -> property (isVal v)
+        Nothing -> property False   -- well-typed terms must not get stuck
+```
+
+And `reduce` (the big-step evaluator for open terms) must agree with
+`eval` on closed, well-typed terms:
+
+```haskell
+prop_eval_reduce :: Property
+prop_eval_reduce = forAll0 Typed Full $ \t ->
+    case eval t of
+        Just v  -> reduce t == Just v
+        Nothing -> discard
+```
+
+These properties hold by type soundness (progress + preservation) and
+would not be testable with the well-scoped generator alone.
+
+## 6. Implementing a well-typed generator
+
+`genTypedTm` works by type-directed synthesis.  At each recursive call it
+has a *target type* and a *typing context* (a vector mapping each de Bruijn
+index to its type), and it only produces terms that have exactly that type.
+
+The high-level strategy is:
+
+- **Introduction forms** are selected by the *target type*.  If the goal is
+  `a :-> b`, generate a `Lam` whose body is generated at type `b` in an
+  extended context.  If the goal is `a :* b`, generate a `Pair`.  And so on.
+
+- **Elimination forms** (function application, pattern matching) require an
+  *arbitrary* intermediate type, generated fresh for that sub-call.  For
+  example, to generate an `App` targeting type `b`, first pick a random
+  argument type `a`, then generate a function of type `a :-> b` and an
+  argument of type `a`.
+
+- **Variables** are filtered by type: only those indices whose context entry
+  matches the target type are offered as candidates.
+
+- **Fallback**: when no introduction or variable candidate applies (e.g. at
+  size 0 targeting a function type with no matching variable), the generator
+  falls back to `Unit`.
+
+The top-level call also picks a random context and a random target type
+before calling `genTypedTm`, so the resulting term may have free variables
+with known types — or be closed if the context is empty.
+
+### The well-typed generator
+
+`genTypedTm` is type-directed: given a typing context and a target type it only produces terms of exactly that type.  Introduction forms are selected by the target type; elimination forms use a fresh type generated for the sub-term being eliminated:
+
+```haskell
+genTypedTm :: forall n. Language -> SNat n -> Vec n Ty -> Ty -> Int -> QC.Gen (Tm n)
+```
+
+This generator is used by properties that need well-typed terms, such as `prop_evalVal` in `Eval`.
+
+### The `Arbitrary` instance
+
+```haskell
+instance SNatI n => QC.Arbitrary (Tm n) where
+    arbitrary = genTm Typed Full
+    shrink    = shrinkTyped
+```
+
+The default `arbitrary` generates well-typed terms from the full language.
+For generating *closed* terms we use `n = Z`, so the instance becomes
+`Arbitrary (Tm Z)`.  Properties that want only pure lambda calculus terms
+call `genTm Typed PureLC` (or `genTm Scoped PureLC`) directly.
+
+### Shrinking
+
+`shrinkTyped` produces smaller terms by:
+
+- For `Lam b`: shrink the body, wrapping back in `Lam` with the same name.
+- For `App a b`: return each sub-term `a` and `b` alone (without shrinking further).
+- For `Pair`, `Inj`, `MatchUnit`, `MatchPair`, `MatchSum`: return the scrutinee alone, plus recursive shrinks of the branches.
+- For `Var`, `Unit`: return `[]` — already minimal.
+
+Crucially, shrinking preserves the scope: a shrunken `Tm n` is still a `Tm n`.
+
+---
+
+## 7. Demo: The Round Trip
+
 ## 8. Historical Notes
+
 
 **Scope checking as a compiler pass.** The idea of converting named surface syntax to an internal nameless or index-based form is standard in compiler design. Early Lisp interpreters used association lists (`alist`) to map symbol names to values at runtime — the direct ancestor of the `[(String, Fin n)]` context used in `projectTmWith`. In modern compilers this conversion is a distinct front-end pass, often called *name resolution* or *scope analysis*, that runs after parsing and before type checking, and uses a more efficient data structure.
 
@@ -326,7 +605,7 @@ scope-checking the named term recovers exactly the original de Bruijn term.
 
 **QuickCheck.** Koen Claessen and John Hughes introduced QuickCheck in "QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs" (2000). Property-based testing is now widely used across languages. The technique of generating *well-scoped* (or well-typed) terms directly — rather than generating strings and parsing them — avoids a large class of trivially-failing test cases and is the standard approach for testing language implementations.
 
-TODO: add citation for well-scoped and well-typed term generation
+**Well-scoped and well-typed term generation.** Generating terms directly in an indexed representation — rather than generating strings and filtering out ill-scoped ones — was popularized in the property-based testing literature by Pałka et al. ("Testing an Optimising Compiler by Generating Random Lambda Terms", 2011), who used it to find bugs in GHC.  Type-directed generation (producing only well-typed terms) is the natural extension: it avoids both scope errors and divergence, and was used by Dénès et al. and others for testing type-preserving compilers and proof assistants.
 
 ---
 

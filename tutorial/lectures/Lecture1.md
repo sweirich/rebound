@@ -297,10 +297,11 @@ As a result, the variable case is impossible. Since `Tm Z` contains no variables
 eval (Var x) = case x of {}
 ```
 In other cases, we use @instantiate1@ and @instantiate2@ to 
-substitute for the arguments in binders. Observe for the order of 
-instantiation when working with pairs. This function requires that 
-the first component of the pair has index 0 and the second 
-component has index 1.
+substitute for the arguments in binders. Observe the order of 
+instantiation when working with pairs. As stated above, inside a `Bind2`,
+`FZ` is the second-bound variable and `FS FZ` is the first-bound variable.
+So the second component of the pair has index 0 and the first component
+has index 1.
 
 **Function application:**
 ```haskell
@@ -316,7 +317,7 @@ eval (App m n) = do
 eval (MatchPair e m) = do
     v <- eval e
     case v of
-        Pair v1 v2 -> eval (instantiate2 m v1 v2)
+        Pair v1 v2 -> eval (instantiate2 m v2 v1)
         _          -> Nothing
 ```
 
@@ -415,7 +416,7 @@ TODO: add mention of Kmett's "bound" library.
 - `ex_snd :: Tm Z` — the projection `λp. match p with (x, y) → y`
 - `ex_s :: Tm Z` — the S combinator `λf. λg. λx. f x (g x)`
 
-Pay attention to the variable ordering inside `Bind2`. In `MatchPair e (Bind2 body)`, `FZ` refers to the *first* pair component and `FS FZ` to the second.
+Pay attention to the variable ordering inside `Bind2`. In `MatchPair e (Bind2 body)`, `FZ` refers to the *second* pair component and `FS FZ` to the first.
 
 ---
 

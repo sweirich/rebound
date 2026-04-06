@@ -207,7 +207,7 @@ step (MatchSum s b1 b2) = case step s of
 
 -- | the step function produces a value for closed terms
 prop_stepVal :: Property
-prop_stepVal = forAllShrinkShow (genTm Typed Full :: Gen (Tm Z)) shrink pp $ 
+prop_stepVal = forAll0 Typed Full $
     let loop e =
           if isVal e then property True
           else case step e of
@@ -219,7 +219,7 @@ prop_stepVal = forAllShrinkShow (genTm Typed Full :: Gen (Tm Z)) shrink pp $
 
 -- | The step function respects evaluation
 prop_evalStep :: Property
-prop_evalStep = forAllShrinkShow (genTm Typed Full :: Gen (Tm Z)) shrink pp $ \ e ->
+prop_evalStep = forAll0 Typed Full $ \ e ->
     counterexample ("e  = " ++ pp e) $
     within 1000000 $
     case step e of
@@ -231,8 +231,8 @@ prop_evalStep = forAllShrinkShow (genTm Typed Full :: Gen (Tm Z)) shrink pp $ \ 
 
 -- | The step function respects evaluation
 prop_reduceStep :: Property
-prop_reduceStep = forAllShrinkShow (genTm Typed Full :: Gen (Tm (S Z))) shrink (ppWith ("k" ::: VNil)) $ \ e ->
-    let pp' = ppWith ("k" ::: VNil) in
+prop_reduceStep = forAll1 Typed Full $ \ e ->
+    let pp' = ppWith ("x" ::: VNil) in
     counterexample ("e  = " ++ pp' e) $
     within 1000000 $
     case step e of

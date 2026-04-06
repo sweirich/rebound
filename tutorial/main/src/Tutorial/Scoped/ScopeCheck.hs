@@ -33,6 +33,10 @@ module Tutorial.Scoped.ScopeCheck (
   prop_project_round_trip,
   prop_parse_round_trip,
   testAll,
+  -- * QuickCheck helpers
+  forAll0,
+  forAll1,
+  forAll2,
   -- * pretty printer for scoped representation
   pp,
   ppWith,
@@ -53,7 +57,7 @@ import qualified Tutorial.Named.Syntax as N
 import qualified Tutorial.Named.PP as N
 import qualified Tutorial.Named.Parser as N
 import qualified Tutorial.Scoped.Syntax as S
-import Tutorial.Scoped.Gen ()
+import Tutorial.Scoped.Gen 
 import Text.Parsec ( ParseError )
 
 ------------------------------------------------------------------------
@@ -346,9 +350,23 @@ prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Right i
 prop_parse_round_trip :: S.Tm Z -> Bool
 prop_parse_round_trip i = N.parseTm (show (N.test (injectTm i :: N.Tm))) == Right (injectTm i)
 
+-- | Test a property on a closed term 
+forAll0 :: Testable a => Constraint -> Language -> (S.Tm Z -> a) -> Property
+forAll0 c l = forAllShrinkShow (genTm c l) (shrinkTm c) pp
+
+-- | Test a property on a term with a single free variable "x" 
+forAll1 :: Testable a => Constraint -> Language -> (S.Tm (S Z) -> a) -> Property
+forAll1 c l = forAllShrinkShow (genTm c l) (shrinkTm c) (ppWith ("x" ::: VNil))
+
+-- | Test a property on a term with two free variables "x" and "y"
+forAll2 :: Testable a => Constraint -> Language -> (S.Tm (S (S Z)) -> a) -> Property
+forAll2 c l = forAllShrinkShow (genTm c l) (shrinkTm c) (ppWith ("x" ::: "y" ::: VNil))
+
 -- | Run all QuickCheck properties in this module.
 testAll :: IO ()
 testAll = do
     let args = stdArgs { maxSuccess = 1000 }
-    putStrLn "prop_project_round_trip:" >> quickCheckWith args prop_project_round_trip
-    putStrLn "prop_parse_round_trip:"   >> quickCheckWith args prop_parse_round_trip
+    putStrLn "prop_project_round_trip:" 
+    quickCheckWith args (forAll0 Scoped Full prop_project_round_trip)
+    putStrLn "prop_parse_round_trip:"   
+    quickCheckWith args (forAll0 Scoped Full prop_parse_round_trip)

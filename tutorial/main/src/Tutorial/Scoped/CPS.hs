@@ -122,7 +122,7 @@ cpsExp r (MatchSum e0 e1 e2) k =
 -- 
 -- NB: this is not true, what is a counter example?
 prop_cps_result :: Property
-prop_cps_result = forAll (genTm Typed Full) $ \ e ->
+prop_cps_result = forAll0 Typed Full $ \ e ->
       let cps_e      = cps e
           eval_e     = eval e 
           eval_cps_e = eval (cps_e)
@@ -136,7 +136,7 @@ prop_cps_result = forAll (genTm Typed Full) $ \ e ->
 -- If @v = eval(e)@ and v is firstorder then @v == eval(cps(e))@ 
 -- 
 prop_cps_result_firstorder :: Property
-prop_cps_result_firstorder = forAll (genTm Typed Full) $ \e ->
+prop_cps_result_firstorder = forAll0 Typed Full $ \e ->
     let
        cps_e = cps e
        eval_e = case eval e of
@@ -176,7 +176,7 @@ isFirstOrder _ = False
 -- NB: this is not true because the cps conversion of a value is not 
 -- a value, it is id applied to the translated value
 prop_cps_eval_cps :: Property
-prop_cps_eval_cps = forAll (genTm Typed Full) $ \e ->
+prop_cps_eval_cps = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
@@ -186,7 +186,7 @@ prop_cps_eval_cps = forAll (genTm Typed Full) $ \e ->
 -- use reduction instead of evaluation. 
 -- NB: this fails for terms that use pattern matching
 prop_cps_reduce_cps :: Property
-prop_cps_reduce_cps = forAll (genTm Typed Full) $ \e ->
+prop_cps_reduce_cps = forAll0 Typed Full $ \e ->
    let 
       cps_e = cpsK e 
       eval_e = case reduce e of
@@ -207,7 +207,7 @@ prop_cps_reduce_cps = forAll (genTm Typed Full) $ \e ->
 
 -- OK: let's just test the property for pure lambda calculus terms
 prop_cps_reduce_cps_pure :: Property
-prop_cps_reduce_cps_pure = forAll (genTm Typed PureLC) $ \e ->
+prop_cps_reduce_cps_pure = forAll0 Typed PureLC $ \e ->
    let 
       cps_e = cpsK e 
       eval_e = case reduce e of
@@ -389,7 +389,7 @@ cpsExpOpt r (MatchSum e0 e1 e2) k =
 --
 -- @eval(e) == eval(cps(e))@ for firstorder values
 prop_cpsOpt_result_firstorder :: Property
-prop_cpsOpt_result_firstorder = forAll (genTm Typed Full) $ \e ->
+prop_cpsOpt_result_firstorder = forAll0 Typed Full $ \e ->
     let
        cps_e = cpsOpt e
        eval_e = case eval e of
@@ -409,7 +409,7 @@ prop_cpsOpt_result_firstorder = forAll (genTm Typed Full) $ \e ->
 --
 -- @eval(e) == eval(cps(e))@ with continuation parameter
 prop_cpsOpt_eval_simulates_open :: Property
-prop_cpsOpt_eval_simulates_open = forAll (genTm Typed Full) $ \e ->
+prop_cpsOpt_eval_simulates_open = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        reduce (cpsOptK e) == (cpsOptK <$> reduce e)   -- lift cps over Maybe type
@@ -421,7 +421,7 @@ prop_cpsOpt_eval_simulates_open = forAll (genTm Typed Full) $ \e ->
 --      
 -- NB: not true for full language             
 prop_cpsOpt_steps :: Property
-prop_cpsOpt_steps = forAllShrink (genTm Typed PureLC) shrink $ \ e ->
+prop_cpsOpt_steps = forAll0 Typed PureLC $ \ e ->
   let 
      e' = case step e of
             Nothing -> discard -- if e does not step, ignore this test

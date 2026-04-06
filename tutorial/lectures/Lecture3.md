@@ -179,7 +179,7 @@ evaluates the converted term to an equivalent result. We might draw a picture li
 In other words, we want to show that if `e` evaluates to `v`, then `cps e` evaluates to `cps v`.
 ```
 prop_cps_eval_simulates :: Property
-prop_cps_eval_simulates = forAll genTypedFull $ \e ->
+prop_cps_eval_simulates = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        eval (cps e) == (cps <$> eval e)
@@ -342,7 +342,7 @@ Answer the following:
 
 **(d)** Run `qc prop_cps_eval_simulates_open`.  This passes for the pure lambda calculus.  The property uses `cpsK` instead of `cps`.  Explain: why does replacing the identity-function continuation with a fresh variable `k` fix the `Unit` counterexample?
 
-**(e)** Change the generator in `prop_cps_eval_simulates_open` from `genTypedPureLC` to `genTypedFull` and run it.  Record the counterexample.  Which language construct causes it to fail, and why does the pure lambda calculus not have this problem?
+**(e)** Change the generator in `prop_cps_eval_simulates_open` from `Typed PureLC` to `Typed Full` and run it.  Record the counterexample.  Which language construct causes it to fail, and why does the pure lambda calculus not have this problem?
 
 ---
 
