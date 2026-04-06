@@ -1,12 +1,12 @@
 cabal-version:  3.0
 name:           rebound
-version:        0.1.0.0
+version:        0.1.2.0
 description:    Please see the README on GitHub at <https://github.com/sweirich/rebound>
 homepage:       https://github.com/sweirich/rebound
 bug-reports:    https://github.com/sweirich/rebound/issues
 author:         Stephanie Weirich, Noe De Santo
 maintainer:     sweirich@seas.upenn.edu, ndesanto@seas.upenn.edu
-copyright:      2025 Stephanie Weirich, Noe De Santo
+copyright:      2026 Stephanie Weirich, Noe De Santo
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
@@ -91,10 +91,10 @@ library rebound-examples
     base >=4.15, base < 5.0
     , rebound
     , mtl
-    , HUnit
+    , HUnit < 1.7
     , QuickCheck
     , containers
-    , prettyprinter
+    , prettyprinter < 1.8
   exposed-modules:
       LC
     , LCQC

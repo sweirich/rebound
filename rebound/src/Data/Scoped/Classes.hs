@@ -78,7 +78,7 @@ class (forall a n. Coercible (f a n) (k (a n)), Foldable k) => ScopedFoldable k 
     maximum x = F.maximum @k (coerce x)
 
     minimum :: (Ord (a n)) => f a n -> a n
-    minimum x = F.maximum @k (coerce x)
+    minimum x = F.minimum @k (coerce x)
 
     sum :: (Num (a n)) => f a n -> a n
     sum x = F.sum @k (coerce x)

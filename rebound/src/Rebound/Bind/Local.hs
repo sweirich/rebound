@@ -187,7 +187,7 @@ unbindWith1 = unbindWith
 -- | Instantiate the body (i.e. replace the bound variable) with the provided term.
 -- The delayed substitution is __not__ applied, but is passed to the function instead.
 instantiateWith1 :: (SubstVar v) => Bind1 v c n -> v n -> (forall m. Env v m n -> c m -> c n) -> c n
-instantiateWith1 = instantiateWith1
+instantiateWith1 = instantiateWith
 
 
 

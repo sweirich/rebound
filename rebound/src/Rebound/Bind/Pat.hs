@@ -188,7 +188,7 @@ instance (Sized p1, FV p2) => FV (Rebind p1 p2) where
   appearsFree n (Rebind p1 p2) = appearsFree (Fin.shiftN (size p1) n) p2
 
   freeVars :: (Sized p1, FV p2) => Rebind p1 p2 n -> Set (Fin n)
-  freeVars = undefined
+  freeVars (Rebind p1 p2) = rescope (size p1) (freeVars p2)
 
 instance (Sized p1, Strengthen p2) => Strengthen (Rebind p1 p2) where
   strengthenRec (k :: SNat k) (m :: SNat m) (n :: SNat n) (Rebind (p1 :: p1) p2) =
@@ -235,12 +235,3 @@ instance
     Refl <- patEq ps1 ps2
     return Refl
   patEq _ _ = Nothing
-
--- instance
---   (forall p n. WithData v (pat p) n) =>
---   WithData v (PatList pat p) n
---   where
---   extendWithData PNil = id
---   extendWithData (PCons (p1 :: pat p1') (ps :: PatList pat ps')) =
---     case axiomAssoc @ps' @p1' @n of
---       Refl -> extendWithData @v ps . extendWithData @v p1

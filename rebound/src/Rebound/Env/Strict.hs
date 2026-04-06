@@ -113,7 +113,7 @@ weakenE' = Weak
 {-# INLINEABLE weakenE' #-}
 
 -- | increment all free variables by m
-shiftNE :: (SubstVar v) => (SubstVar v) => SNat m -> Env v n (m + n)
+shiftNE :: (SubstVar v) => SNat m -> Env v n (m + n)
 shiftNE = Inc
 {-# INLINEABLE shiftNE #-}
 
