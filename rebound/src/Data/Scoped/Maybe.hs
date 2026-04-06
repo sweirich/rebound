@@ -2,7 +2,7 @@
 -- Module: Data.Scoped.Maybe
 -- Description : Scoped maybe
 --
--- This module defines a Maybe type indexed by a scope
+-- This module defines a Maybe type indexed by a scope.
 -- This module should be imported qualified. Many of the operations
 -- in this module have the same name as prelude functions.
 {-# LANGUAGE DeriveAnyClass #-}

@@ -1,6 +1,6 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-{-# OPTIONS_HADDOCK hide #-}
+-- | The concrete implementation of environments
 module Rebound.Env.Lazy where
 
 -- "Defunctionalized" representation of environment

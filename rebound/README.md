@@ -41,67 +41,67 @@ prototype implementation quickly.
 
 ### Calculi
 
-1. [Untyped lambda calculus](examples/LC.hs)
+1. [Untyped lambda calculus](https://github.com/sweirich/rebound/blob/main/rebound/examples/LC.hs)
 
    Defines the syntax and substitution functions for the untyped lambda
    calculus. Uses these definitions to implement several interpreters.
 
-2. [Untyped lambda calculus with let rec and nested lets](examples/LCLet.hs)
+2. [Untyped lambda calculus with let rec and nested lets](https://github.com/sweirich/rebound/blob/main/rebound/examples/LCLet.hs)
 
    Example of advanced binding forms: recursive definitions and sequenced
    definitions.
 
-3. [Untyped lambda calculus with pattern matching](examples/Pat.hs)
+3. [Untyped lambda calculus with pattern matching](https://github.com/sweirich/rebound/blob/main/rebound/examples/Pat.hs)
 
    Extends the lambda calculus example with pattern matching.
 
-4. [System F](examples/SystemF.hs)
+4. [System F](https://github.com/sweirich/rebound/blob/main/rebound/examples/SystemF.hs)
 
    Working with two separate scopes (type and term variables) is tricky. This
    example shows one way to do it.
 
-5. [Pure System F](examples/PureSystemF.hs)
+5. [Pure System F](https://github.com/sweirich/rebound/blob/main/rebound/examples/PureSystemF.hs)
 
    An alternative way of defining System F, using one single syntactic class.
    Also demonstrates how to use the `ScopedReader` monad for typechecking and
    pretty-printing.
 
-6. [Simple implementation of dependent types](examples/PTS.hs)
+6. [Simple implementation of dependent types](https://github.com/sweirich/rebound/blob/main/rebound/examples/PTS.hs)
 
    An implementation of a simple type checker for a dependent-type system.
    Language includes Pi and Sigma types.
 
-7. [Dependent Pattern Matching](examples/DepMatch.hs)
+7. [Dependent Pattern Matching](https://github.com/sweirich/rebound/blob/main/rebound/examples/DepMatch.hs)
 
    A dependent type system with nested, dependent pattern matching. Patterns may
    also include scoped terms.
 
-8. [Linear Lambda Calculus](examples/LinLC.hs)
+8. [Linear Lambda Calculus](https://github.com/sweirich/rebound/blob/main/rebound/examples/LinLC.hs)
 
    A linear version of the (simply typed) lambda calculus. Demonstrates how to
    thread a typing context using the `ScopedState` monad.
 
 ### Working with well-scoped expressions
 
-1. [Scope checking](examples/ScopeCheck.hs)
+1. [Scope checking](https://github.com/sweirich/rebound/blob/main/rebound/examples/ScopeCheck.hs)
 
    Demonstrates how to convert a "named" (or _nominal_) expression to a
    well-scoped expression.
 
-2. [QuickCheck](examples/LCQC.hs)
+2. [QuickCheck](https://github.com/sweirich/rebound/blob/main/rebound/examples/LCQC.hs)
 
    Demonstrates the use of well-scoped terms with
    [QuickCheck](https://hackage.haskell.org/package/QuickCheck).
 
-3. [HOAS](examples/HOAS.hs)
+3. [HOAS](https://github.com/sweirich/rebound/blob/main/rebound/examples/HOAS.hs)
 
    Demonstrates how to layer a HOAS representation on top of a de Bruijn
    representation. Based on Conor McBride's ["Classy
    Hack"](https://mazzo.li/epilogue/index.html%3Fp=773.html).
 
-4. [PatGen](examples/PatGen.hs)
+4. [PatGen](https://github.com/sweirich/rebound/blob/main/rebound/examples/PatGen.hs)
 
-   A variant of the [Pat](examples/Pat.hs) example, which demonstrates how
+   A variant of the [Pat](https://github.com/sweirich/rebound/blob/main/rebound/examples/Pat.hs) example, which demonstrates how
    generic programming can be used to derive some definitions.
 
 ## Related libraries
@@ -130,6 +130,3 @@ prototype implementation quickly.
   rename the bound variable in abstraction if it is already in the current
   scope.
 
-- [binder](https://hackage.haskell.org/package/binder)
-
-  Uses HOAS.
