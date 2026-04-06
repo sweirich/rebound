@@ -1,6 +1,6 @@
 {-|
 Module      : Tutorial.Scoped.Gen
-Description : QuickCheck generators for well-scoped lambda calculus terms
+Description : QuickCheck generators for well-scoped & well-typed lambda calculus terms
 
 Provides 'QC.Arbitrary' instances for 'Ty' and @'Tm' n@ (requiring
 'SNatI' for the term instance), plus the underlying generators and
@@ -21,7 +21,9 @@ import qualified Test.QuickCheck as QC
 import qualified Data.Fin as Fin
 import Data.Vec (Vec(..), (!))
 
--- * Arbitrary instance for Ty
+---------------------------------------------------------------------
+-- * Arbitrary instance for Types
+---------------------------------------------------------------------
 
 instance QC.Arbitrary Ty  where
   arbitrary :: QC.Gen Ty
@@ -33,9 +35,13 @@ instance QC.Arbitrary Ty  where
 
 -- | Use 'Gen' monad to generate a random type
 --
--- The size argument ensures termination. In the base case,
--- only small types (`One`) are generated.
 --
+-- >>> QC.sample' (arbitrary :: Gen Ty)
+-- [One,One :+ One,One :* (One :-> One),(One :+ One) :+ (One :-> One),((One :* One) :-> (One :-> One)) :* ((One :+ One) :-> One),((One :+ One) :-> One) :* (One :+ (One :+ One)),((One :-> One) :+ (One :-> One)) :-> ((One :+ One) :* One),((One :* One) :+ (One :* One)) :-> One,One,One :* (One :-> ((One :* One) :* (One :+ One))),One :* (((One :+ One) :* (One :* One)) :-> One)]
+
+-- The size argument ensures termination. In the base case,
+-- only small types (`One`) are generated. In each recursive call, 
+-- the size is divided by two (because these are trees)
 genTy :: Int -> QC.Gen Ty
 genTy sz 
   | sz <= 1   = QC.elements [ One ]
@@ -46,92 +52,79 @@ genTy sz
        genPair = (:*)  <$> genTy sz' <*> genTy sz'
        genSum  = (:+)  <$> genTy sz' <*> genTy sz'
 
--- | Example type, for doctest use
-t :: Ty
-t = (One :-> One) :* (One :+ One)
-
 -- | Produce a list of types smaller than the argument
 --
--- >>> shrinkTy ((One :* One) :+ One)
--- [One,One :* One,One,One :+ One,One :+ One,One :+ One]
+-- >>> shrinkTy ((One :-> One) :* (One :+ One))
 
 shrinkTy :: Ty -> [Ty]
-shrinkTy (a :-> b) = One : shrinkTwo (:->) a b
-shrinkTy (a :* b)  = One : shrinkTwo (:*) a b
-shrinkTy (a :+ b)  = One : shrinkTwo (:+) a b
-shrinkTy _ = []
+shrinkTy = shrink 
+  where 
+    shrink (a :-> b) = a : b : shrinkTwo (:->) a b
+    shrink (a :* b)  = a : b : shrinkTwo (:*) a b
+    shrink (a :+ b)  = a : b : shrinkTwo (:+) a b
+    shrink One = []
 
--- * Arbitrary instance for terms
-
--- This 
-instance SNatI n => QC.Arbitrary (Tm n) where
-  arbitrary :: SNatI n => QC.Gen (Tm n)
-  arbitrary = genTypedFull
-  
-  shrink :: SNatI n => Tm n -> [Tm n]
-  shrink = shrinkTm
+    shrinkTwo f a b =
+        [ f a' b | a' <- shrink a] ++ [ f a b' | b' <- shrink b]
 
 
+---------------------------------------------------------------------
+-- * Entry point for term generators
+---------------------------------------------------------------------
+
+-- We have several controls for term generation:
+-- The number of variables in scope
+-- Whether the terms should be well-scoped only or also well-typed
+-- Whether the terms only include constructs from the pure lambda calculus,
+-- or for the full language
+
+data Constraint = Scoped | Typed
 data Language = PureLC | Full
 
-genPureLC :: SNatI n => QC.Gen (Tm n)
-genPureLC = QC.sized (genTm PureLC snat)
+genTm :: SNatI n => Constraint -> Language -> Gen (Tm n)
+genTm Scoped l = QC.sized (genScopedTm l snat)
+genTm Typed  l = do
+    ctx <- genCtx snat
+    ty  <- arbitrary
+    QC.sized (genTypedTm l snat ctx ty)
 
-genPureLCVal :: SNatI n => QC.Gen (Tm n)
-genPureLCVal = QC.sized (genVal PureLC snat)
+instance SNatI n => QC.Arbitrary (Tm n) where
+  arbitrary :: SNatI n => QC.Gen (Tm n)
+  arbitrary = genTm Typed Full
+  
+  shrink :: SNatI n => Tm n -> [Tm n]
+  shrink = shrinkTyped
 
-genFull :: SNatI n => QC.Gen (Tm n)
-genFull = QC.sized (genTm PureLC snat)
+---------------------------------------------------------------------
+-- * Well-scoped generators 
+---------------------------------------------------------------------
 
-genFullVal :: SNatI n => QC.Gen (Tm n)
-genFullVal = QC.sized (genVal Full snat)
-
+-- | Generate an arbitrary name for a variable
+-- These are only for printing, so ok if we reuse the same name in a scope
 genLocalName :: QC.Gen LocalName
 genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
 
--- | Generate a *value* of size 'sz' in scope 'n' for either just the lambda calculus (with unit)
--- or the full language
-genVal :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
-genVal l n sz = 
-    let gen  = genVal l n (sz `div` 2)
-        gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) (sz `div` 2)
-        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName <*> genTm l (next (next n)) (sz `div` 2)
-        
-        gens = case l of
-          PureLC -> 
-              [ Lam <$> gen1 ]
-          Full -> 
-              [ Lam <$> gen1,
-                pure Unit,
-                Pair <$> gen <*> gen,
-                Inj  <$> QC.elements [0,1] <*> gen
-              ]
-    in
-    -- case analysis on number of free variables
-    case snat_ n of
-       SZ_ -> if sz <= 1
-                then pure (Lam (bind1 (LocalName "x") (Var FZ)))  -- smallest closed value
-                else QC.oneof gens  -- arbitrary closed value
-       SS_ x ->
-         let
-            genVar = withSNat x $ QC.elements $ map Var Fin.universe
-         in
-            if sz <= 1
-              then QC.oneof [genVar, pure Unit]  -- either a variable in scope or unit
-              else QC.oneof (genVar : gens)      -- arbitrary value in scope
+-- | Identity function, the smallest closed term
+tmId :: Tm n
+tmId = Lam (bind1 (LocalName "x") (Var FZ))
 
 
--- | Generate a term of size 'sz' in scope 'n' for either just the lambda calculus (with unit)
--- or the full language
+-- | Generate a well-scoped term of language 'l' in scope 'n' of size 'sz'
 -- 
--- >>> fmap height <$> QC.sample' (genPureLC :: Gen (Tm Z))
+-- >>> fmap height <$> QC.sample' (genFull :: Gen (Tm Z))
+-- [2,2,3,2,4,2,4,2,2,2,4]
 
-genTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
-genTm l n sz =
+-- >>> fmap tmSize <$> QC.sample' (genFull :: Gen (Tm Z))
+-- [2,2,2,3,11,17,15,2,14,5,3]
+
+
+genScopedTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
+genScopedTm l n sz =
     let
-        gen  = genTm l n (sz `div` 2)
-        gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) (sz `div` 2)
-        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName <*> genTm l (next (next n)) (sz `div` 2)
+        gen  = genScopedTm l n (sz `div` 2)
+        gen1 = bind1 @Tm <$> genLocalName <*> genScopedTm l (next n) (sz `div` 2)
+        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName 
+                         <*> genScopedTm l (next (next n)) (sz `div` 2)
         
         gens = case l of
           PureLC -> 
@@ -141,28 +134,57 @@ genTm l n sz =
           Full -> 
               [ Lam <$> gen1,
                 App <$> gen <*> gen,
-                pure Unit,
                 MatchUnit <$> gen <*> gen,
                 Pair      <$> gen <*> gen,
                 MatchPair <$> gen <*> gen2,
                 Inj       <$> QC.elements [0,1] <*> gen,
                 MatchSum  <$> gen <*> gen1 <*> gen1
               ]
-    in
-    -- case analysis on number of free variables
-    case snat_ n of
-       SZ_ -> if sz <= 1
-                then pure (Lam (bind1 (LocalName "x") (Var FZ)))  -- smallest closed term
-                else QC.oneof gens  -- arbitrary closed term
-       SS_ x ->
-         let
-            genVar = withSNat x $ QC.elements $ map Var Fin.universe
-         in
-            if sz <= 1
-              then QC.oneof [genVar, pure Unit]             -- either a variable in scope or unit
-              else QC.oneof (genVar : gens)      -- arbitrary term in scope
 
+        
+        genVar :: forall n. SNat n -> Gen (Tm n) -> Gen (Tm n) 
+        genVar SZ def = def
+        genVar SS def = Var <$> QC.elements Fin.universe
+            
+        base = case l of 
+            PureLC -> 
+                genVar n (return tmId)
+            Full -> 
+                genVar n (return Unit)
+
+    in if sz <= 1 
+        then base
+        else QC.oneof (base : gens)
+
+---------------------------------------------------------------------
+-- * Shrinking well-scoped terms
+---------------------------------------------------------------------
+
+-- | Shrink a well-scoped term, keeping it in the same scope @n@.
+shrinkScoped :: SNatI n => Tm n -> [Tm n]
+shrinkScoped (Lam t)  = 
+    [ Lam (bind1 (getLocalName t) t') | t' <- shrinkScoped (getBody1 t) ]
+shrinkScoped (App a b)  = [a,b] ++ [App a' b  | a' <- shrinkScoped a] 
+                                ++ [ App a b'  | b' <- shrinkScoped b]
+shrinkScoped (Pair a b) = [a,b] ++ [Pair a' b | a' <- shrinkScoped a] 
+                                ++ [ Pair a b' | b' <- shrinkScoped b]
+shrinkScoped (Inj i a)  = [a] ++ [Inj i a' | a' <- shrinkScoped a]
+shrinkScoped (MatchUnit a b) = [a,b] ++ [ MatchUnit a' b | a' <- shrinkScoped a] 
+                                     ++ [ MatchUnit a b' | b' <- shrinkScoped b]
+shrinkScoped (MatchPair a b) = 
+   [a] ++ [ MatchPair a (bind2 x y b') | b' <- shrinkScoped (getBody2 b)]
+    where x = names ! FZ
+          y = names ! (FS FZ)
+          names = getLocalName2 b
+shrinkScoped (MatchSum a b1 b2) = 
+   [a] ++ [ MatchSum a (bind1 (getLocalName b1) b') b2 | b' <- shrinkScoped (getBody1 b1)]
+       ++ [ MatchSum a b1 (bind1 (getLocalName b2) b') | b' <- shrinkScoped (getBody1 b2)]
+shrinkScoped (Var x) = [] 
+shrinkScoped Unit = []
+
+---------------------------------------------------------------------
 -- * Well-typed term generators
+---------------------------------------------------------------------
 
 -- | Generate a random typing context: one type per free variable in scope
 genCtx :: SNat n -> QC.Gen (Vec n Ty)
@@ -170,17 +192,6 @@ genCtx n = case snat_ n of
     SZ_  -> pure VNil
     SS_ m -> (:::) <$> arbitrary <*> genCtx m
 
-genTypedPureLC :: SNatI n => QC.Gen (Tm n)
-genTypedPureLC = do
-    ctx <- genCtx snat
-    ty  <- arbitrary
-    QC.sized (genTypedTm PureLC snat ctx ty)
-
-genTypedFull :: SNatI n => QC.Gen (Tm n)
-genTypedFull = do
-    ctx <- genCtx snat
-    ty  <- arbitrary
-    QC.sized (genTypedTm Full snat ctx ty)
 
 -- | Generate a well-typed term of type 'ty' in scope 'n' with typing context 'ctx'.
 --
@@ -202,7 +213,7 @@ genTypedTm l n ctx ty sz =
             One       -> [ pure Unit ]
             (a :-> b) ->
                 [ Lam <$> (bind1 @Tm <$> genLocalName
-                                      <*> genTypedTm l (next n) (a ::: ctx) b sz') ]
+                                     <*> genTypedTm l (next n) (a ::: ctx) b sz') ]
             (a :* b)  -> case l of
                 PureLC -> []
                 Full   -> [ Pair <$> gen a <*> gen b ]
@@ -246,35 +257,31 @@ genTypedTm l n ctx ty sz =
         then pure Unit   -- fallback when no generators apply at small size
         else QC.oneof allGens
 
--- | Shrink a well-scoped term, keeping it in the same scope @n@.
+-- | Shrink a well-typed term, keeping it in the same scope @n@.
 -- If the input is well-typed, then the output will be well-typed, but not necessarily
 -- with the same type
-shrinkTm :: SNatI n => Tm n -> [Tm n]
-shrinkTm (Lam t)  = [ Lam (bind1 (getLocalName t) t') | t' <- shrinkTm (getBody1 t) ]
-shrinkTm (App f a)  = [f,a] 
-shrinkTm (Pair a b) = shrinkTwo Pair a b 
-shrinkTm (Inj i a)  = [a]
-shrinkTm (MatchUnit a b) = [a] ++ [MatchUnit a b' | b' <- shrink b] 
-shrinkTm (MatchPair a b) = 
-   [a] ++ [ MatchPair a (bind2 x y b') | b' <- shrink (getBody2 b)]
-    where x = names ! FZ
-          y = names ! (FS FZ)
-          names = getLocalName2 b
-shrinkTm (MatchSum a b1 b2) = 
-   [a] ++ [ MatchSum a (bind1 (getLocalName b1) b') b2 | b' <- shrink (getBody1 b1)]
-       ++ [ MatchSum a b1 (bind1 (getLocalName b2) b') | b' <- shrink (getBody1 b2)]
-shrinkTm _ = []
+shrinkTyped :: SNatI n => Tm n -> [Tm n]
+shrinkTyped = shrink 
+  where
+    shrink :: SNatI n => Tm n -> [Tm n]
+    shrink (Lam t)    = [Lam (bind1 (getLocalName t) t') | t' <- shrink (getBody1 t)]
+    shrink (App a b)  = [a,b] 
+    shrink (Pair a b) = [a,b] ++ shrinkTwo Pair a b 
+    shrink (Inj i a)  = [a] ++ [Inj i a' | a' <- shrink a]
+    shrink (MatchUnit a b) = [a] ++ [MatchUnit a b' | b' <- shrink b] 
+    shrink (MatchPair a b) = 
+        [a] ++ [ MatchPair a (bind2 x y b') | b' <- shrink (getBody2 b)]
+                 where x = names ! FZ
+                       y = names ! (FS FZ)
+                       names = getLocalName2 b
+    shrink (MatchSum a b1 b2) = 
+        [a] ++ [ MatchSum a (bind1 (getLocalName b1) b') b2 | b' <- shrink (getBody1 b1)]
+            ++ [ MatchSum a b1 (bind1 (getLocalName b2) b') | b' <- shrink (getBody1 b2)]
+    shrink _ = []
+   
+    shrinkTwo f a b =
+            [ f a' b | a' <- shrink a] ++ [ f a b' | b' <- shrink b]
 
--- | Shrink a homogeneous binary constructor by shrinking either child
-shrinkTwo :: QC.Arbitrary a => (a -> a -> a) -> a -> a -> [a]
-shrinkTwo f a b =
-  [a,b] ++ [ f a' b | a' <- shrink a]
-        ++ [ f a b' | b' <- shrink b]
 
--- | Shrink a binary constructor whose two arguments have different types
-shrinkTwo' :: (QC.Arbitrary a, QC.Arbitrary b) => (a -> b -> a) -> a -> b -> [a]
-shrinkTwo' f a b =
-  [a] ++ [ f a' b | a' <- shrink a]
-      ++ [ f a b' | b' <- shrink b]
 
 

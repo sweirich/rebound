@@ -10,7 +10,7 @@ pretty-printing hints stored in 'LocalName' values.
 -}
 module Tutorial.Scoped.Syntax(
     Ty(..), Tm(..), 
-    -- tmSize, maxScope, height,
+    tmSize, maxScope, height,
     module Rebound, 
     module Rebound.Bind.Local) where
 
@@ -64,7 +64,7 @@ instance Subst Tm Tm where
   isVar (Var x) = Just (Refl, x)
   isVar _ = Nothing
 
-{-
+
 tmSize :: Tm n -> Int
 tmSize (Var x)            = 1
 tmSize (Lam b)            = 1 + tmSize (getBody1 b)
@@ -99,4 +99,3 @@ height (App e1 e2)        = 1 + max (height e1) (height e2)
 height (MatchUnit e1 e2)  = 1 + max (height e1) (height e2)
 height (MatchPair e b)    = 1 + max (height e) (height (getBody2 b))
 height (MatchSum e b1 b2) = 1 + maximum [height e, height (getBody1 b1), height (getBody1 b2)]
--}

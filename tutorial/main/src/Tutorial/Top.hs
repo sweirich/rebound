@@ -1,3 +1,7 @@
+-- | Utility module for interactive us with the repl. Imports 
+-- all modules of interest and provides wrappers for 
+-- quickcheck that increase the number of iterations for the 
+-- property 
 module Tutorial.Top (
   module Tutorial.Scoped.Syntax,
   module Tutorial.Scoped.Gen,
@@ -11,9 +15,9 @@ module Tutorial.Top (
 
 import Tutorial.Scoped.Syntax
 import Tutorial.Scoped.Gen
-import Tutorial.Scoped.ScopeCheck
-import Tutorial.Scoped.Eval
-import Tutorial.Scoped.CPS
+import Tutorial.Scoped.ScopeCheck hiding (testAll)
+import Tutorial.Scoped.Eval hiding (testAll)
+import Tutorial.Scoped.CPS hiding (testAll)
 import Test.QuickCheck hiding (tabulate)
 
 -- | Run quickcheck 1000 times

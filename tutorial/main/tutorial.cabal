@@ -55,6 +55,7 @@ library
     , parsec
     , template-haskell
     , syb
+    , unicode-show
   exposed-modules:
     , Tutorial.Named.Syntax
     , Tutorial.Named.PP

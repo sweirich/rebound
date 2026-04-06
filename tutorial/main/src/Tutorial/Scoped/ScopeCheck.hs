@@ -14,17 +14,13 @@ The named representation is used for parsing and pretty-printing; the scoped
 representation is used for evaluation and transformation.  The two directions
 serve different purposes:
 
-* __inject__ (scoped → named): always succeeds; used for pretty-printing.
 * __project__ (named → scoped): can fail; used after parsing.
+* __inject__ (scoped → named): always succeeds; used for pretty-printing.
 
 -}
 module Tutorial.Scoped.ScopeCheck (
   -- * Scope-check errors
   ScopeCheckError(..),
-  -- * Top-level parsing
-  Error(..),
-  parse,
-  parseWith,
   -- * Type conversions
   injectTy,
   projectTy,
@@ -36,9 +32,14 @@ module Tutorial.Scoped.ScopeCheck (
   -- * Round-trip properties
   prop_project_round_trip,
   prop_parse_round_trip,
-  -- * pretty printer
+  testAll,
+  -- * pretty printer for scoped representation
   pp,
-  ppWith
+  ppWith,
+  -- * parser for scoped representation
+  Error(..),
+  parse,
+  parseWith
 ) where
 
 import Test.QuickCheck
@@ -52,12 +53,104 @@ import qualified Tutorial.Named.Syntax as N
 import qualified Tutorial.Named.PP as N
 import qualified Tutorial.Named.Parser as N
 import qualified Tutorial.Scoped.Syntax as S
-import Tutorial.Scoped.Gen
-import Text.Parsec hiding (parse)
-
+import Tutorial.Scoped.Gen ()
+import Text.Parsec ( ParseError )
 
 ------------------------------------------------------------------------
--- * Parsing and Pretty Printing (top-level entry point)
+-- * Parsing and Pretty Printing examples
+------------------------------------------------------------------------
+
+-- >>> N.parseTm "λ x y. x"
+-- Right (Lam "x" (Lam "y" (Var "x")))
+
+-- >>> projectTm (N.Lam "x" (N.Lam "y" (N.Var "x")))
+-- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
+-- >>> parse "λ x y. x"
+-- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
+-- Things can go wrong. 
+
+-- >>> parse "λ x x"
+-- Left (ParseError "<interactive>" (line 1, column 6):
+-- unexpected end of input
+-- expecting identifier or ".")
+
+-- >>> parse "λ y . x"
+-- Left (ScopeError (UnboundVariable "x"))
+
+
+t1 :: S.Tm Z
+t1 = case parse "λ x. x" of Right y -> y ; _ -> error "OOPS"
+t2 :: S.Tm Z
+t2 = case parse "λ y. y" of Right y -> y ; _ -> error "OOPS"
+
+-- >>> t1 == t2
+-- True
+
+
+t3 :: S.Tm Z
+t3 = case parse "λ x. λ y. x" of Right y -> y ; _ -> error "OOPS"
+t4 :: S.Tm Z
+t4 = case parse "λ x. λ y. y" of Right y -> y ; _ -> error "OOPS"
+
+-- >>> t3 == t4
+-- False
+
+-- Pretty printing also goes through the named syntax
+
+n1 :: N.Tm
+n1 = injectTm t1
+n2 :: N.Tm
+n2 = injectTm t2
+
+-- >>> n1
+-- Lam "x" (Var "x")
+
+-- >>> N.pp n1
+-- "\\ x. x"
+
+
+-- >>> pp t1
+-- "\\ x. x"
+
+
+-- we keep the original names
+
+-- >>> n2
+-- Lam "y" (Var "y")
+
+-- >>> pp t3
+-- "\\ x y. x"
+
+t5 :: S.Tm Z
+t5 = case parse "λ x. λ x. x" of Right y -> y ; _ -> error "OOPS"
+
+-- >>> t5
+-- Lam (bind1 (Lam (bind1 (Var 0))))
+
+-- >>> pp t5
+-- "\\ x x0. x0"
+
+
+-- Can also parse and print open terms by providing additional information
+
+-- >>> :t parseWith
+-- parseWith :: [(String, Fin n)] -> String -> Either Error (Tm n)
+
+
+-- >>> parseWith [("x", FZ)] "λ y. x"
+-- Right (Lam (bind1 (Var 1)))
+
+
+-- >>> :t ppWith
+-- ppWith :: Vec n String -> Tm n -> String
+
+-- >>> ppWith ("x" ::: VNil) (S.Lam (S.bind1 (S.LocalName "y") (S.Var f1)))
+-- "\\ y. x"
+
+------------------------------------------------------------------------
+-- * Parsing and Pretty Printing (top-level entry points)
 ------------------------------------------------------------------------
 
 -- | Errors that can occur during scope-checking.
@@ -86,6 +179,7 @@ parse s = case N.parseTm s of
 
 -- >>> parse "\\ x y. x"
 -- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
 -- >>> parse "λ y . x"
 -- Left (ScopeError (UnboundVariable "x"))
 
@@ -251,3 +345,10 @@ prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Right i
 -- | Pretty-printing a term and parsing it back yields the original named term.
 prop_parse_round_trip :: S.Tm Z -> Bool
 prop_parse_round_trip i = N.parseTm (show (N.test (injectTm i :: N.Tm))) == Right (injectTm i)
+
+-- | Run all QuickCheck properties in this module.
+testAll :: IO ()
+testAll = do
+    let args = stdArgs { maxSuccess = 1000 }
+    putStrLn "prop_project_round_trip:" >> quickCheckWith args prop_project_round_trip
+    putStrLn "prop_parse_round_trip:"   >> quickCheckWith args prop_parse_round_trip

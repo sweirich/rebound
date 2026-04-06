@@ -122,7 +122,7 @@ cpsExp r (MatchSum e0 e1 e2) k =
 -- 
 -- NB: this is not true, what is a counter example?
 prop_cps_result :: Property
-prop_cps_result = forAll genTypedFull $ \ e ->
+prop_cps_result = forAll (genTm Typed Full) $ \ e ->
       let cps_e      = cps e
           eval_e     = eval e 
           eval_cps_e = eval (cps_e)
@@ -136,7 +136,7 @@ prop_cps_result = forAll genTypedFull $ \ e ->
 -- If @v = eval(e)@ and v is firstorder then @v == eval(cps(e))@ 
 -- 
 prop_cps_result_firstorder :: Property
-prop_cps_result_firstorder = forAll genTypedFull $ \e ->
+prop_cps_result_firstorder = forAll (genTm Typed Full) $ \e ->
     let
        cps_e = cps e
        eval_e = case eval e of
@@ -176,7 +176,7 @@ isFirstOrder _ = False
 -- NB: this is not true because the cps conversion of a value is not 
 -- a value, it is id applied to the translated value
 prop_cps_eval_cps :: Property
-prop_cps_eval_cps = forAll genTypedFull $ \e ->
+prop_cps_eval_cps = forAll (genTm Typed Full) $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
@@ -186,7 +186,7 @@ prop_cps_eval_cps = forAll genTypedFull $ \e ->
 -- use reduction instead of evaluation. 
 -- NB: this fails for terms that use pattern matching
 prop_cps_reduce_cps :: Property
-prop_cps_reduce_cps = forAll genTypedFull $ \e ->
+prop_cps_reduce_cps = forAll (genTm Typed Full) $ \e ->
    let 
       cps_e = cpsK e 
       eval_e = case reduce e of
@@ -207,7 +207,7 @@ prop_cps_reduce_cps = forAll genTypedFull $ \e ->
 
 -- OK: let's just test the property for pure lambda calculus terms
 prop_cps_reduce_cps_pure :: Property
-prop_cps_reduce_cps_pure = forAll genTypedPureLC $ \e ->
+prop_cps_reduce_cps_pure = forAll (genTm Typed PureLC) $ \e ->
    let 
       cps_e = cpsK e 
       eval_e = case reduce e of
@@ -245,8 +245,8 @@ prop_cps_step e =
   where
      cps_e = cps e
      e' = case step e of
-            Left _ -> discard -- if e does not step, ignore this test
-            Right v -> v
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
      cps_e' = cps e'
 
 -- | __Simulation__ : CPS preserves small-step evaluation
@@ -264,8 +264,8 @@ prop_cps_steps e =
      step_star vv cps_e cps_e'
   where
      e' = case step e of
-            Left _ -> discard -- if e does not step, ignore this test
-            Right v -> v
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
      cps_e  = cpsK e
      cps_e' = cpsK e'
      vv  = ("k" ::: VNil)
@@ -276,12 +276,9 @@ prop_cps_steps e =
 step_star :: Vec n String -> Tm n -> Tm n -> Property
 step_star vv e e' = 
     counterexample ("steps to  => " ++ ppWith vv e) $
-    e == e' .||. case step e of 
-                    Left _ -> property False  -- e should not get stuck
-                    Right e1 -> step_star vv e1 e'
-
-
-
+    e == e' .||. case step e of
+                    Nothing -> property False  -- e should not get stuck
+                    Just e1 -> step_star vv e1 e'
 
 ------------------------------------------------------------------------
 -- * Optimized CPS translation
@@ -392,7 +389,7 @@ cpsExpOpt r (MatchSum e0 e1 e2) k =
 --
 -- @eval(e) == eval(cps(e))@ for firstorder values
 prop_cpsOpt_result_firstorder :: Property
-prop_cpsOpt_result_firstorder = forAll genTypedFull $ \e ->
+prop_cpsOpt_result_firstorder = forAll (genTm Typed Full) $ \e ->
     let
        cps_e = cpsOpt e
        eval_e = case eval e of
@@ -412,7 +409,7 @@ prop_cpsOpt_result_firstorder = forAll genTypedFull $ \e ->
 --
 -- @eval(e) == eval(cps(e))@ with continuation parameter
 prop_cpsOpt_eval_simulates_open :: Property
-prop_cpsOpt_eval_simulates_open = forAll genTypedFull $ \e ->
+prop_cpsOpt_eval_simulates_open = forAll (genTm Typed Full) $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        reduce (cpsOptK e) == (cpsOptK <$> reduce e)   -- lift cps over Maybe type
@@ -424,11 +421,11 @@ prop_cpsOpt_eval_simulates_open = forAll genTypedFull $ \e ->
 --      
 -- NB: not true for full language             
 prop_cpsOpt_steps :: Property
-prop_cpsOpt_steps = forAll genTypedPureLC $ \ e ->
+prop_cpsOpt_steps = forAllShrink (genTm Typed PureLC) shrink $ \ e ->
   let 
      e' = case step e of
-            Left _ -> discard -- if e does not step, ignore this test
-            Right v -> v
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
      cps_e  = cpsOptK e
      cps_e' = cpsOptK e'
      vv  = ("k" ::: VNil)
@@ -440,4 +437,36 @@ prop_cpsOpt_steps = forAll genTypedPureLC $ \ e ->
      counterexample ("cps_e' = " ++ pp' cps_e') $
      step_star vv cps_e cps_e'
 
-     
+------------------------------------------------------------------------
+-- * Run all properties
+------------------------------------------------------------------------
+
+-- | Run all QuickCheck properties in this module.
+-- Properties marked NB are known to be false and are expected to fail.
+testAll :: IO ()
+testAll = do
+    let args = stdArgs { maxSuccess = 1000 }
+    -- Naive CPS
+    putStrLn "=== Naive CPS ==="
+    putStrLn "prop_cps_result (NB: expected to fail):"
+    quickCheckWith args prop_cps_result
+    putStrLn "prop_cps_result_firstorder:"
+    quickCheckWith args prop_cps_result_firstorder
+    putStrLn "prop_cps_eval_cps (NB: expected to fail):"
+    quickCheckWith args prop_cps_eval_cps
+    putStrLn "prop_cps_reduce_cps (NB: expected to fail for pattern matching):"
+    quickCheckWith args prop_cps_reduce_cps
+    putStrLn "prop_cps_reduce_cps_pure:"
+    quickCheckWith args prop_cps_reduce_cps_pure
+    putStrLn "prop_cps_step (NB: expected to fail):"
+    quickCheckWith args prop_cps_step
+    putStrLn "prop_cps_steps (NB: expected to fail):"
+    quickCheckWith args prop_cps_steps
+    -- Optimized CPS
+    putStrLn "=== Optimized CPS ==="
+    putStrLn "prop_cpsOpt_result_firstorder:"
+    quickCheckWith args prop_cpsOpt_result_firstorder
+    putStrLn "prop_cpsOpt_eval_simulates_open:"
+    quickCheckWith args prop_cpsOpt_eval_simulates_open
+    putStrLn "prop_cpsOpt_steps:"
+    quickCheckWith args prop_cpsOpt_steps

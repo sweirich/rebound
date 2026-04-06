@@ -18,6 +18,7 @@ module Tutorial.Named.PP where
 import Prettyprinter (Doc, (<+>))
 import Prettyprinter qualified as PP
 import Control.Monad.Reader ( MonadReader(local), asks )
+import Text.Show.Unicode
 
 import Tutorial.Named.Syntax
 
@@ -27,7 +28,7 @@ import Text.Parsec (ParseError,
 
 -- | Pretty-print on a single line (using 'PP.group' to collapse line breaks)
 oneline :: Display DispState a => a -> String
-oneline x = show (PP.group (display x initState))
+oneline x = ushow (PP.group (display x initState))
 
 -- | Pretty-print with possible line breaks
 pp :: Display DispState a => a -> String
@@ -62,7 +63,9 @@ data DispState = DI {
     -- | precedence level
     prec  :: Int,
     -- | display with syntactic sugar
-    sugar :: Bool
+    sugar :: Bool,
+    -- | unicode symbols
+    unicode :: Bool
 }
 
 -- | Printing style controls how type names are displayed
@@ -73,7 +76,7 @@ data Style
     | Lang
 
 initState :: DispState
-initState = DI { style = Math, prec = levelBase, sugar = True }
+initState = DI { style = Math, prec = levelBase, sugar = False, unicode=False }
 
 ------------------------------------------------
 -- * precedence
@@ -184,7 +187,9 @@ instance Display DispState Tm where
     display (Var x)   = pure $ PP.pretty x
     display (Lam x e) = do
         s <- withPrec 0 (display e')
-        parens 0 (PP.pretty "λ" <+> PP.hsep (map PP.pretty (x:ys)) 
+        showUnicode <- unicode
+        let lambda = if showUnicode then PP.pretty "λ" else PP.pretty "\\" 
+        parens 0 (lambda <+> PP.hsep (map PP.pretty (x:ys)) 
                               <> PP.dot <+> s)
            where (ys,e') = gatherBinders e
     display (Pair []) = pure $ PP.pretty "()"
@@ -291,13 +296,18 @@ example = (Case (Var "x") [(Inj 0 (Pair [Var "y", Var "z"]), (App (Var "y") (Var
 
 
 -- >>> test (seqTm unitTm unitTm)
--- (); ()
+-- case () of
+--   () -> ()
 
 -- >>> test (seqTm unitTm (seqTm unitTm unitTm))
--- (); (); ()
+-- case () of
+--   () -> (case () of
+--            () -> ())
 
 -- >>> test (seqTm (seqTm unitTm unitTm) unitTm)
--- ((); ()); ()
+-- case case () of
+--        () -> () of
+--   () -> ()
 
 -------------------------------------------------------------------------
 -- Display Instances for errors and source positions

@@ -129,7 +129,7 @@ colon r _ _ = error "Impossible"
 --  [[e]]k ->* (e : k) 
 -- NOT true
 prop_a :: Property
-prop_a = forAll genTypedPureLC $ \ e ->
+prop_a = forAll (genTm Typed PureLC) $ \ e ->
             step_star ("k" ::: VNil) 
               (cpsExp zeroE e (Var FZ)) (colon zeroE e (Var FZ))
 
@@ -138,21 +138,21 @@ prop_a = forAll genTypedPureLC $ \ e ->
 -- | If e -> e' then (e : k) ->* (e' : k)
 -- NB: not true
 prop_simulation :: Property
-prop_simulation = forAll genTypedPureLC $ \ e ->
+prop_simulation = forAll (genTm Typed PureLC) $ \ e ->
    let
        cps_e = colon zeroE e k
        cps_e' = colon zeroE e' k
        k = Var FZ
        vv = "k" ::: VNil
        e' = case step e of 
-            Left _ -> discard
-            Right e1 -> e1
+            Nothing -> discard
+            Just e1 -> e1
     in 
         step_star vv cps_e cps_e'
 
 -- | If  e ->* v then  [[e]]k ->* [[v]]k
 prop_plotkin :: Property
-prop_plotkin = forAll genTypedPureLC $ \e ->
+prop_plotkin = forAll (genTm Typed PureLC) $ \e ->
     let
        cps_e = cpsExp zeroE e k
        cps_v = cpsExp zeroE v k
