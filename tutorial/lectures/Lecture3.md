@@ -2,7 +2,7 @@
 
 ## Modules referenced in this lecture
 
-- [Tutorial.Scoped.CPS](Tutorial/Scoped/CPS.hs)
+- [Tutorial.Scoped.CPS](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/CPS.hs)
 
 
 ## Overview and Goals

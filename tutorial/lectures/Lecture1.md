@@ -2,9 +2,9 @@
 
 ## Modules referenced in this lecture
 
-- [Tutorial.Scoped.Scratch](Tutorial/Scoped/Scratch.hs)
-- [Tutorial.Scoped.Syntax](Tutorial/Scoped/Syntax.hs)
-- [Tutorial.Scoped.Eval](Tutorial/Scoped/Eval.hs)
+- [Tutorial.Scoped.Scratch](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Scratch.hs)
+- [Tutorial.Scoped.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Syntax.hs)
+- [Tutorial.Scoped.Eval](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Eval.hs)
 
 ## Overview and Goals
 

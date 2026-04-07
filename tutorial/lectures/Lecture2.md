@@ -2,13 +2,13 @@
 
 ## Modules referenced in this lecture
 
-- [Tutorial.Scoped.Syntax](Tutorial/Scoped/Syntax.hs)
-- [Tutorial.Scoped.Eval](Tutorial/Scoped/Eval.hs)
-- [Tutorial.Scoped.ScopeCheck](Tutorial/Scoped/ScopeCheck.hs)
-- [Tutorial.Scoped.Gen](Tutorial/Scoped/Gen.hs)
-- [Tutorial.Named.Syntax](Tutorial/Named/Syntax.hs)
-- [Tutorial.Named.Parser](Tutorial/Named/Parser.hs)
-- [Tutorial.Named.Parser](Tutorial/Named/PP.hs)
+- [Tutorial.Scoped.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Syntax.hs)
+- [Tutorial.Scoped.Eval](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Eval.hs)
+- [Tutorial.Scoped.ScopeCheck](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/ScopeCheck.hs)
+- [Tutorial.Scoped.Gen](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Gen.hs)
+- [Tutorial.Named.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Syntax.hs)
+- [Tutorial.Named.Parser](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Parser.hs)
+- [Tutorial.Named.Parser](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs)
 
 ## Overview and Goals
 
