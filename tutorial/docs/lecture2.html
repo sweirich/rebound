@@ -80,6 +80,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
+      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -98,14 +99,35 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <main>
 <h1 id="lecture-2-where-do-well-scoped-terms-come-from">Lecture 2: Where
 Do Well-Scoped Terms Come From?</h1>
+<h2 id="modules-referenced-in-this-lecture">Modules referenced in this
+lecture</h2>
+<ul>
+<li><a href="Tutorial/Scoped/Syntax.hs">Tutorial.Scoped.Syntax</a></li>
+<li><a href="Tutorial/Scoped/Eval.hs">Tutorial.Scoped.Eval</a></li>
+<li><a
+href="Tutorial/Scoped/ScopeCheck.hs">Tutorial.Scoped.ScopeCheck</a></li>
+<li><a href="Tutorial/Scoped/Gen.hs">Tutorial.Scoped.Gen</a></li>
+<li><a href="Tutorial/Named/Syntax.hs">Tutorial.Named.Syntax</a></li>
+<li><a href="Tutorial/Named/Parser.hs">Tutorial.Named.Parser</a></li>
+<li><a href="Tutorial/Named/PP.hs">Tutorial.Named.Parser</a></li>
+</ul>
+<h2 id="overview-and-goals">Overview and Goals</h2>
 <p>In Lecture 1 we represented terms using de Bruijn indices and
-implmented an evaluator. To make sure that our code was correct, we used
-used QuickCheck to generate well-scoped terms to test the properties of
-our evaluator. In the case that QC finds a bug, we converted the term to
-a named representation for printing. We also want to use this named
-representation for parsing: users do not want to write their code using
-de Bruijn indices… instead we should let them use good-old-fashioned
-variable names and check for them that these names are in scope.</p>
+implemented an evaluator. We also saw that we could use
+<code>rebound</code> to implement substitution and alpha-conversion
+automatically for our well-scoped syntax.</p>
+<p>How do we know that our evaluator is correct? We use property-based
+testing, with Haskell’s Quickcheck library (QC). With this approach, we
+state properties of our definitions, and then test those properties
+extensively, using randomly generated values.</p>
+<p>However, to use Quickcheck we need to generate <em>well-scoped</em>
+terms. Furthermore, if QC finds a bug, we want to see it in the most
+convenient form: with indices replaced by variable names and converted
+to a concise concrete syntax.</p>
+<p>We also want to use this named representation for parsing: users do
+not want to write their code using abstract syntax and de Bruijn indices
+— instead we should let them use good-old-fashioned variable names and
+verify that those names are in scope.</p>
 <p>So that means that there are two sources of <em>well-scoped</em>
 terms that we want to consider:</p>
 <ol type="1">
@@ -118,208 +140,82 @@ recurses.</li>
 </ol>
 <p>This lecture covers both, and uses QuickCheck to ensure that we are
 treating variable names consistently.</p>
+<p>The goals of this lecture are to:</p>
+<ul>
+<li><p>cover more practical aspects of working with de Bruijn indices:
+maintaining user-supplied variable names and generating well-scoped
+syntax trees</p></li>
+<li><p>show how to convert between syntax representations</p></li>
+<li><p>demonstrate the use of Quickcheck for property-based
+testing</p></li>
+</ul>
 <hr />
-<h2 id="two-representations">1. Two Representations</h2>
-<p>We maintain two parallel term representations:</p>
-<table>
-<thead>
-<tr>
-<th>Module</th>
-<th>Type</th>
-<th>Variables</th>
-<th>Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Named.Syntax</code></td>
-<td><code>Tm</code></td>
-<td><code>String</code></td>
-<td>parsing, pretty-printing</td>
-</tr>
-<tr>
-<td><code>Scoped.Syntax</code></td>
-<td><code>Tm n</code></td>
-<td><code>Fin n</code></td>
-<td>evaluation, compilation</td>
-</tr>
-</tbody>
-</table>
-<p>The named representation is convenient for humans: variable names are
-readable strings and there is no type index to worry about. The scoped
-representation is safe by construction: the type system rules out
-out-of-scope variables entirely.</p>
-<p><code>ScopeCheck.hs</code> bridges the gap. The top-level entry
-points are:</p>
-<div class="sourceCode" id="cb1"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ot">injectTm  ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">N.Tm</span>           <span class="co">-- always succeeds</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ot">projectTm ::</span> <span class="dt">N.Tm</span>   <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">S.Tm</span> <span class="dt">Z</span>) <span class="co">-- fails for free variables / unsupported patterns</span></span></code></pre></div>
-<p>Each is a one-liner that delegates to a worker that carries an
-explicit context, making the workers usable independently:</p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">injectTmWith  ::</span> <span class="dt">Vec</span> n <span class="dt">String</span>      <span class="ot">-&gt;</span> <span class="dt">S.Tm</span> n <span class="ot">-&gt;</span> <span class="dt">N.Tm</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ot">projectTmWith ::</span> [(<span class="dt">String</span>, <span class="dt">Fin</span> n)] <span class="ot">-&gt;</span> <span class="dt">N.Tm</span>   <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">S.Tm</span> n)</span></code></pre></div>
-<hr />
-<h2 id="scope-checking-named-scoped-projecttmwith">2. Scope-Checking:
-Named → Scoped (<code>projectTmWith</code>)</h2>
-<p>The scope-checker converts a named term, where variables are strings,
-into a well-scoped term, where variables are de Bruijn indices. The key
-challenge is tracking which names are in scope and what index each one
-corresponds to.</p>
-<h3 id="the-scope-checking-context">The scope-checking context</h3>
-<p>We use an association list <code>[(String, Fin n)]</code> threading
-through the recursion. Each entry records a name and the de Bruijn index
-it is currently bound to in scope <code>n</code>.</p>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ot">projectTmWith ::</span> [(<span class="dt">String</span>, <span class="dt">Fin</span> n)] <span class="ot">-&gt;</span> <span class="dt">N.Tm</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">S.Tm</span> n)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ot">projectTm ::</span> <span class="dt">N.Tm</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">S.Tm</span> <span class="dt">Z</span>)</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>projectTm <span class="ot">=</span> projectTmWith []</span></code></pre></div>
-<p>The outer call starts with the empty list <code>[]</code> (no
-variables in scope), so the result is a <em>closed</em> term
-<code>S.Tm Z</code>.</p>
-<h3 id="variable-lookup">Variable lookup</h3>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>projectTmWith vs (<span class="dt">N.Var</span> v) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    x <span class="ot">&lt;-</span> <span class="fu">lookup</span> v vs</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> <span class="op">$</span> <span class="dt">S.Var</span> x</span></code></pre></div>
-<p>If <code>v</code> is not in the association list the term has a free
-variable and we return <code>Nothing</code>.</p>
-<h3 id="crossing-a-binder">Crossing a binder</h3>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>projectTmWith vs (<span class="dt">N.Lam</span> v b) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    b&#39; <span class="ot">&lt;-</span> projectTmWith ((v, <span class="dt">FZ</span>) <span class="op">:</span> <span class="fu">map</span> (<span class="fu">fmap</span> <span class="dt">FS</span>) vs) b</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> <span class="op">$</span> <span class="dt">S.Lam</span> (S.bind1 (<span class="dt">S.LocalName</span> v) b&#39;)</span></code></pre></div>
-<p>When we cross a <code>λv.</code>, we extend the scope. The new
-variable <code>v</code> maps to <code>FZ</code> (the innermost de Bruijn
-index). Every existing variable in the list is shifted up by one
-(<code>fmap FS</code>) because they are now one binder further away. The
-result is packed into <code>S.bind1</code>, which stores the user’s name
-<code>v</code> as a <code>LocalName</code> for later
-pretty-printing.</p>
-<h3 id="pattern-matching">Pattern matching</h3>
-<p>For <code>MatchPair</code>, which binds two names simultaneously, we
-add both to the list and shift the rest by two:</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>projectTmWith vs (<span class="dt">N.Case</span> e [(<span class="dt">N.Pair</span> [<span class="dt">N.Var</span> v1, <span class="dt">N.Var</span> v2], e1)]) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    a&#39; <span class="ot">&lt;-</span> projectTmWith vs e</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    b&#39; <span class="ot">&lt;-</span> projectTmWith ((v2, <span class="dt">FZ</span>) <span class="op">:</span> (v1, <span class="dt">FS</span> <span class="dt">FZ</span>) <span class="op">:</span> <span class="fu">map</span> (<span class="fu">fmap</span> (<span class="dt">FS</span> <span class="op">.</span> <span class="dt">FS</span>)) vs) e1</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> (<span class="dt">S.MatchPair</span> a&#39; (S.bind2 (<span class="dt">S.LocalName</span> v1) (<span class="dt">S.LocalName</span> v2) b&#39;))</span></code></pre></div>
-<p>Note the order: <code>v2</code> is innermost (<code>FZ</code>) and
-<code>v1</code> is next (<code>FS FZ</code>). This matches the
-convention used by <code>instantiate2</code> in
-<code>Eval.hs</code>.</p>
-<p>For <code>MatchSum</code>, the two branches are independent: each
-introduces one name into its own copy of the scope:</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>projectTmWith vs (<span class="dt">N.Case</span> e [(<span class="dt">N.Inj</span> <span class="dv">0</span> (<span class="dt">N.Var</span> v1), e1), (<span class="dt">N.Inj</span> <span class="dv">1</span> (<span class="dt">N.Var</span> v2), e2)]) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    a&#39;  <span class="ot">&lt;-</span> projectTmWith vs e</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    b1&#39; <span class="ot">&lt;-</span> projectTmWith ((v1, <span class="dt">FZ</span>) <span class="op">:</span> <span class="fu">map</span> (<span class="fu">fmap</span> <span class="dt">FS</span>) vs) e1</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    b2&#39; <span class="ot">&lt;-</span> projectTmWith ((v2, <span class="dt">FZ</span>) <span class="op">:</span> <span class="fu">map</span> (<span class="fu">fmap</span> <span class="dt">FS</span>) vs) e2</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> (<span class="dt">S.MatchSum</span> a&#39; (S.bind1 (<span class="dt">S.LocalName</span> v1) b1&#39;)</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>                          (S.bind1 (<span class="dt">S.LocalName</span> v2) b2&#39;))</span></code></pre></div>
-<p>Unsupported patterns return <code>Nothing</code>:</p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>projectTmWith vs _ <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
-<hr />
-<h2 id="printing-scoped-named-injecttmwith">3. Printing: Scoped → Named
-(<code>injectTmWith</code>)</h2>
-<p>Going the other direction is always safe: a well-scoped term has no
-free variables and every variable is a valid index. The job is to
-replace each <code>Fin n</code> index with a human-readable name.</p>
-<h3 id="the-naming-context">The naming context</h3>
-<p>We carry a <code>Vec n String</code> — a length-indexed vector of
-names — that maps each in-scope de Bruijn index to a string. The head of
-the vector (index <code>FZ</code>) is the innermost (most recently
-bound) variable; names are prepended at each binder site.</p>
-<div class="sourceCode" id="cb9"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ot">injectTmWith ::</span> <span class="dt">Vec</span> n <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">S.Tm</span> n <span class="ot">-&gt;</span> <span class="dt">N.Tm</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ot">injectTm ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">N.Tm</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>injectTm <span class="ot">=</span> injectTmWith <span class="dt">VNil</span></span></code></pre></div>
-<p><code>VNil :: Vec Z String</code> is the empty vector for the
-closed-term case.</p>
-<h3 id="the-traversal">The traversal</h3>
-<div class="sourceCode" id="cb10"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>injectTmWith vs (<span class="dt">S.Var</span> x)     <span class="ot">=</span> <span class="dt">N.Var</span> (vs <span class="op">!</span> x)</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>injectTmWith vs (<span class="dt">S.Lam</span> t)     <span class="ot">=</span> <span class="dt">N.Lam</span> s (injectTmWith (s <span class="op">:::</span> vs) (S.getBody1 t))</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>                                  <span class="kw">where</span> s <span class="ot">=</span> freshen (<span class="fu">show</span> (S.getLocalName t)) vs</span></code></pre></div>
-<p><code>vs ! x</code> looks up index <code>x</code> in the vector. At a
-<code>Lam</code>, we retrieve the stored <code>LocalName</code> hint
-with <code>getLocalName</code>, convert it to a string, <em>freshen</em>
-it (see below), then prepend it to the vector before recursing into the
-body. This is the inverse of <code>projectTmWith</code>: the name stored
-by <code>bind1</code> is recovered here.</p>
-<h3 id="name-freshening">Name freshening</h3>
-<p>The <code>LocalName</code> hints stored in binders are <em>just
-hints</em> — they need not be unique. QuickCheck, for example, freely
-generates terms where two nested binders share the same name hint. If we
-used the hints verbatim the pretty-printed output would contain shadowed
-names and the round-trip property <code>prop_project_round_trip</code>
-would fail (the parser can’t recover which binder a shadowed name refers
-to).</p>
-<p>We solve this with a small helper:</p>
-<div class="sourceCode" id="cb11"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | True if the string appears anywhere in the vector.</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ot">inVec ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Vec</span> n <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>inVec _ <span class="dt">VNil</span>       <span class="ot">=</span> <span class="dt">False</span></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>inVec x (y <span class="op">:::</span> ys) <span class="ot">=</span> x <span class="op">==</span> y <span class="op">||</span> inVec x ys</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Return s unchanged if it is not in scope; otherwise append 0, 1, 2, …</span></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co">-- until a fresh name is found.</span></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="ot">freshen ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Vec</span> n <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>freshen s vs</span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">|</span> <span class="fu">not</span> (inVec s vs) <span class="ot">=</span> s</span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">|</span> <span class="fu">otherwise</span>        <span class="ot">=</span> <span class="fu">head</span> [ s <span class="op">++</span> <span class="fu">show</span> i <span class="op">|</span> i <span class="ot">&lt;-</span> [<span class="dv">0</span><span class="ot"> ::</span> <span class="dt">Int</span> <span class="op">..</span>], <span class="fu">not</span> (inVec (s <span class="op">++</span> <span class="fu">show</span> i) vs) ]</span></code></pre></div>
-<p>At every binder site, the proposed name is checked against the
-current vector and suffixed with a number if necessary. For
-<code>MatchPair</code>, which introduces two names at once, the second
-name is freshened against the already-extended context that includes the
-first:</p>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>injectTmWith vs (<span class="dt">S.MatchPair</span> e1 e2) <span class="ot">=</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">N.Case</span> (injectTmWith vs e1) [(<span class="dt">N.Pair</span> [<span class="dt">N.Var</span> s1, <span class="dt">N.Var</span> s2], injectTmWith vs&#39; e2&#39;)]</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span> s1    <span class="ot">=</span> freshen (<span class="fu">show</span> (names <span class="op">!</span> <span class="dt">FZ</span>))      vs</span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>          s2    <span class="ot">=</span> freshen (<span class="fu">show</span> (names <span class="op">!</span> <span class="dt">FS</span> <span class="dt">FZ</span>))   (s1 <span class="op">:::</span> vs)</span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>          names <span class="ot">=</span> S.getLocalName2 e2</span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>          e2&#39;   <span class="ot">=</span> S.getBody2 e2</span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>          vs&#39;   <span class="ot">=</span> s2 <span class="op">:::</span> s1 <span class="op">:::</span> vs</span></code></pre></div>
-<hr />
-<h2 id="keeping-user-supplied-names-localname">4. Keeping User-Supplied
-Names — <code>LocalName</code></h2>
+<h2 id="parsing-and-pretty-printing-scoped-syntax">1. Parsing and
+Pretty-printing scoped syntax</h2>
+<p>For simplicity, we will go through a named representation for parsing
+and printing. In other words, to create scoped syntaxt, we divide the
+work into parsing raw strings into a representation that uses strings
+for variable names, and a separate <em>projection</em> function that
+performs scope checking. In this process, two sorts of failures could
+occur: perhaps the string doesn’t parse, or perhaps one of the variables
+is out of scope. This process also resolves <em>shadowing</em>, where
+the name of one variable hides another.</p>
+<pre><code>         parse                      project
+String ------------&gt; Named Syntax --------------&gt; Scoped Syntax </code></pre>
+<p>The inverse of parsing is pretty printing. For clarity, as above we
+do this in two stages. First we <code>inject</code> the scoped syntax
+into the named syntax, replacing all indices with strings. Then we use a
+pretty printer for the named syntax.</p>
+<pre><code> inject                pretty-print
+Scoped Syntax -------&gt; Named Syntax -------------&gt; String</code></pre>
+<p>Below, and in the <code>ScopeCheck</code> module, we use
+<code>S</code> to refer to the <code>Tutorial.Scoped.Syntax</code>
+module and <code>N</code> to refer to the
+<code>Tutorial.Named.Syntax</code> module.</p>
+<h2 id="remembering-user-supplied-names">2. Remembering user supplied
+names</h2>
+<p>Where do the names come from during pretty printing? Of course, we
+can just make up names, making sure that we always use new ones.
+However, that can lead to confusion—we’d like to keep any user-supplied
+names if possible.</p>
+<p>Therefore, we use a simple type, called <code>LocalName</code> to
+remember such names for printing, while making sure that they do not
+interfere with alpha-equivalence.</p>
 <p>When a user writes <code>λx. x</code> and we scope-check it, we
 produce</p>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind1 (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind1 (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span></code></pre></div>
 <p>The string <code>"x"</code> is stored inside the binder as a
-<code>LocalName</code>. When we later call <code>injectTm</code>,
-<code>getLocalName</code> retrieves it, so the printed output reads
-<code>λ x. x</code> rather than <code>λ x0. x0</code>.</p>
+<code>LocalName</code>. When later printed the printed output reads
+<code>λ x. x</code>.</p>
 <h3 id="the-localname-type">The <code>LocalName</code> type</h3>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">newtype</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">LocalName</span> {<span class="ot"> name ::</span> <span class="dt">String</span> }</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    x1 <span class="op">==</span> x2 <span class="ot">=</span> <span class="dt">True</span>   <span class="co">-- all LocalNames are equal!</span></span></code></pre></div>
+<p>A local name is just a wrapper for a string.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">newtype</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">LocalName</span> {<span class="ot"> name ::</span> <span class="dt">String</span> }</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    x1 <span class="op">==</span> x2 <span class="ot">=</span> <span class="dt">True</span>   <span class="co">-- all LocalNames are equal!</span></span></code></pre></div>
 <p>The deliberately trivial <code>Eq</code> instance means that two
 binders with <em>different</em> user names are still considered equal as
 long as their bodies are equal under de Bruijn comparison. This gives
 the correct notion of α-equivalence for free:</p>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- λ x. x  ==  λ y. y</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="op">==</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- True, because the bodies both reduce to Var FZ</span></span></code></pre></div>
-<p>The library example makes this explicit:</p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>t1 <span class="ot">=</span> <span class="dt">Lam</span> (bind (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> Fin.f0))</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>t2 <span class="ot">=</span> <span class="dt">Lam</span> (bind (<span class="dt">LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">Var</span> Fin.f0))</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="co">-- &gt;&gt;&gt; t1 == t2</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- True</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ x. x</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>t1 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ y. y</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>t2 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- &gt;&gt;&gt; t1 == t2</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- True</span></span></code></pre></div>
 <h3 id="the-bind1-interface">The <code>Bind1</code> interface</h3>
-<p><code>Bind1 Tm Tm n</code> is an abstract type; the library provides
-smart constructors and accessors instead of exposing the data
+<p><code>Bind1 Tm Tm n</code> is an abstract type defined in
+<code>Rebound.Bind.Local</code>, re-exported by
+<code>Tutorial.Scoped.Syntax</code>. It is a specific instance of
+<em>pattern binding</em>: the pattern is a single local name, stored
+alongside the body. The abstract type enforces that you access the body
+only through the provided smart constructors and accessors, never by
+pattern-matching on the internal representation directly.</p>
+<p><code>Bind1 Tm Tm n</code> is also the abstract type; the library
+provides smart constructors and accessors instead of exposing the data
 constructor:</p>
 <table>
 <colgroup>
@@ -365,214 +261,550 @@ constructor:</p>
 <p>The <code>Bind2</code> interface is analogous, with
 <code>getLocalName2 :: Bind2 Tm Tm n -&gt; Vec N2 LocalName</code>
 returning a length-2 vector of names.</p>
-<h3 id="the-arbitrary-localname-instance">The
-<code>Arbitrary LocalName</code> instance</h3>
-<p>QuickCheck generates random names from a small pool:</p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Arbitrary</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    arbitrary <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>        str <span class="ot">&lt;-</span> elements [<span class="st">&quot;x&quot;</span>, <span class="st">&quot;y&quot;</span>, <span class="st">&quot;z&quot;</span>, <span class="st">&quot;w&quot;</span>]</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>        num <span class="ot">&lt;-</span> elements [<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>,<span class="dv">5</span>,<span class="dv">0</span>]</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>        <span class="fu">return</span> (<span class="dt">LocalName</span> (str <span class="op">++</span> <span class="fu">show</span> num))</span></code></pre></div>
-<p>This intentionally produces name collisions (e.g. <code>x1</code> can
-be generated multiple times in one term), which is why
-<code>injectTm</code> must be able to freshen names before extending the
-context.</p>
 <hr />
-<h2 id="generating-arbitrary-well-scoped-terms">5. Generating Arbitrary
-Well-Scoped Terms</h2>
-<p>The <code>Arbitrary (Tm n)</code> instance for the scoped
-representation does not go through parsing: it generates de Bruijn terms
-directly, using a <em>scope</em> parameter to know which variables are
-available.</p>
-<h3 id="the-snati-typeclass">The <code>SNatI</code> typeclass</h3>
-<p>The scope <code>n :: Nat</code> is a type-level natural number. To
-<em>use</em> it at runtime (e.g. to enumerate all variables in scope),
-we need a singleton:</p>
-<div class="sourceCode" id="cb18"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">SNatI</span> n <span class="kw">where</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ot">    snat ::</span> <span class="dt">SNat</span> n</span></code></pre></div>
-<p><code>SNat n</code> is a runtime witness for the scope size —
-essentially a Peano numeral <code>Z</code>, <code>S Z</code>,
-<code>S (S Z)</code>, … that can be inspected at runtime. The typeclass
-constraint <code>SNatI n</code> says “at this type, we have a witness
-available.”</p>
-<p>The library provides:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ot">snat  ::</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">SNat</span> n         <span class="co">-- retrieve the witness</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ot">next  ::</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">SNat</span> (<span class="dt">S</span> n)      <span class="co">-- successor</span></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="ot">snat_ ::</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">SNatView</span> n      <span class="co">-- case analysis</span></span></code></pre></div>
-<p>where <code>SNatView n</code> is either <code>SZ_</code> (n = Z) or
-<code>SS_ (SNat m)</code> (n = S m).</p>
-<h3 id="enumerating-variables-in-scope">Enumerating variables in
-scope</h3>
-<p>Given <code>SNatI n</code>, we can list every valid variable:</p>
-<div class="sourceCode" id="cb20"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>Fin.universe<span class="ot"> ::</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> [<span class="dt">Fin</span> n]</span></code></pre></div>
+<h2 id="quick-check-properties">3. Quick check properties</h2>
+<p>We can connect parsing and generation — via a chain of
+transformations:</p>
+<pre><code>
+        inject            scope-check
+Tm Z    ────────►  N.Tm   ──────────►  Either ScopeCheckError (Tm Z)
+
+
+         inject            pretty-print          parse             scope-check
+Tm Z    ────────►  N.Tm   ──────────►  String  ──────────► Either ParseError N.Tm  ──────────►  Either ScopeCheckError (Tm Z)</code></pre>
+<p>Two QuickCheck properties verify that our transformations are
+correct</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- inject then project recovers the original term</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_project_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>prop_project_round_trip i <span class="ot">=</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    projectTm (injectTm i) <span class="op">==</span> <span class="dt">Right</span> i</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- pretty-print then parse recovers the named term</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_parse_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>prop_parse_round_trip i <span class="ot">=</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    N.parseTm (<span class="fu">show</span> (N.test (injectTm i))) <span class="op">==</span> <span class="dt">Right</span> (injectTm i)</span></code></pre></div>
+<p>However, to run QuickCheck properties we need a way to generate
+random <code>S.Tm Z</code> values! QuickCheck provides two central
+abstractions for property-based testing:</p>
+<ul>
+<li><p><strong><code>Gen a</code></strong> — a probability distribution
+over values of type <code>a</code>. Combinators like
+<code>QC.sized</code>, <code>QC.oneof</code>, and
+<code>QC.elements</code>, and the monad operations build generators
+compositionally.</p></li>
+<li><p><strong><code>Arbitrary a</code></strong> — a typeclass that
+packages a default generator (<code>arbitrary :: Gen a</code>) and a
+shrinker (<code>shrink :: a -&gt; [a]</code>):</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">Arbitrary</span> a <span class="kw">where</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ot">    arbitrary ::</span> <span class="dt">Gen</span> a</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ot">    shrink    ::</span> a <span class="ot">-&gt;</span> [a]</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    shrink _  <span class="ot">=</span> []   <span class="co">-- default: no shrinking</span></span></code></pre></div>
+<p>QuickCheck uses <code>arbitrary</code> to generate test inputs and
+<code>shrink</code> to reduce a failing case to a smaller one.</p></li>
+</ul>
+<p>The goal of this section is to implement <code>Gen (S.Tm n)</code> —
+a generator that only ever produces well-scoped de Bruijn terms, so that
+every randomly generated term is a legitimate input to our
+properties.</p>
+<p>The key idea is to carry the <em>scope</em> — the number of variables
+currently in scope — as a runtime parameter for the generator. When the
+generator recurses under a binder it increments the scope, making the
+newly bound variable available.</p>
+<h2 id="a-well-scoped-generator-for-pure-lambda-calculus-terms">4. A
+well-scoped generator for pure lambda calculus terms</h2>
+<p>Let’s start with a simple well-scoped generator that targets only
+pure lambda calculus terms (<code>Lam</code>, <code>App</code>,
+<code>Var</code>). It is a good warm-up before tackling the full
+language.</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ot">genScopedPureLC ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">QC.Gen</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>genScopedPureLC <span class="ot">=</span> QC.sized (go snat)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">where</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ot">    go ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">QC.Gen</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    go n sz <span class="op">|</span> sz <span class="op">&lt;=</span> <span class="dv">1</span> <span class="ot">=</span> genBase n</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    go n sz <span class="ot">=</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>          gen1 <span class="ot">=</span> bind1 <span class="op">@</span><span class="dt">Tm</span> <span class="op">&lt;$&gt;</span> genLocalName <span class="op">&lt;*&gt;</span> go (next n) (sz <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>          gen  <span class="ot">=</span> go n (sz <span class="ot">`div`</span> <span class="dv">2</span>)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">in</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>          QC.oneof [genBase n, <span class="dt">Lam</span> <span class="op">&lt;$&gt;</span> gen1, <span class="dt">App</span> <span class="op">&lt;$&gt;</span> gen <span class="op">&lt;*&gt;</span> gen]</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="ot">    genBase ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">Gen</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    genBase <span class="dt">SZ</span> <span class="ot">=</span> <span class="fu">return</span> tmId</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    genBase <span class="dt">SS</span> <span class="ot">=</span> <span class="dt">Var</span> <span class="op">&lt;$&gt;</span> QC.elements Fin.universe</span></code></pre></div>
+<p>The generator is parameterized by the number of free variables in
+scope <code>n :: Nat</code>, which is a <em>type</em>-level natural
+number. To use this number at runtime we need a <em>singleton</em>; the
+<code>SNatI n</code> constraint (explained below) provides one.</p>
+<p>The <code>go</code> function does the main work of generation. The
+first argument <code>n</code> is the number of variables in scope, the
+second is <code>sz</code>, a size budget. During property-based testing
+the <code>QC.sized</code> operation passes the current size budget to
+the inner function <code>go</code> to generate progressively larger
+terms. The <code>snat</code> call converts the <code>SNatI n</code>
+constraint into an explicit <code>SNat n</code> value that
+<code>go</code> can inspect and pass to recursive calls.</p>
+<p>The local helper
+<code>go :: SNat n -&gt; Int -&gt; QC.Gen (Tm n)</code> carries both the
+scope witness and the size budget:</p>
+<ul>
+<li><p><strong>Base case</strong> (<code>sz &lt;= 1</code>): delegate to
+<code>genBase</code>, which either returns <code>tmId</code> (the
+identity function <code>λx.x</code>, the smallest closed term) when the
+scope is empty (<code>SZ</code>), or picks a random variable from the
+scope (<code>SS</code>). Falling back to <code>tmId</code> rather than
+failing ensures the generator always produces a <em>closed</em> term
+when <code>n = Z</code>.</p></li>
+<li><p><strong>Recursive case</strong>: three choices via
+<code>QC.oneof</code>:</p>
+<ul>
+<li><code>genBase n</code> — a variable or <code>tmId</code> (same as
+before, but available at any size)</li>
+<li><code>Lam &lt;$&gt; gen1</code> — wrap a binder; <code>gen1</code>
+generates the body in scope <code>S n</code> by calling
+<code>go (next n) (sz - 1)</code>. The budget decreases by 1 (not
+halved) because a lambda chain <code>λx.λy.λz.…</code> is a linear
+sequence, not a tree.</li>
+<li><code>App &lt;$&gt; gen &lt;*&gt; gen</code> — apply two sub-terms,
+each in the <em>same</em> scope <code>n</code> but with budget
+<code>sz</code>div<code>2</code> so that both branches together stay
+within budget.</li>
+</ul></li>
+<li><p><strong>Binders increment the scope</strong>: <code>gen1</code>
+calls <code>go (next n) …</code>, where
+<code>next :: SNat n -&gt; SNat (S n)</code> adds one to the runtime
+scope witness. Inside the body of a <code>Lam</code>, the new variable
+<code>FZ</code> is automatically available because
+<code>Fin.universe</code> for <code>S n</code> includes
+<code>FZ</code>.</p></li>
+</ul>
+<h3 id="enumerating-variables">Enumerating variables</h3>
+<p>Given <code>SNatI n</code>, we can list every valid variable in scope
+<code>n</code>:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>Fin.universe<span class="ot"> ::</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> [<span class="dt">Fin</span> n]</span></code></pre></div>
 <p>For <code>n = S (S (S Z))</code> this gives
 <code>[FZ, FS FZ, FS (FS FZ)]</code> — all three variables in scope.</p>
-<h3 id="the-generator">The generator</h3>
-<div class="sourceCode" id="cb21"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">genTm ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">QC.Gen</span> (<span class="dt">Tm</span> n)</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>genTm n sz <span class="ot">=</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> sz&#39; <span class="ot">=</span> sz <span class="ot">`div`</span> <span class="dv">2</span></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>        gens <span class="ot">=</span> [ <span class="dt">Lam</span> <span class="op">&lt;$&gt;</span> (bind1 <span class="op">&lt;$&gt;</span> arbitrary <span class="op">&lt;*&gt;</span> genTm (next n) sz&#39;)</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">App</span> <span class="op">&lt;$&gt;</span> genTm n sz&#39; <span class="op">&lt;*&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>               , <span class="fu">pure</span> <span class="dt">Unit</span></span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">MatchUnit</span> <span class="op">&lt;$&gt;</span> genTm n sz&#39; <span class="op">&lt;*&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">Pair</span> <span class="op">&lt;$&gt;</span> genTm n sz&#39; <span class="op">&lt;*&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">MatchPair</span> <span class="op">&lt;$&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>                           <span class="op">&lt;*&gt;</span> (bind2 <span class="op">&lt;$&gt;</span> arbitrary <span class="op">&lt;*&gt;</span> arbitrary</span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>                                      <span class="op">&lt;*&gt;</span> genTm (next (next n)) sz&#39;)</span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">Inj</span> <span class="op">&lt;$&gt;</span> QC.elements [<span class="dv">0</span>,<span class="dv">1</span>] <span class="op">&lt;*&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>               , <span class="dt">MatchSum</span> <span class="op">&lt;$&gt;</span> genTm n sz&#39;</span>
-<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>                          <span class="op">&lt;*&gt;</span> (bind1 <span class="op">&lt;$&gt;</span> arbitrary <span class="op">&lt;*&gt;</span> genTm (next n) sz&#39;)</span>
-<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>                          <span class="op">&lt;*&gt;</span> (bind1 <span class="op">&lt;$&gt;</span> arbitrary <span class="op">&lt;*&gt;</span> genTm (next n) sz&#39;)</span>
-<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>               ]</span>
-<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span></span>
-<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> snat_ n <span class="kw">of</span></span>
-<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>        <span class="dt">SZ_</span> <span class="ot">-&gt;</span>    <span class="co">-- closed scope: no variables available</span></span>
-<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>            <span class="kw">if</span> sz <span class="op">&lt;=</span> <span class="dv">1</span> <span class="kw">then</span> <span class="fu">pure</span> <span class="dt">Unit</span></span>
-<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>                       <span class="kw">else</span> QC.oneof gens</span>
-<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>        <span class="dt">SS_</span> x <span class="ot">-&gt;</span>  <span class="co">-- open scope: can generate a variable</span></span>
-<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>            <span class="kw">let</span> genVar <span class="ot">=</span> withSNat x <span class="op">$</span> QC.elements (<span class="fu">map</span> <span class="dt">Var</span> Fin.universe)</span>
-<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>            <span class="kw">in</span>  <span class="kw">if</span> sz <span class="op">&lt;=</span> <span class="dv">1</span> <span class="kw">then</span> QC.oneof [genVar, <span class="fu">pure</span> <span class="dt">Unit</span>]</span>
-<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>                           <span class="kw">else</span> QC.oneof (genVar <span class="op">:</span> gens)</span></code></pre></div>
-<p>Key observations:</p>
-<ul>
-<li><p><strong>Binders increase the scope</strong>: generating a
-<code>Lam</code> body uses <code>genTm (next n) sz'</code>, which runs
-in scope <code>S n</code>. The fresh variable <code>FZ</code> is
-automatically in scope inside.</p></li>
-<li><p><strong>Two binders</strong>: <code>MatchPair</code> uses
-<code>next (next n)</code> for its body, binding two variables at
-once.</p></li>
-<li><p><strong>Variables use <code>Fin.universe</code></strong>: once we
-have the <code>SNatI n</code> witness (via <code>withSNat x</code>),
-<code>Fin.universe</code> gives all valid indices. We wrap each one in
-<code>Var</code> and pick uniformly.</p></li>
-<li><p><strong>Base case</strong>: when <code>sz &lt;= 1</code> we only
-generate a variable (if available) or <code>Unit</code>, preventing
-infinite recursion.</p></li>
-<li><p><strong>Names are generated independently</strong>:
-<code>arbitrary :: Gen LocalName</code> generates a random name for each
-binder, with no freshness guarantee. That is fine —
-<code>LocalName</code> equality ignores names, so correctness is
-unaffected.</p></li>
-</ul>
-<h3 id="the-arbitrary-instance">The <code>Arbitrary</code> instance</h3>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">QC.Arbitrary</span> (<span class="dt">Tm</span> n) <span class="kw">where</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    arbitrary <span class="ot">=</span> QC.sized (genTm snat)</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    shrink    <span class="ot">=</span> shrinkTm</span></code></pre></div>
-<p><code>QC.sized</code> passes a size parameter controlled by
-QuickCheck’s test runner. <code>snat :: SNat n</code> is the scope
-witness retrieved from the <code>SNatI n</code> instance. For generating
-<em>closed</em> terms we use <code>n = Z</code>, so the instance becomes
-<code>Arbitrary (Tm Z)</code>.</p>
-<h3 id="shrinking">Shrinking</h3>
-<p><code>shrinkTm</code> produces smaller terms by:</p>
-<ul>
-<li>For <code>Var FZ</code>: no smaller variable, return
-<code>[]</code>.</li>
-<li>For <code>Var (FS x)</code>: return <code>[Var (pred x)]</code> — a
-variable with a smaller index.</li>
-<li>For <code>Lam b</code>: shrink the body, wrapping back in
-<code>Lam</code> with the same name.</li>
-<li>For <code>App</code>, <code>Pair</code>, etc.: return each sub-term
-alone, then all pairwise shrinks.</li>
-<li>For <code>MatchPair</code>: return the scrutinee, all scrutinee
-shrinks, and all body shrinks.</li>
-</ul>
-<p>Crucially, shrinking preserves the scope: a shrunken
-<code>Tm n</code> is still a <code>Tm n</code>.</p>
-<hr />
-<h2 id="demo-the-round-trip">6. Demo: The Round Trip</h2>
-<p>We can connect both sources — parsing and generation — via a chain of
-transformations:</p>
-<pre><code>generate           inject              pretty-print         parse              scope-check
-Tm Z    ────────►  N.Tm   ──────────►  String  ──────────►  N.Tm  ──────────►  Maybe (Tm Z)</code></pre>
-<p>Two QuickCheck properties verify this:</p>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- inject then project recovers the original term</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_project_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>prop_project_round_trip i <span class="ot">=</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    projectTm (injectTm i) <span class="op">==</span> <span class="dt">Just</span> i</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- pretty-print then parse recovers the named term</span></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_parse_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>prop_parse_round_trip i <span class="ot">=</span></span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    N.parseTm (<span class="fu">show</span> (N.test (injectTm i))) <span class="op">==</span> <span class="dt">Right</span> (injectTm i)</span></code></pre></div>
-<p>Running these:</p>
-<pre><code>ghci&gt; qc prop_project_round_trip
-+++ OK, passed 1000 tests.
-ghci&gt; qc prop_parse_round_trip
-+++ OK, passed 1000 tests.</code></pre>
-<p>No discards: every randomly generated <code>Tm Z</code> is
-well-scoped by construction, so both directions of the round trip always
-succeed.</p>
+<p>Binders also need names for pretty-printing. QuickCheck draws them
+from a small pool:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">genLocalName ::</span> <span class="dt">QC.Gen</span> <span class="dt">LocalName</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>genLocalName <span class="ot">=</span> <span class="dt">LocalName</span> <span class="op">&lt;$&gt;</span> QC.elements [<span class="st">&quot;x&quot;</span>, <span class="st">&quot;y&quot;</span>, <span class="st">&quot;z&quot;</span>, <span class="st">&quot;w&quot;</span>, <span class="st">&quot;v&quot;</span>, <span class="st">&quot;u&quot;</span>, <span class="st">&quot;t&quot;</span>, <span class="st">&quot;s&quot;</span>]</span></code></pre></div>
+<p>This can produce name collisions (e.g. <code>"x"</code> can appear in
+nested binders). However, this is not a problem:<code>injectTm</code>
+freshens names when the same name is already in scope. Correctness is
+unaffected because <code>LocalName</code> equality ignores the stored
+string.</p>
 <h3 id="seeing-the-round-trip-in-action">Seeing the round trip in
 action</h3>
+<p>With this generator we can run our tests:</p>
+<pre><code>ghci&gt; quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_project_round_trip)
++++ OK, passed 100 tests.
+ghci&gt; quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_parse_round_trip)
++++ OK, passed 100 tests.</code></pre>
 <p>We can inspect a single randomly generated term end-to-end:</p>
-<pre><code>ghci&gt; t &lt;- generate (arbitrary :: Gen (Tm Z))
-ghci&gt; putStrLn (PP.pp (injectTm t))
+<pre><code>ghci&gt; t &lt;- generate (genScopedPureLC :: Gen (S.Tm Z))
+ghci&gt; putStrLn (N.pp (injectTm t))
 λ x1. case x1 of | Inj0 y2 -&gt; (λ z3. z3) y2 | Inj1 w4 -&gt; ()
-ghci&gt; projectTm (injectTm t) == Just t
+ghci&gt; projectTm (injectTm t) == Right t
 True</code></pre>
 <p>The pretty-printer uses the <code>LocalName</code> values stored in
 the binders to produce readable output. The round-trip property confirms
 that scope-checking the named term recovers exactly the original de
 Bruijn term.</p>
+<h2 id="testing-eval">4. Testing <code>eval</code></h2>
+<p>Now let’s consider some properties that we might test for our
+evaluator.</p>
+<h3 id="big-step-properties">Big-step properties</h3>
+<p>The most basic property is that if a term evaluates to some result,
+then the result is a value.</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- if a term evaluates, it produces a value</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>prop_evalVal <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    counterexample (<span class="st">&quot;term: &quot;</span> <span class="op">++</span> pp t) <span class="op">$</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    within <span class="dv">1000000</span> <span class="op">$</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v <span class="ot">-&gt;</span> </span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>            counterexample (<span class="st">&quot;not a value: &quot;</span> <span class="op">++</span> pp v) <span class="op">$</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>            property (isVal v)</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> </span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>            discard</span></code></pre></div>
+<p>What else can we test? We can define a generalization of
+call-by-value evaluation called <code>reduce</code> that works with open
+terms.</p>
+<p>For closed terms it should agree with <code>eval</code>:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_eval_reduce ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>prop_eval_reduce <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> reduce t <span class="op">==</span> <span class="dt">Just</span> v</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div>
+<p>We also test that <code>reduce</code> produces an <em>inert</em> term
+(one that cannot step further). This property is checked at both the
+closed scope <code>Z</code> and the open scope <code>S Z</code> (one
+free variable):</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_reduce_inert ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>prop_reduce_inert <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> reduce t <span class="kw">of</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> property (isInert v)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div>
+<h3 id="small-step-properties">Small-step properties</h3>
+<p>Finally, we also develop a small-step version of <code>reduce</code>.
+The small-step function <code>step</code> either returns a reduct or
+<code>Nothing</code> (the term is already a value). Two properties
+connect it to <code>eval</code> and <code>reduce</code>:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- for well-typed closed terms, step always reaches a value</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_stepVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>prop_stepVal <span class="ot">=</span> </span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> loop e <span class="ot">=</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>          <span class="kw">if</span> isVal e <span class="kw">then</span> property <span class="dt">True</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>                 <span class="dt">Nothing</span> <span class="ot">-&gt;</span> counterexample (<span class="st">&quot;stuck at: &quot;</span> <span class="op">++</span> pp e) (property <span class="dt">False</span>)</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>                 <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> loop e&#39;</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> loop</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a><span class="co">-- stepping preserves the final evaluation result</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalStep ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>prop_evalStep <span class="ot">=</span> \e <span class="ot">-&gt;</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> property (isVal e)</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> eval e <span class="op">==</span> eval e&#39;</span></code></pre></div>
+<h2 id="going-further-a-well-typed-generator">5. Going further: A
+well-typed generator?</h2>
+<p>The well-scoped generator (<code>genScopedTm</code>) produces any
+structurally valid term — but “well-scoped” does not mean “well-typed”.
+In an untyped setting, terms like the ω combinator</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- (λx. x x) (λx. x x)</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ot">omega ::</span> <span class="dt">Tm</span> <span class="dt">Z</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>omega <span class="ot">=</span> <span class="kw">let</span> self <span class="ot">=</span> <span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dt">FZ</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>)))</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">in</span> <span class="dt">App</span> self self</span></code></pre></div>
+<p>are perfectly well-scoped and will be generated regularly. Running
+<code>eval omega</code> diverges: the evaluator loops forever.</p>
+<p>This means properties tested with <code>genScopedTm</code> can hang
+rather than fail, making it difficult to get useful QuickCheck output.
+This is a real problem, because our well-scoped generator can produce
+such terms in practice.</p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> quickCheck (forAll genScopedPureLC prop_evalVal)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="op">***</span> <span class="dt">Failed</span><span class="op">!</span> <span class="dt">Timeout</span> <span class="kw">of</span> <span class="dv">1000000</span> microseconds exceeded<span class="op">.</span> (after <span class="dv">25</span> tests)<span class="op">:</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">Var</span> <span class="dv">0</span>))) (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dv">0</span>) (<span class="dt">Var</span> <span class="dv">0</span>)))) (<span class="dt">Lam</span> (bind1 (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dv">0</span>) (<span class="dt">Var</span> <span class="dv">0</span>))))) (<span class="dt">Lam</span> (bind1 (<span class="dt">Var</span> <span class="dv">0</span>))))</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>term<span class="op">:</span> (\ x<span class="op">.</span> x) ((\ u<span class="op">.</span> u u) (\ v<span class="op">.</span> v v) (\ x<span class="op">.</span> x))</span></code></pre></div>
+<p>If we add shrinking, we can even see this smallest term.</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped Tutorial.Top.pp prop_evalVal)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="op">***</span> <span class="dt">Failed</span><span class="op">!</span> <span class="dt">Timeout</span> <span class="kw">of</span> <span class="dv">1000000</span> microseconds exceeded<span class="op">.</span> (after <span class="dv">65</span> tests <span class="fu">and</span> <span class="dv">4</span> shrinks)<span class="op">:</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>(\ x<span class="op">.</span> x x) (\ s<span class="op">.</span> s s)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>term<span class="op">:</span> (\ x<span class="op">.</span> x x) (\ s<span class="op">.</span> s s)</span></code></pre></div>
+<p>The solution is to add timeouts to our properties. However, if we do
+so, we end up discarding many cases.</p>
+<pre><code>prop_evalVal:
++++ OK, passed 1000 tests; 2133 discarded.</code></pre>
+<p>Alternatively, we can restrict generation to <em>well-typed</em>
+terms. In the simply-typed lambda calculus every term is strongly
+normalizing, so <code>eval</code> is guaranteed to terminate on every
+well-typed input.</p>
+<p>This also lets us state stronger type-soundness properties. For
+example, every well-typed closed term must evaluate to a value:</p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_eval_exists_Val ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>prop_eval_exists_Val <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> property (isVal v)</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> property <span class="dt">False</span>   <span class="co">-- well-typed terms must not get stuck</span></span></code></pre></div>
+<p>And the <code>step</code> function <em>must</em> produces a value for
+closed terms.</p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- | the step </span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_stepVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>prop_stepVal e <span class="ot">=</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> loop e <span class="ot">=</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>          <span class="kw">if</span> isVal e <span class="kw">then</span> property <span class="dt">True</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>             <span class="dt">Nothing</span> <span class="ot">-&gt;</span></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>                counterexample (<span class="st">&quot;stuck at: &quot;</span> <span class="op">++</span> pp e) <span class="op">$</span></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>                property <span class="dt">False</span></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>             <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> loop e&#39;</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> within <span class="dv">1000000</span> <span class="op">$</span> loop e</span></code></pre></div>
+<p>These properties hold by type soundness (progress + preservation) and
+would not be testable with the well-scoped generator alone.</p>
+<h2 id="two-dimensions-of-generation">6. Two dimensions of
+generation</h2>
+<p>Therefore, we can define a generator for our syntax that is
+parameterized over two orthogonal dimensions:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Constraint</span> <span class="ot">=</span> <span class="dt">Scoped</span> <span class="op">|</span> <span class="dt">Typed</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Language</span>   <span class="ot">=</span> <span class="dt">PureLC</span> <span class="op">|</span> <span class="dt">Full</span></span></code></pre></div>
+<ul>
+<li><strong><code>Scoped</code></strong> — generate any well-scoped
+term; types are ignored.</li>
+<li><strong><code>Typed</code></strong> — generate a well-typed term by
+first picking a random type and context, then generating a term of that
+type.</li>
+<li><strong><code>PureLC</code></strong> — only use <code>Lam</code>,
+<code>App</code>, and <code>Var</code> (the pure lambda calculus).</li>
+<li><strong><code>Full</code></strong> — also include <code>Unit</code>,
+<code>Pair</code>, <code>MatchPair</code>, <code>Inj</code>,
+<code>MatchUnit</code>, and <code>MatchSum</code>.</li>
+</ul>
+<p>For the <code>Typed</code> constraint, <code>genTypedTm</code> works
+by type-directed synthesis. At each recursive call it has a <em>target
+type</em> and a <em>typing context</em> (a vector mapping each de Bruijn
+index to its type), and it only produces terms that have exactly that
+type.</p>
+<p>The high-level strategy is:</p>
+<ul>
+<li><p><strong>Introduction forms</strong> are selected by the
+<em>target type</em>. If the goal is <code>a :-&gt; b</code>, generate a
+<code>Lam</code> whose body is generated at type <code>b</code> in an
+extended context. If the goal is <code>a :* b</code>, generate a
+<code>Pair</code>. And so on.</p></li>
+<li><p><strong>Elimination forms</strong> (function application, pattern
+matching) require an <em>arbitrary</em> intermediate type, generated
+fresh for that sub-call. For example, to generate an <code>App</code>
+targeting type <code>b</code>, first pick a random argument type
+<code>a</code>, then generate a function of type <code>a :-&gt; b</code>
+and an argument of type <code>a</code>.</p></li>
+<li><p><strong>Variables</strong> are filtered by type: only those
+indices whose context entry matches the target type are offered as
+candidates.</p></li>
+<li><p><strong>Fallback</strong>: when no introduction or variable
+candidate applies (e.g. at size 0 targeting a function type with no
+matching variable), the generator falls back to
+<code>Unit</code>.</p></li>
+</ul>
+<p>The top-level call also picks a random context and a random target
+type before calling <code>genTypedTm</code>, so the resulting term may
+have free variables with known types — or be closed if the context is
+empty.</p>
+<h3 id="shrinking">Shrinking</h3>
+<p>Random generation also requires shrinking. Because we have two
+different constraints for the terms that we generate, we need two
+different shrinking functions: <code>shrinkScoped</code> and
+<code>shrinkTyped</code>.</p>
+<p>Both shrinking function take a counter example (a term) and produce a
+list of smaller terms that satisfy the same constraint. For
+<code>shrinkScoped</code>, the constraint is that the smaller terms must
+have the same scope as the original term. The type system guarantees
+this constraint automatically. For <code>shrinkTyped</code> the smaller
+terms must still be well-typed, but because we are not tracking types in
+the type system, they may not have the <em>same</em> type.</p>
+<h2 id="historical-notes">7. Historical Notes</h2>
+<p><strong>Scope checking as a compiler pass.</strong> The idea of
+converting named surface syntax to an internal nameless or index-based
+form is standard in compiler design. Early Lisp interpreters used
+association lists (<code>alist</code>) to map symbol names to values at
+runtime — the direct ancestor of the <code>[(String, Fin n)]</code>
+context used in <code>projectTmWith</code>. In modern compilers this
+conversion is a distinct front-end pass, often called <em>name
+resolution</em> or <em>scope analysis</em>, that runs after parsing and
+before type checking, and uses a more efficient data structure.</p>
+<p><strong>Singleton types and <code>SNatI</code>.</strong> To use a
+type-level natural number <code>n :: Nat</code> at runtime — e.g., to
+enumerate <code>Fin n</code> — one needs a <em>singleton</em>: a runtime
+value that mirrors the type. Simulating this in Haskell was described by
+McBride (“Faking It: Simulating Dependent Types in Haskell”, 2002) and
+later systematized in the <code>singletons</code> library (Eisenberg and
+Weirich, 2012). The <code>SNatI</code> typeclass and <code>SNat</code>
+type used by <code>genTm</code> follow this pattern.</p>
+<p><strong>QuickCheck.</strong> Koen Claessen and John Hughes introduced
+QuickCheck in “QuickCheck: A Lightweight Tool for Random Testing of
+Haskell Programs” (2000). Property-based testing is now widely used
+across languages. The technique of generating <em>well-scoped</em> (or
+well-typed) terms directly — rather than generating strings and parsing
+them — avoids a large class of trivially-failing test cases and is the
+standard approach for testing language implementations.</p>
+<p><strong>Well-scoped and well-typed term generation.</strong>
+Generating terms directly in an indexed representation — rather than
+generating strings and filtering out ill-scoped ones — was popularized
+in the property-based testing literature by Pałka et al. (“Testing an
+Optimising Compiler by Generating Random Lambda Terms”, 2011), who used
+it to find bugs in GHC. Type-directed generation (producing only
+well-typed terms) is the natural extension: it avoids both scope errors
+and divergence, and was used by Dénès et al. and others for testing
+type-preserving compilers and proof assistants.</p>
 <hr />
-<h2 id="summary">7. Summary</h2>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th>Concept</th>
-<th>Where</th>
-<th>Key idea</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Named → scoped</td>
-<td><code>projectTmWith</code></td>
-<td>association list <code>[(String, Fin n)]</code>; extend and shift at
-each binder</td>
-</tr>
-<tr>
-<td>Scoped → named</td>
-<td><code>injectTmWith</code></td>
-<td><code>Vec n String</code> naming context; retrieve
-<code>LocalName</code> hint, freshen if shadowed</td>
-</tr>
-<tr>
-<td>α-equivalence</td>
-<td><code>LocalName</code></td>
-<td><code>Eq</code> instance makes all names equal; de Bruijn does the
-real comparison</td>
-</tr>
-<tr>
-<td>Well-scoped generation</td>
-<td><code>genTm</code></td>
-<td>scope tracked as <code>SNat n</code>; binders widen scope with
-<code>next</code>; variables from <code>Fin.universe</code></td>
-</tr>
-<tr>
-<td>Round-trip</td>
-<td><code>prop_project_round_trip</code></td>
-<td>inject ∘ project = id on closed terms</td>
-</tr>
-</tbody>
-</table>
-<p>In the next lecture we will add types to the picture: generating
-<em>well-typed</em> terms requires threading a typing context alongside
-the scope, producing terms that evaluate without getting stuck.</p>
+<h2 id="exercises">Exercises</h2>
+<p><strong>1. Tracing <code>projectTmWith</code>.</strong> Manually
+trace through the following call, writing down the association list at
+each recursive step and the final de Bruijn term produced:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">N.Lam</span> <span class="st">&quot;y&quot;</span> (<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)))</span></code></pre></div>
+<ul>
+<li>What is the association list when we recurse into the body of the
+outer <code>λx.</code>?</li>
+<li>What is the association list when we recurse into the body of the
+inner <code>λy.</code>?</li>
+<li>What is the final <code>S.Tm Z</code> that is returned?</li>
+</ul>
+<p>Now do the same for:</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Case</span> (<span class="dt">N.Var</span> <span class="st">&quot;p&quot;</span>)</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="dt">N.Pair</span> [<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>, <span class="dt">N.Var</span> <span class="st">&quot;y&quot;</span>], <span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)])</span></code></pre></div>
+<p>Which variable maps to <code>FZ</code> inside the body —
+<code>x</code> or <code>y</code>? Why?</p>
+<hr />
+<p><strong>2. Extending the conversions with <code>let</code>.</strong>
+Extend <code>projectTmWith</code> and <code>injectTmWith</code> in
+<code>Tutorial.Scoped.ScopeCheck</code> to handle a
+<code>let</code>-expression. Assume you have already added
+<code>Let :: Tm n -&gt; Bind1 Tm Tm n -&gt; Tm n</code> to
+<code>Tutorial.Scoped.Syntax</code> and
+<code>N.Let :: String -&gt; N.Tm -&gt; N.Tm -&gt; N.Tm</code> to the
+named syntax.</p>
+<ul>
+<li><p>How does the treatment of <code>let</code> compare to
+<code>lam</code> in each direction?</p></li>
+<li><p>Does <code>prop_project_round_trip</code> still pass after this
+change? Why or why not?</p></li>
+</ul>
+<hr />
+<p><strong>3. <code>LocalName</code> and α-equivalence.</strong> The
+<code>Eq</code> instance for <code>LocalName</code> makes every two
+<code>LocalName</code> values equal:</p>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    x1 <span class="op">==</span> x2 <span class="ot">=</span> <span class="dt">True</span></span></code></pre></div>
+<ol type="a">
+<li>Evaluate the following in GHCi and explain the result:</li>
+</ol>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind1 (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  <span class="op">==</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind1 (<span class="dt">S.LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span></code></pre></div>
+<ol start="2" type="a">
+<li><p>What would go wrong with <code>prop_project_round_trip</code> if
+<code>LocalName</code> had a <em>real</em> <code>Eq</code> instance that
+distinguished <code>"x"</code> from <code>"y"</code>?</p></li>
+<li><p>QuickCheck generates names from the pool
+<code>["x","y","z","w","v","u","t","s"]</code>, so the same name can
+appear in nested binders. Give an example generated term where
+<code>freshen</code> is needed during <code>injectTm</code>, and show
+what name it would produce.</p></li>
+</ol>
+<hr />
+<p><strong>4. Extending <code>genTm</code>.</strong> After adding
+<code>Let</code> to the language (Exercise 3 in Lecture 1 and Exercise 2
+above), extend <code>genTm</code> in <code>Tutorial.Scoped.Gen</code> to
+also generate <code>let</code>-expressions.</p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- In the Full branch of gens inside genTm:</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>, <span class="dt">Let</span> <span class="op">&lt;$&gt;</span> gen <span class="op">&lt;*&gt;</span> gen1</span></code></pre></div>
+<p>where
+<code>gen1 = bind1 @Tm &lt;$&gt; genLocalName &lt;*&gt; genTm l (next n) sz'</code>.</p>
+<ul>
+<li>Why is <code>gen1</code> the right generator for the binder part of
+<code>Let</code>?</li>
+<li>What scope does the body of the <code>let</code> run in? How does
+this differ from <code>App</code>?</li>
+<li>Check that <code>prop_project_round_trip</code> still passes after
+this change.</li>
+</ul>
+<hr />
+<p><strong>5. An open-term round trip.</strong>
+<code>projectTmWith</code> and <code>injectTmWith</code> work on open
+terms too. Write a QuickCheck property analogous to
+<code>prop_project_round_trip</code> for terms with one free variable
+(<code>Tm (S Z)</code>), and test it:</p>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_project_round_trip_open ::</span> <span class="dt">S.Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>prop_project_round_trip_open t <span class="ot">=</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- hint: use projectTmWith and injectTmWith with a suitable initial context</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">undefined</span></span></code></pre></div>
+<p>You will need to choose a name for the free variable and pass it to
+<code>injectTmWith</code>. Likewise, you will need to prime
+<code>projectTmWith</code> with an association list that maps that name
+to <code>FZ</code>.</p>
+<ul>
+<li>What initial <code>Vec (S Z) String</code> do you pass to
+<code>injectTmWith</code>?</li>
+<li>What initial <code>[(String, Fin (S Z))]</code> do you pass to
+<code>projectTmWith</code>?</li>
+<li>Does the choice of name matter? Why or why not?</li>
+</ul>
+<p><strong>6. Substitution laws.</strong> State and test the following
+equational laws as QuickCheck properties on <code>Tm Z</code>:</p>
+<ul>
+<li><em>Identity</em>: <code>applyE idE t == t</code></li>
+<li><em>Composition</em>:
+<code>applyE f (applyE g t) == applyE (compE f g) t</code></li>
+<li><em>Instantiate-shift</em>:
+<code>instantiate1 (Bind1 (weaken t)) u == t</code> for any
+<code>t u :: Tm Z</code></li>
+</ul>
+<p>For the composition law, use concrete environments,
+e.g. <code>g = idE</code> and <code>f = idE</code>, or build simple
+environments with <code>(.:)</code>. Can you find a counterexample to
+any of these properties if you get the implementation of
+<code>lift</code> wrong?</p>
+<p><strong>7. More efficient scope checking</strong> Instead of using
+the type <code>[(String, Var n)]</code> to map variable names to
+indices, design a more efficient data structure. This data structure
+should allow logarithmic lookup of names and constant time insertion of
+a new binding (while incrementing the indices of previous bindings).</p>
+<p>If you would like a hint: check out the “Skewed Substitutions”
+described in this <a
+href="https://mathisbd.github.io/blog/esubstitutions.html">blog
+post</a>.</p>
+<hr />
+<p><strong>8. Full reduction (normalization).</strong> The
+<code>reduce</code> function in <code>Tutorial.Scoped.Eval</code> is a
+<em>weak</em> reducer: the <code>Lam</code> case returns the lambda
+unchanged without looking inside the body. Implement <em>full</em>
+reduction (also called <em>normalization</em>), which reduces everywhere
+— including under binders:</p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ot">normalize ::</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>normalize <span class="ot">=</span> _</span></code></pre></div>
+<p>Hints:</p>
+<ul>
+<li><p>The key new case is <code>Lam b</code>. Use
+<code>unbindl1 b</code> to extract the stored local name and the body
+(of type <code>Tm (S n)</code>). Recursively normalize the body, then
+re-package it with <code>bind1</code>. Because <code>Tm (S n)</code> is
+an <em>open</em> term, the recursive call is well-typed without any
+extra constraint.</p></li>
+<li><p>For <code>App</code>, first normalize both sub-terms. If the
+function normalizes to <code>Lam b</code> and the argument to
+<code>nv</code>, perform the beta step with
+<code>instantiate1 b nv</code> and normalize the result. If the function
+is inert, return the application of the normalized sub-terms.</p></li>
+<li><p>The other cases (<code>Pair</code>, <code>Inj</code>,
+<code>MatchSum</code>, <code>MatchPair</code>, <code>MatchUnit</code>)
+follow the same pattern as in <code>reduce</code>, but calling
+<code>normalize</code> recursively instead of <code>reduce</code>, and
+also normalizing inside constructor arguments.</p></li>
+<li><p><code>normalize</code> should agree with <code>reduce</code> on
+terms that contain no redexes under binders. State and test this as a
+QuickCheck property on <code>Tm (S Z)</code>:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_normalize_reduce ::</span> <span class="dt">Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>prop_normalize_reduce t <span class="ot">=</span> <span class="op">...</span></span></code></pre></div>
+<p><em>Hint</em>: find a predicate
+<code>noLambdaRedex :: Tm n -&gt; Bool</code> that holds when there are
+no beta redexes inside any lambda body, and use <code>QC.classify</code>
+to report what fraction of generated terms satisfy it.</p></li>
+<li><p>Define <code>isNormal :: Tm n -&gt; Bool</code> that holds when a
+term contains no beta redexes <em>anywhere</em> (including under
+binders). Then state and test:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_normalize_normal ::</span> <span class="dt">Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>prop_normalize_normal t <span class="ot">=</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> normalize t <span class="kw">of</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> nf <span class="ot">-&gt;</span> property (isNormal nf)</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div></li>
+<li><p>On closed terms, does <code>normalize t</code> succeed exactly
+when <code>eval t</code> succeeds? State this as a property and test it.
+Does it hold for well-scoped terms? For well-typed terms? Explain any
+discrepancies you observe.</p></li>
+</ul>
 </main>
 
 <footer>

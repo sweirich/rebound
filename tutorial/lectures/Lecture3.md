@@ -30,8 +30,8 @@ working with terms up to alpha-equivalence.
 ## 1. What is CPS?
 
 In direct style, a function returns its result to its caller implicitly.  In
-*continuation-passing style* every function receives an extra argument--—the
-*continuation*-—-which represents "what to do with the result".  Instead of
+*continuation-passing style* every function receives an extra argument — the
+*continuation* — which represents "what to do with the result".  Instead of
 returning, a function calls its continuation.
 
 Here's a simple version of the CPS transformation, defined inductively on
@@ -162,7 +162,7 @@ And this is not the same as `(λ x. x)`. We can fix this by only looking at the 
 where the result of evaluation is "first-order", i.e. a value that does not contain 
 a function.
 
-This solves the issue, but we need to throwaway a lot of cases.
+This solves the issue, but we need to throw away a lot of cases.
 
 ```
 ghci> qc prop_cps_result_firstorder
@@ -209,6 +209,7 @@ problem for `()`.
 
 However, this solution will not scale to the full language.
 
+---
 
 ## 4. Optimized CPS conversion
 

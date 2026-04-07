@@ -80,6 +80,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
+      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -150,7 +151,7 @@ naive strategy costs O(n × d) traversals.</p>
 Curien, and Lévy’s <em>Explicit Substitutions</em> (1991):
 <strong>delay</strong> the substitution in the term instead of applying
 it immediately.</p>
-<p>In that calculus, substitutions could be stored anywhere in the term.
+<p>In that calculus, substitutions can be stored anywhere in the term.
 But here, we would like to hide the delayed substitution from users.
 Therefore, we will only store substitutions in the binder type.</p>
 <h3 id="measuring-the-cost">Measuring the cost</h3>
@@ -176,16 +177,11 @@ Here are representative timings:</p>
 <td>Delayed substitution inside <code>Bind</code></td>
 <td>0.767 ms</td>
 </tr>
-<tr>
-<td><code>EnvV</code></td>
-<td>Explicit environment threaded everywhere</td>
-<td>0.586 ms</td>
-</tr>
 </tbody>
 </table>
-<p>The delayed-substitution approach (<code>BindV</code>) is roughly
-<strong>4300× faster</strong> than the naive one. The remaining sections
-explain how the library achieves this.</p>
+<p>The delayed-substitution approach (<code>BindV</code>) is
+significantly faster than the naive one. The remaining sections explain
+how the library achieves this.</p>
 <hr />
 <h2 id="from-naive-to-delayed-the-bind-type">2. From Naive to Delayed:
 The <code>Bind</code> Type</h2>
@@ -440,9 +436,9 @@ directly:</p>
 </tr>
 </tbody>
 </table>
-<p>The defunctionalized representation is roughly <strong>150×
-faster</strong> for full normalization — almost entirely because it
-enables the smart composition rules described next.</p>
+<p>The defunctionalized representation is significantly faster for full
+normalization — almost entirely because it enables the smart composition
+rules described next.</p>
 <hr />
 <h2 id="smart-composition-comp-and-.">4. Smart Composition —
 <code>comp</code> and <code>.&gt;&gt;</code></h2>
@@ -510,7 +506,7 @@ composition contribute?</h3>
 </table>
 <p>Removing smart composition (<code>LazyB</code>) gives a <strong>~2.8×
 slowdown</strong> on full normalization. Removing just the identity
-shortcut (<code>LazyA</code>) is almost unmeasurable — smart composition
+shortcut (<code>LazyA</code>) is almost negligible — smart composition
 already handles most identity eliminations at construction time. The
 paper concludes: <em>“much of the speed up comes from ‘smart
 composition’.”</em></p>
@@ -712,10 +708,45 @@ without touching the term.</li>
 <li><strong>Consecutive shifts</strong> are fused into a single
 <code>Inc</code> at composition time.</li>
 </ul>
-<p>These are the same optimisations found in mature normalisers and
+<p>These are the same optimizations found in mature normalizers and
 type-checkers; the <code>rebound</code> library packages them in a
 reusable, type-safe interface so that every new language implementation
 gets them for free.</p>
+<hr />
+<h2 id="historical-notes">10. Historical Notes</h2>
+<p><strong>Explicit substitutions.</strong> The idea of making
+substitutions first-class objects that can be stored inside terms dates
+to Abadi, Cardelli, Curien, and Lévy, “Explicit Substitutions” (1991),
+which introduced the λσ-calculus. Their calculus allows substitutions to
+appear anywhere in a term, enabling lazy evaluation of substitutions.
+Storing the pending substitution <em>only at binders</em> (as
+<code>rebound</code> does) is a restricted form of this idea that hides
+the implementation detail from users of the binder type.</p>
+<p><strong>The λυ and σ families.</strong> Several explicit-substitution
+calculi followed λσ, addressing properties such as confluence and strong
+normalization: λs (Kamareddine and Ríos, 1995), λυ (Lescanne, 1994), and
+the suspension calculus (Nadathur and Wilson, 1998). The smart
+composition rules in <code>comp</code> (Section 4) correspond to the
+reduction rules of these calculi applied at composition time rather than
+during term traversal.</p>
+<p><strong>Defunctionalized environments.</strong> Representing
+environments as <em>data</em> rather than functions so that they can be
+inspected and simplified is an instance of <em>defunctionalization</em>
+(Reynolds, “Definitional Interpreters for Higher-Order Programming
+Languages”, 1972). Applied to de Bruijn substitutions, this idea appears
+in implementations of proof assistants such as Agda’s kernel.</p>
+<p><strong>Shift fusion.</strong> The observation that consecutive
+weakenings can be merged
+(<code>Inc k1 .&gt;&gt; Inc k2 = Inc (k1+k2)</code>) is closely related
+to the use of <em>relative</em> (offset-based) de Bruijn shifts in some
+implementations, e.g., the suspension calculus mentioned above and the
+environments used in the Caml Light and OCaml bytecode interpreters.</p>
+<p><strong>The <code>rebound</code> library.</strong> The specific
+combination of delayed substitutions, defunctionalized environments,
+smart composition, and GHC’s <code>Generic1</code> machinery for
+deriving <code>applyE</code> automatically was described and benchmarked
+in the <code>rebound</code> paper (Weirich et al.). The benchmark
+results quoted in Sections 1 and 3 are taken from that paper.</p>
 </main>
 
 <footer>

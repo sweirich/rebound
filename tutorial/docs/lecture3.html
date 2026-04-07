@@ -80,6 +80,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
+      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -97,54 +98,199 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 <main>
 <h1 id="lecture-3-cps-conversion">Lecture 3: CPS Conversion</h1>
-<p>Lectures 1 and 2 built a well-scoped de Bruijn representation and
-showed how terms flow in from parsing and out to the pretty-printer.
-This lecture adds a non-trivial <em>term-to-term transformation</em>:
-continuation-passing style (CPS) conversion.</p>
-<p>CPS is a good case study because:</p>
+<h2 id="modules-referenced-in-this-lecture">Modules referenced in this
+lecture</h2>
 <ul>
-<li>It changes the <em>shape</em> of binders — each function gains an
-extra argument.</li>
-<li>It requires carefully tracking how de Bruijn indices shift across
-the transformation.</li>
-<li>It produces terms in a richer scope, so we need a separate
-index-mapping structure.</li>
-<li>Its correctness properties illuminate the difference between
-big-step and small-step semantics.</li>
+<li><a href="Tutorial/Scoped/CPS.hs">Tutorial.Scoped.CPS</a></li>
 </ul>
+<h2 id="overview-and-goals">Overview and Goals</h2>
+<p>Lectures 1 and 2 built a well-scoped de Bruijn representation and
+discussed some of the practical issues that occur when working with them
+in an implementation. In this lecture, we start to see some of the
+payoff for working with this sort of representation: we can work with
+and reason about open code.</p>
+<p>As an extended example, we will use a nontrivial <em>term-to-term
+transformation</em>: called the continuation-passing style (CPS)
+conversion. CPS is an important tool for programming language research:
+from a theoretical side, it explains evaluation order and bridges
+between classical and constructive logics. On the practical side, it has
+been used as a compiler intermediate language and for the implementation
+of cooperative multithreading. If you haven’t seen it before, you should
+learn more about it.</p>
+<p>For our purposes, CPS is a good case study because it changes the
+binding structure of its input — each function gains an extra argument.
+Therefore, when implementing this operation, we need to work in a
+changing scope – the scope of the input term is not necessarily the same
+as the scope of the output. Because we are working with de Bruijn
+indices, we need to be careful what scope we are in, and the types help
+us with that. At the same time, when we go to test our implementation,
+to make sure that it has the desired properties, we don’t need to worry
+about variable names; we are naturally working with terms up to
+alpha-equivalence.</p>
 <hr />
 <h2 id="what-is-cps">1. What is CPS?</h2>
 <p>In direct style, a function returns its result to its caller
 implicitly. In <em>continuation-passing style</em> every function
-receives an extra argument — the <em>continuation</em> — which
-represents “what to do with the result”. Instead of returning, a
-function calls its continuation.</p>
-<p>The transformation is defined inductively on terms. We write
-<code>[[e]] k</code> to mean “translate <code>e</code>, passing results
-to continuation <code>k</code>”:</p>
+receives an extra argument–—the <em>continuation</em>-—-which represents
+“what to do with the result”. Instead of returning, a function calls its
+continuation.</p>
+<p>Here’s a simple version of the CPS transformation, defined
+inductively on terms. We write <code>[[e]] k</code> to mean “translate
+<code>e</code>, passing results to continuation <code>k</code>”. An
+informal definition of this operation is below:</p>
 <pre><code>[[x]]          k = k x
 [[λx. e]]      k = k (λx. λk&#39;. [[e]] k&#39;)
 [[e1 e2]]      k = [[e1]] (λx. [[e2]] (λy. x y k))
 [[()]]         k = k ()
 [[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 [[inj i e]]    k = [[e]] (λx. k (inj i x))
+[[case e of () -&gt; b]]      k = [[e]] (λz. case z of () -&gt; [[b]] k)
 [[case e of (x,y) → b]]    k = [[e]] (λz. case z of (x,y) → [[b]] k)
 [[case e of inj i → b_i]]  k = [[e]] (λz. case z of inj i → [[b_i]] k)</code></pre>
-<p>The top-level call uses the identity continuation:
-<code>cps(e) = [[e]] (λx. x)</code>.</p>
+<p>The top-level call typically uses the identity continuation:
+<code>cps e = [[e]] (λx. x)</code>.</p>
+<p>Note that this is a call-by-value translation: the evaluation of the
+result of the translation should occur in the same order as the
+call-by-value evaluation.</p>
 <hr />
-<h2 id="two-flavors-of-continuation-cont">2. Two Flavors of Continuation
-— <code>Cont</code></h2>
+<h2 id="implementation-using-rebound-pure-lambda-calculus">2.
+Implementation using <code>rebound</code> (pure lambda calculus)</h2>
+<p>Let’s look at how we could translate the definition above to
+executable Haskell code. The difficult part of this translation is right
+there near the top: when we translate a function, we need to introduce a
+new argument <code>k'</code> to pass in the “continuation” of the
+function.</p>
+<pre><code>[[ \x.e ]] k = k (λx. λk&#39;. [[e]] k&#39;)</code></pre>
+<p>That means that when we call the translation recursively,
+<code>e</code> might be in some scope <code>S n</code>, because it is
+inside the body of a lambda expression. However, the result is going to
+be in some larger scope that binds not just <code>x</code> but also
+<code>k'</code>. What that means is that the <em>variable</em> case is
+also challenging. Even though with names above we say
+<code>[[x]]k</code> produces <code>k x</code>, the scope of the first
+<code>x</code> may be different from the scope of the second
+<code>x</code>, so they may be different indices.</p>
+<p>Therefore, we will parameterize our cps conversion function with an
+additional argument—a substitution that talks about the scope change. If
+the input term is in some scope <code>n</code> and the output scope is
+<code>m</code>, then we need an argument of type <code>Env Tm n m</code>
+to go between the two. Furthermore, the continuation argument should be
+in the <em>output</em> scope (<code>m</code>) because it needs to be
+applied to the result.</p>
+<p>For the variable case, we apply this renaming to the variable, to get
+its version in the output scope. We can then use it to construct the
+application of the continuation to this new variable.</p>
+<pre><code>cpsExp :: Env Tm n m -&gt; Tm n -&gt; Tm m -&gt; Tm m
+cpsExp r (Var x) k = App k (applyEnv r x)</code></pre>
+<p>For the lambda case, we will also apply the continuation
+<code>k</code> to a value. But this value is the function of two
+parameters. The first parameter is the same one as the original
+function, the second is a new parameter. We then call the cps conversion
+function recursively on the body of the lambda expression, using this
+new parameter (variable 0 in the output scope) as the continuation.</p>
+<pre><code>cpsExp r (Lam b) k = App k 
+    (Lam (bind1 (getLocalName b) 
+      (Lam (bind1 (LocalName &quot;k&quot;)
+          (cpsExp r&#39; (getBody b) (Var FZ))))))
+    where 
+        r&#39; = up r .&gt;&gt; wk</code></pre>
+<p>What is the renaming for this recursive call? We need to translate
+this renaming to be used under the body of the lambda expression, with
+<code>up r</code>, but then we also need to account for the second
+binder for the continuation. This binder only affects the output scope,
+as opposed to the first that is part of both. Therefore, we need to
+shift the variables in the output, which we do by post-composing the
+substitution with <code>wk</code>.</p>
+<p>For applications, our original definition is</p>
+<pre><code>[[e1 e2]]k = [[e1]] (λv. [[e2]] (λw. v w k))</code></pre>
+<p>Note that in this case, our output scope introduces two binders:
+<code>v</code> and <code>w</code>, naming the values of <code>e1</code>
+and <code>e2</code>. Because <code>v</code> is a function, we can apply
+it to both its argument <code>w</code> and the current continuation
+<code>k</code>.</p>
+<p>With CPS translation, we need to create the two lambda bindings, for
+<code>v</code> and <code>w</code> above, and use them for the
+continuations as we translate <code>t1</code> and <code>t2</code>. In
+the body of the second continuation <code>v w k</code>, <code>v</code>
+is at index 1, <code>w</code> is at index 0, and k needs to be shifted
+two steps.</p>
+<pre><code>cpsExp r (App t1 t2) k = 
+    cpsExp r t1 (Lam (bind1 (LocalName &quot;v&quot;)
+      (cpsExp r&#39; t2 (Lam (bind1 (LocalName &quot;w&quot;)
+          (App (App (Var (FS FZ)) (Var FZ)) k&#39;&#39;))))))  
+       where
+         r&#39;  = r .&gt;&gt; wk
+         k&#39;&#39; = applyE (wk .&gt;&gt; wk) k</code></pre>
+<p>Note that this function is structurally recursive on the input.</p>
+<hr />
+<h2 id="what-does-it-mean-for-cps-conversion-to-be-correct">3. What does
+it mean for CPS conversion to be correct?</h2>
+<p>If we implement the cps conversion algorithm, we want to know that we
+did so correctly. Intuitively, this means that when we apply this
+transformation to some code, the output should produce the same result
+when we run it.</p>
+<p>But what does that mean formally? We can start with this simple
+statement, which asserts that we get the same result from evaluation for
+any term and its cps conversion:</p>
+<pre><code>prop_same_result e = eval e == eval (cps e)</code></pre>
+<p>But already we have a problem. This property is not true.</p>
+<pre><code>ghci&gt; qc prop_cps_result
+*** Failed! Falsified (after 1 test):  
+Lam (bind1 (Var 0))
+e          = (λ x. x)
+cps_e      = (λ x. x) (λ x k. k x)</code></pre>
+<p>The result of evaluation after CPS translating the identity function
+is <code>(λ x k. k x)</code>. And this is not the same as
+<code>(λ x. x)</code>. We can fix this by only looking at the cases
+where the result of evaluation is “first-order”, i.e. a value that does
+not contain a function.</p>
+<p>This solves the issue, but we need to throwaway a lot of cases.</p>
+<pre><code>ghci&gt; qc prop_cps_result_firstorder
++++ OK, passed 1000 tests; 1373 discarded.</code></pre>
+<h3 id="simulation-properties-big-step">Simulation properties
+(big-step)</h3>
+<p>We can do better by thinking about simulation properties.</p>
+<p>Another way to state the correctness of CPS conversion is through a
+simulation relation: if the source language evaluates a term to a
+result, then the CPS-converted language evaluates the converted term to
+an equivalent result. We might draw a picture like this:</p>
+<pre><code>           e  =&gt;  v 
+           |      |
+        cps e =&gt; cps v</code></pre>
+<p>In other words, we want to show that if <code>e</code> evaluates to
+<code>v</code>, then <code>cps e</code> evaluates to
+<code>cps v</code>.</p>
+<pre><code>prop_cps_eval_simulates :: Property
+prop_cps_eval_simulates = forAll0 Typed Full $ \e -&gt;
+       counterexample (&quot;e          = &quot; ++ pp e)          $
+       counterexample (&quot;cps_e      = &quot; ++ pp (cps e))    $
+       eval (cps e) == (cps &lt;$&gt; eval e)</code></pre>
+<p>Note that this property is not true.</p>
+<pre><code>ghci&gt; qc prop_cps_eval_simulates
+*** Failed! Falsified (after 1 test):  
+Unit
+e          = ()
+cps_e      = (λ x. x) ()</code></pre>
+<p>In this counterexample, we have a value that translates to a
+non-value.</p>
+<p>We can (partially) repair it by keeping our “top-level” continuation
+abstract. Instead of using the identity function, if we use a
+distinguished variable, then that solves the problem for
+<code>()</code>.</p>
+<p>However, this solution will not scale to the full language.</p>
+<h2 id="optimized-cps-conversion">4. Optimized CPS conversion</h2>
 <p>A naive implementation would represent every continuation
 <code>k</code> as a <code>Tm g</code> (an object-level lambda) and apply
 it with <code>App k v</code>. But this introduces <em>administrative
 redexes</em> — beta redexes of the form <code>(λx. body) v</code> that
 were not present in the source and must be reduced away.</p>
+<h3 id="introducing-meta-continuations">Introducing Meta
+continuations</h3>
 <p>To avoid this we distinguish two cases:</p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Cont</span> (<span class="ot">g ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Obj</span><span class="ot">  ::</span> <span class="dt">Tm</span> g          <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- object-level term</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Meta</span><span class="ot"> ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- meta-level binder</span></span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Cont</span> (<span class="ot">g ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Obj</span><span class="ot">  ::</span> <span class="dt">Tm</span> g          <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- object-level term (usual)</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Meta</span><span class="ot"> ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- meta-level binder (new!)</span></span></code></pre></div>
 <ul>
 <li><p><strong><code>Obj t</code></strong> — the continuation is an
 existing object-level term <code>t</code>. To apply it we emit a genuine
@@ -154,17 +300,17 @@ represented as a Haskell-level binder. To apply it we substitute
 directly, <em>without</em> introducing a lambda in the output:
 <code>applyCont (Meta k) v = instantiate1 k v</code>.</p></li>
 </ul>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Obj</span>  o) v <span class="ot">=</span> <span class="dt">App</span> o v</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Meta</span> k) v <span class="ot">=</span> instantiate1 k v</span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Obj</span>  o) v <span class="ot">=</span> <span class="dt">App</span> o v</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Meta</span> k) v <span class="ot">=</span> instantiate1 k v</span></code></pre></div>
 <p>When a <code>Meta</code> continuation must appear as an object-level
 term (e.g. as the extra argument passed to a CPS’d function), we reify
 it:</p>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reifyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Obj</span>  o) <span class="ot">=</span> o</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Meta</span> k) <span class="ot">=</span> <span class="dt">Lam</span> k</span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reifyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Obj</span>  o) <span class="ot">=</span> o</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Meta</span> k) <span class="ot">=</span> <span class="dt">Lam</span> k</span></code></pre></div>
 <p><code>Meta</code> continuations are used for all the intermediate
 continuations built <em>inside</em> <code>cpsExp</code>; the top-level
 call uses <code>Meta (bind1 "x" (Var FZ))</code> (the identity function
@@ -172,348 +318,190 @@ call uses <code>Meta (bind1 "x" (Var FZ))</code> (the identity function
 <p>Since <code>Cont g</code> contains <code>Tm g</code> values, it needs
 a <code>Subst</code> instance so that the library can apply environments
 to it:</p>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Cont</span> <span class="kw">where</span></span></code></pre></div>
-<p>The instance body is empty because <code>Generic1</code> is not
-derived for <code>Cont</code> — in practice the library’s default
-generic machinery handles it, or the user can derive it.</p>
-<hr />
-<h2 id="the-scope-problem">3. The Scope Problem</h2>
-<p>The CPS translation changes the scope. Every
-<code>λ</code>-abstraction gains an extra argument (the continuation
-<code>k'</code>), so a term in scope <code>n</code> becomes a term in a
-<em>larger</em> scope. Concretely:</p>
-<ul>
-<li>A closed term (<code>Tm Z</code>) translates to a closed term
-(<code>Tm Z</code>): the top-level call to the identity continuation is
-in scope 0.</li>
-<li>Inside <code>λx. e</code>, the body <code>e</code> is in scope
-<code>S g</code>. After CPS, the body lives in scope
-<code>S (S g')</code> — one slot for <code>x</code>, one slot for
-<code>k'</code>.</li>
-</ul>
-<p>This means we cannot simply apply <code>cpsIdx</code> naively to
-variable indices. A variable <code>FZ</code> in the source body might
-map to <code>FS FZ</code> in the CPS body (if the new continuation slot
-was inserted at position 0).</p>
-<hr />
-<h2 id="tracking-index-shifts-cpsctx">4. Tracking Index Shifts —
-<code>CpsCtx</code></h2>
-<p><code>CpsCtx g g'</code> is a GADT that records how variables in
-source scope <code>g</code> map to positions in CPS scope
-<code>g'</code>:</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">CpsCtx</span> g g&#39; <span class="kw">where</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">CpsStart</span><span class="ot"> ::</span> <span class="dt">CpsCtx</span> <span class="dt">N0</span> <span class="dt">N0</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">CpsLam</span><span class="ot">   ::</span> <span class="dt">CpsCtx</span> g g&#39; <span class="ot">-&gt;</span> <span class="dt">CpsCtx</span> (<span class="dt">S</span> g) (<span class="dt">S</span> (<span class="dt">S</span> g&#39;))</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">CpsMeta</span><span class="ot">  ::</span> <span class="dt">CpsCtx</span> g g&#39; <span class="ot">-&gt;</span> <span class="dt">CpsCtx</span> (<span class="dt">S</span> g) (<span class="dt">S</span> g&#39;)</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">CpsLift</span><span class="ot">  ::</span> <span class="dt">CpsCtx</span> g g&#39; <span class="ot">-&gt;</span> <span class="dt">CpsCtx</span> (<span class="dt">S</span> g) (<span class="dt">S</span> (<span class="dt">S</span> g&#39;))</span></code></pre></div>
-<p>The three non-trivial constructors correspond to three different
-binder situations:</p>
-<h3 id="cpslam-inside-a-translated-lambda-body"><code>CpsLam</code> —
-inside a translated lambda body</h3>
-<p>When we translate <code>λx. e</code>, the CPS output is
-<code>λx. λk'. body</code>. Inside <code>body</code>, the scope has
-grown by two:</p>
-<ul>
-<li><code>FZ</code> is now the continuation <code>k'</code></li>
-<li><code>FS FZ</code> is the original parameter <code>x</code></li>
-<li><code>FS (FS v)</code> are the outer variables</li>
-</ul>
-<p>So <code>x</code> (which was <code>FZ</code> in the source body) maps
-to <code>FS FZ</code> in the CPS body, and every outer variable
-<code>v</code> maps to <code>FS (FS (cpsIdx gg v))</code>:</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsLam</span> gg) <span class="dt">FZ</span>     <span class="ot">=</span> <span class="dt">FS</span> <span class="dt">FZ</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsLam</span> gg) (<span class="dt">FS</span> v) <span class="ot">=</span> <span class="dt">FS</span> (<span class="dt">FS</span> (cpsIdx gg v))</span></code></pre></div>
-<h3 id="cpsmeta-inside-a-meta-continuation-body"><code>CpsMeta</code> —
-inside a meta-continuation body</h3>
-<p>When we build an intermediate continuation
-<code>Meta (bind1 k body)</code>, inside <code>body</code> there is one
-extra variable (the value passed to the continuation). This variable
-maps to itself (<code>FZ → FZ</code>), and outer variables shift by
-one:</p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsMeta</span> gg) <span class="dt">FZ</span>     <span class="ot">=</span> <span class="dt">FZ</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsMeta</span> gg) (<span class="dt">FS</span> v) <span class="ot">=</span> <span class="dt">FS</span> (cpsIdx gg v)</span></code></pre></div>
-<h3 id="cpslift-inside-a-case-branch-body"><code>CpsLift</code> — inside
-a case branch body</h3>
-<p>When we translate <code>case e of { inj_i y_i → b_i }</code>, the
-output is:</p>
-<pre><code>[[e]] (λz. case z of { inj_i y_i → [[b_i]] k })</code></pre>
-<p>Inside the branch body, the scope is <code>S (S g')</code>:</p>
-<ul>
-<li><code>FZ</code> is <code>y_i</code> (the pattern variable, freshly
-bound by the case branch)</li>
-<li><code>FS FZ</code> is <code>z</code> (the scrutinee result, bound by
-the outer meta-lambda)</li>
-<li><code>FS (FS v)</code> are the outer CPS variables</li>
-</ul>
-<p>The source branch body has one extra variable (<code>y_i</code> at
-<code>FZ</code>). We need to translate it to CPS scope
-<code>S (S g')</code> while:</p>
-<ul>
-<li>keeping <code>FZ</code> (= <code>y_i</code>) at <code>FZ</code></li>
-<li>mapping outer variables <code>FS v</code> to
-<code>FS (FS (cpsIdx g v))</code> — skipping over the scrutinee slot at
-<code>FS FZ</code></li>
-</ul>
-<div class="sourceCode" id="cb10"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsLift</span> gg) <span class="dt">FZ</span>     <span class="ot">=</span> <span class="dt">FZ</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>cpsIdx (<span class="dt">CpsLift</span> gg) (<span class="dt">FS</span> v) <span class="ot">=</span> <span class="dt">FS</span> (<span class="dt">FS</span> (cpsIdx gg v))</span></code></pre></div>
-<p>Note that <code>CpsLift</code> and <code>CpsLam</code> have the
-<em>same</em> index mapping — both shift the outermost variable to
-position 0 and shift outer variables up by two. The difference is
-semantic: <code>CpsLam</code> is used for lambda bodies (where the
-outer-scope variable is <code>k'</code>), while <code>CpsLift</code> is
-used for case branches (where the outer-scope variable is the scrutinee
-<code>z</code>).</p>
-<hr />
-<h2 id="the-translation-cpsexp">5. The Translation —
-<code>cpsExp</code></h2>
-<div class="sourceCode" id="cb11"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">cpsExp ::</span> <span class="dt">CpsCtx</span> g g&#39; <span class="ot">-&gt;</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Cont</span> g&#39; <span class="ot">-&gt;</span> <span class="dt">Tm</span> g&#39;</span></code></pre></div>
-<p><code>cpsExp ctx e k</code> translates expression <code>e</code> (in
-source scope <code>g</code>) to a CPS term in scope <code>g'</code>,
-threading results through continuation <code>k</code>.</p>
-<h3 id="variables-and-unit">Variables and unit</h3>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">Var</span> v) k <span class="ot">=</span> applyCont k (<span class="dt">Var</span> (cpsIdx g v))</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>cpsExp g <span class="dt">Unit</span>    k <span class="ot">=</span> applyCont k <span class="dt">Unit</span></span></code></pre></div>
-<p>Values are immediately passed to the continuation. Variables are
-remapped through <code>cpsIdx</code>.</p>
-<h3 id="lambda">Lambda</h3>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">Lam</span> b) k <span class="ot">=</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> e&#39; <span class="ot">=</span> <span class="dt">Lam</span> <span class="op">.</span> bind1 (getLocalName b)</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>               <span class="op">$</span> <span class="dt">Lam</span> <span class="op">.</span> bind1 contName</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>                 <span class="op">$</span> cpsExp (<span class="dt">CpsLam</span> g) (getBody1 b) (<span class="dt">Obj</span> (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> applyCont k e&#39;</span></code></pre></div>
-<p>The translated lambda <code>e'</code> takes two arguments: the
-original parameter <code>x</code> and a fresh continuation
-<code>k'</code> (at <code>FZ</code>). The body is translated with
-<code>CpsLam g</code> (which maps <code>x</code> to <code>FS FZ</code>)
-and the continuation <code>Obj (Var FZ)</code> (i.e. <code>k'</code>,
-the new innermost variable). The whole lambda <code>e'</code> is then
-passed to <code>k</code>.</p>
-<p>Note that <code>Lam k</code> inside <code>reifyCont</code> uses the
-library’s <code>Lam</code> constructor, which takes a
-<code>Bind1</code>. The <code>bind1 contName</code> call stores the
-user-visible name <code>"k"</code> for pretty-printing.</p>
-<h3 id="application">Application</h3>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">App</span> e1 e2) k <span class="ot">=</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> k1 <span class="ot">=</span> <span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>               cpsExp (<span class="dt">CpsMeta</span> g) (applyE weaken e2) k2</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>        k2 <span class="ot">=</span> <span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>               <span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> (<span class="dt">FS</span> <span class="dt">FZ</span>)) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>                   (reifyCont (applyE (weaken <span class="op">.&gt;&gt;</span> weaken) k))</span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> cpsExp g e1 k1</span></code></pre></div>
-<p>This implements <code>[[e1]] (λx. [[e2]] (λy. x y k))</code>.</p>
-<ul>
-<li>We translate <code>e1</code> with intermediate continuation
-<code>k1</code>.</li>
-<li>Inside <code>k1</code> (scope <code>S g'</code>),
-<code>x = Var FZ</code> is the result of <code>e1</code>. We translate
-<code>e2</code> with <code>k2</code>. Since <code>e2</code> is from
-scope <code>g</code> but we are now in scope <code>S g'</code>, we
-weaken it with <code>applyE weaken e2</code>. The context
-<code>CpsMeta g</code> maps <code>e2</code>’s variables correctly into
-scope <code>S g'</code>.</li>
-<li>Inside <code>k2</code> (scope <code>S (S g')</code>),
-<code>y = Var FZ</code> and <code>x = Var (FS FZ)</code>. We emit the
-application <code>x y</code> forwarded to <code>k</code>. The outer
-continuation <code>k</code> is in scope <code>g'</code>, so we weaken it
-twice (<code>weaken .&gt;&gt; weaken</code>) to reach scope
-<code>S (S g')</code>, then reify it as an object-level term.</li>
-</ul>
-<p><code>weaken :: Env Tm n (S n)</code> is <code>shift1E</code> — the
-environment that shifts every variable up by one,
-i.e. <code>Var . FS</code>. Composing it twice with
-<code>.&gt;&gt;</code> gives the environment that shifts up by two.</p>
-<h3 id="pair">Pair</h3>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">Pair</span> e1 e2) k <span class="ot">=</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> k1 <span class="ot">=</span> <span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>               cpsExp (<span class="dt">CpsMeta</span> g) (applyE weaken e2) k2</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>        k2 <span class="ot">=</span> <span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>               applyCont k&#39; (<span class="dt">Pair</span> (<span class="dt">Var</span> (<span class="dt">FS</span> <span class="dt">FZ</span>)) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>        k&#39; <span class="ot">=</span> applyE (weaken <span class="op">.&gt;&gt;</span> weaken) k</span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> cpsExp g e1 k1</span></code></pre></div>
-<p>The structure mirrors <code>App</code>: evaluate <code>e1</code> then
-<code>e2</code>, collect the two results as <code>Var (FS FZ)</code> and
-<code>Var FZ</code> in scope <code>S (S g')</code>, form the pair, and
-pass it to <code>k</code>.</p>
-<h3 id="injection">Injection</h3>
 <div class="sourceCode" id="cb16"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">Inj</span> i e) k <span class="ot">=</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    cpsExp g e (<span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>        applyCont (applyE weaken k) (<span class="dt">Inj</span> i (<span class="dt">Var</span> <span class="dt">FZ</span>)))</span></code></pre></div>
-<p>Evaluate <code>e</code>, wrap the result in <code>Inj i</code>, pass
-to <code>k</code>. We are inside one binder, so <code>k</code> must be
-weakened once.</p>
-<h3 id="case-on-unit">Case on unit</h3>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">MatchUnit</span> e1 e2) k <span class="ot">=</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    cpsExp g e1 (<span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>        <span class="dt">MatchUnit</span> (<span class="dt">Var</span> <span class="dt">FZ</span>)</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>            (cpsExp (<span class="dt">CpsMeta</span> g) (applyE weaken e2) (applyE weaken k)))</span></code></pre></div>
-<p>Evaluate the scrutinee, then emit <code>MatchUnit</code>. The
-continuation body <code>e2</code> is from scope <code>g</code>; inside
-the meta-binder it is in scope <code>S g'</code>, so we weaken both
-<code>e2</code> and <code>k</code>.</p>
-<h3 id="case-on-a-sum">Case on a sum</h3>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Cont</span> <span class="kw">where</span></span></code></pre></div>
+<p>The instance body is empty because the library’s default generic
+machinery handles it.</p>
+<h3 id="updating-the-translation-to-use-meta-continuations">Updating the
+translation to use Meta continuations</h3>
+<p>To update the translation, we change the type of the continuation
+argument to be a <code>Cont m</code> instead of a raw term.</p>
+<pre><code>cpsOpt :: forall n m. Env Tm n m -&gt; Tm n -&gt; Cont m -&gt; Tm m</code></pre>
+<p>The Haskell typechecker then points out all of the places where we
+need to change uses of <code>App</code> to <code>applyCont</code>, and
+insert a use of <code>reifyCont</code> when we use a <code>Cont m</code>
+as a <code>Tm m</code>. Whenever we construct a continuation using
+<code>Lam</code>, we have a choice: we can either wrap it with
+<code>Obj</code> or change the <code>Lam</code> to <code>Meta</code> ….
+but using the <code>Meta</code> continuation is more efficient.</p>
+<hr />
+<h2 id="historical-notes">5. Historical Notes</h2>
+<p><strong>The CPS transformation.</strong> The idea of compiling
+programs into continuation-passing style has two early origins. Fischer
+(“Lambda Calculus Schemata”, 1972; published in revised form 1993) and
+Plotkin (“Call-by-Name, Call-by-Value and the Lambda-Calculus”, 1975)
+independently described the CPS translation as a way to explain
+evaluation order. Plotkin’s paper is particularly influential: it proved
+that call-by-value and call-by-name evaluation correspond to two
+different CPS translations, and it coined the term <em>administrative
+redex</em> for the spurious beta-redexes introduced by a naive
+translation.</p>
+<p><strong>CPS as a compiler intermediate language.</strong> Steele’s
+“Rabbit: A Compiler for Scheme” (1978) first used CPS as a compiler
+intermediate representation, making continuations explicit so that tail
+calls, closures, and control effects could all be handled uniformly.
+This idea was further developed in the SML/NJ compiler (Appel,
+“Compiling with Continuations”, 1992) and influenced many subsequent
+compiler designs.</p>
+<p><strong>One-pass CPS and administrative redexes.</strong> A naive CPS
+translation produces many administrative redexes. Eliminating them
+requires a separate reduction pass. Danvy and Filinski (“Representing
+Control: A Study of the CPS Transformation”, 1992) showed how to produce
+administrative-redex-free output in a single pass by distinguishing
+<em>meta-level</em> continuations (Haskell functions) from
+<em>object-level</em> continuations (lambda terms in the target). The
+<code>Cont</code> datatype with <code>Meta</code> and <code>Obj</code>
+constructors in Section 4 directly implements this idea.</p>
+<p><strong>CPS and classical logic.</strong> Griffin (“A
+Formulae-as-Types Notion of Control”, 1990) observed that continuations
+correspond to classical logic under the Curry–Howard correspondence: the
+call/cc operator corresponds to the law of excluded middle. This
+connection was further developed by Parigot (λμ-calculus, 1992) and many
+others, giving a logical foundation for the computational behavior of
+control operators.</p>
+<hr />
+<h2 id="exercises">6. Exercises</h2>
+<p><strong>1. Tracing <code>cpsExp</code> by hand.</strong> Work through
+the following calls step by step, writing down the output term produced
+at each recursive call. Verify your answers in GHCi using
+<code>pp (cps e)</code>.</p>
+<p><strong>(a)</strong> Trace <code>cpsExp idE Unit idTm</code>. - What
+rule applies? - What is the output term?</p>
+<p><strong>(b)</strong> Trace
+<code>cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm</code>: -
+When the rule for <code>Lam</code> calls
+<code>cpsExp r' (Var FZ) (Var FZ)</code> recursively, what is the
+environment <code>r'</code>? -
+<code>r' = up idE .&gt;&gt; wk :: Env Tm (S Z) (S (S Z))</code> - What
+does <code>r'</code> map <code>FZ</code> to? (Hint: <code>up idE</code>
+is the identity on <code>Tm (S Z)</code>, then <code>.&gt;&gt; wk</code>
+shifts.) - What is the full output term? Use <code>pp</code> to check
+your answer looks like <code>(λ x. x) (λ x. λ k. k x)</code>.</p>
+<p><strong>(c)</strong> Trace
+<code>cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm</code>.
+The <code>App</code> case introduces two intermediate continuations.
+Write down the complete output term and verify it matches
+<code>pp (cps (App (Lam ...) Unit))</code>.</p>
+<hr />
+<p><strong>2. Scope arithmetic in the <code>App</code> case.</strong>
+The <code>App</code> case of <code>cpsExp</code> is:</p>
 <div class="sourceCode" id="cb18"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">MatchSum</span> e0 e1 e2) k <span class="ot">=</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    cpsExp g e0 (<span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>        <span class="dt">MatchSum</span> (<span class="dt">Var</span> <span class="dt">FZ</span>)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>            (bind1 (getLocalName e1)</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>                (cpsExp (<span class="dt">CpsLift</span> g) (getBody e1)</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>                    (applyE (weaken <span class="op">.&gt;&gt;</span> weaken) k)))</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>            (bind1 (getLocalName e2)</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>                (cpsExp (<span class="dt">CpsLift</span> g) (getBody e2)</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>                    (applyE (weaken <span class="op">.&gt;&gt;</span> weaken) k))))</span></code></pre></div>
-<p>The scrutinee is evaluated and bound at <code>FZ</code> by the outer
-meta-binder. Each branch then binds its pattern variable at the new
-<code>FZ</code>, pushing the scrutinee to <code>FS FZ</code>. The
-<code>CpsLift</code> context (rather than
-<code>CpsMeta (CpsMeta g)</code>) handles this: it maps <code>FZ</code>
-→ <code>FZ</code> (the pattern variable) and outer vars
-<code>FS v</code> → <code>FS (FS (cpsIdx g v))</code> (skipping the
-scrutinee slot at <code>FS FZ</code>). The continuation <code>k</code>
-is weakened twice (past the scrutinee and the pattern variable).</p>
-<h3 id="case-on-a-pair">Case on a pair</h3>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">App</span> t1 t2) k <span class="ot">=</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r t1 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;v&quot;</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>      (cpsExp r&#39; t2 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;w&quot;</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>          (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> (<span class="dt">FS</span> <span class="dt">FZ</span>)) (<span class="dt">Var</span> <span class="dt">FZ</span>)) k&#39;&#39;))))))</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>      r&#39;  <span class="ot">=</span> r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>      k&#39;&#39; <span class="ot">=</span> applyE (wk <span class="op">.&gt;&gt;</span> wk) k</span></code></pre></div>
+<p>Answer the following:</p>
+<p><strong>(a)</strong> If the input scope is <code>n</code> and output
+scope is <code>m</code>, what is the output scope when translating
+<code>t2</code>? The continuation for <code>t2</code> is a lambda we are
+<em>building</em>, so we are one binder deeper.</p>
+<p><strong>(b)</strong> In the body
+<code>App (App (Var (FS FZ)) (Var FZ)) k''</code>, what do
+<code>Var (FS FZ)</code> and <code>Var FZ</code> name?</p>
+<p><strong>(c)</strong> Why is <code>k</code> shifted by
+<code>wk .&gt;&gt; wk</code> to produce <code>k''</code>, but
+<code>r</code> is only shifted by a single <code>wk</code> to produce
+<code>r'</code>? (Hint: <code>r</code> maps input variables to the
+output scope — how many new output binders have been crossed at each
+point?)</p>
+<p><strong>(d)</strong> The <code>MatchPair</code> case shifts
+<code>k</code> by <code>wk .&gt;&gt; wk .&gt;&gt; wk</code>. Why three
+shifts instead of two?</p>
+<hr />
+<p><strong>3. Correctness properties — what fails and why.</strong></p>
+<p><strong>(a)</strong> Run <code>qc prop_cps_result</code> in GHCi.
+Record the counterexample. Explain in one sentence why CPS-converting a
+function value does not preserve <code>eval</code>.</p>
+<p><strong>(b)</strong> Run <code>qc prop_cps_result_firstorder</code>.
+This passes, but with a high discard rate. Why are so many test cases
+discarded?</p>
+<p><strong>(c)</strong> Run <code>qc prop_cps_eval_simulates</code>. The
+counterexample involves <code>Unit</code>. Explain why <code>()</code>
+is the simplest failing case: what does <code>cps ()</code> reduce to,
+and why is that not equal to <code>cps (eval ())</code>?</p>
+<p><strong>(d)</strong> Run
+<code>qc prop_cps_eval_simulates_open</code>. This passes for the pure
+lambda calculus. The property uses <code>cpsK</code> instead of
+<code>cps</code>. Explain: why does replacing the identity-function
+continuation with a fresh variable <code>k</code> fix the
+<code>Unit</code> counterexample?</p>
+<p><strong>(e)</strong> Change the generator in
+<code>prop_cps_eval_simulates_open</code> from <code>Typed PureLC</code>
+to <code>Typed Full</code> and run it. Record the counterexample. Which
+language construct causes it to fail, and why does the pure lambda
+calculus not have this problem?</p>
+<hr />
+<p><strong>4. Meta continuations — counting administrative
+redexes.</strong></p>
+<p><strong>(a)</strong> Evaluate the following in GHCi and compare the
+two outputs:</p>
 <div class="sourceCode" id="cb19"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>cpsExp g (<span class="dt">MatchPair</span> e1 b) k <span class="ot">=</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> b&#39;  <span class="ot">=</span> getBody2 b</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>        g&#39;  <span class="ot">=</span> <span class="dt">CpsMeta</span> (<span class="dt">CpsMeta</span> g)</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>        k&#39;  <span class="ot">=</span> applyE (weaken <span class="op">.&gt;&gt;</span> weaken) k</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>        b&#39;&#39; <span class="ot">=</span> bind2 x1 x2 (cpsExp g&#39; b&#39; k&#39;)</span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>        k1  <span class="ot">=</span> <span class="dt">Meta</span> <span class="op">.</span> bind1 contName <span class="op">$</span></span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>                <span class="dt">MatchPair</span> (<span class="dt">Var</span> <span class="dt">FZ</span>) (applyE weaken b&#39;&#39;)</span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> cpsExp g e1 k1</span></code></pre></div>
-<p><code>MatchPair</code> binds <em>two</em> variables simultaneously.
-The body <code>getBody2 b</code> is in scope <code>S (S g)</code>. We
-use <code>CpsMeta (CpsMeta g)</code> which maps both bound variables to
-themselves (<code>FZ → FZ</code>, <code>FS FZ → FS FZ</code>) and shifts
-outer vars up by two. The translated body is re-wrapped in
-<code>bind2 x1 x2</code>, then weakened once (for the scrutinee
-meta-binder) before being placed inside <code>MatchPair</code>.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cps    (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cpsOpt (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span></code></pre></div>
+<p>Count the number of beta-redexes (sub-terms of the form
+<code>(λ x. body) arg</code>) in each. Which version has fewer?</p>
+<p><strong>(b)</strong> For
+<code>cpsExpOpt r Unit (Meta (bind1 (LocalName "x") body))</code>, show
+that <code>applyCont k Unit</code> directly substitutes
+<code>Unit</code> into <code>body</code>, producing
+<code>body[Unit/x]</code> with no <code>(λ x. body) ()</code> redex.</p>
+<p><strong>(c)</strong> In the <code>Lam</code> case of
+<code>cpsExpOpt</code>, the continuation passed to the recursive call is
+<code>Obj (Var FZ)</code> — not <code>Meta</code>. Explain why
+<code>Meta</code> cannot be used here. (Hint: <code>Var FZ</code> is a
+<em>runtime</em> variable for the caller-supplied continuation
+<code>k'</code>, not a compile-time binder we control.)</p>
+<p><strong>(d)</strong> Run
+<code>qc prop_cpsOpt_result_firstorder</code> and
+<code>qc prop_cpsOpt_eval_simulates_open</code>. Do both pass? What do
+they tell you about the correctness of the optimised translation?</p>
 <hr />
-<h2 id="correctness-properties">6. Correctness Properties</h2>
-<h3 id="big-step-prop_cps_eval">Big-step:
-<code>prop_cps_eval</code></h3>
-<div class="sourceCode" id="cb20"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_cps_eval ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>prop_cps_eval e <span class="ot">=</span> <span class="op">...</span></span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    cps_eval_e <span class="op">==</span> eval_cps_e</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">where</span></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    cps_eval_e <span class="ot">=</span> cps (eval e)   <span class="co">-- CPS the value</span></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    eval_cps_e <span class="ot">=</span> eval (cps e)   <span class="co">-- evaluate the CPS term</span></span></code></pre></div>
-<p><code>cps(eval(e)) == eval(cps(e))</code>: applying CPS to the
-evaluated result gives the same thing as evaluating the CPS translation.
-This is the standard <em>correctness</em> theorem for CPS: the
-translation preserves big-step semantics.</p>
-<p>QuickCheck confirms this:</p>
-<pre><code>ghci&gt; qc prop_cps_eval
-+++ OK, passed 1000 tests; ...</code></pre>
-<h3 id="small-step-prop_cps_step-a-cautionary-tale">Small-step:
-<code>prop_cps_step</code> — a cautionary tale</h3>
+<p><strong>5. Extending <code>cpsExp</code> with
+<code>let</code>.</strong> Assume
+<code>Let :: Tm n -&gt; Bind1 Tm Tm n -&gt; Tm n</code> has been added
+to <code>Tm</code> (Lecture 1, Exercise 3). The CPS rule for
+<code>let</code> is:</p>
+<pre><code>[[let x = e in b]] k  =  [[e]] (λx. [[b]] k)</code></pre>
+<p><strong>(a)</strong> Add a case to <code>cpsExp</code>:</p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r e (<span class="dt">Lam</span> (bind1 (getLocalName b)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>        (cpsExp r&#39; (getBody1 b) k&#39;)))</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
+<p>Explain each component: - Why is <code>r'</code> the right
+environment for the body of <code>b</code>? - Why is <code>k</code>
+shifted by <code>wk</code> to produce <code>k'</code>? - How does this
+compare to the <code>Lam</code> case?</p>
+<p><strong>(b)</strong> Add the corresponding case to
+<code>cpsExpOpt</code>, replacing the <code>Lam</code>-built
+continuation with a <code>Meta</code> continuation:</p>
 <div class="sourceCode" id="cb22"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_cps_step ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>prop_cps_step e <span class="ot">=</span> <span class="op">...</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    cps (step e) <span class="op">==</span> step (cps e)   <span class="co">-- this is TOO STRONG</span></span></code></pre></div>
-<p>This property asks for a <em>syntactic</em> single-step simulation:
-<code>cps(step(e)) == step(cps(e))</code>. It
-<strong>fails</strong>:</p>
-<pre><code>e      = let x = λz. () in x
-step_e = λz. ()
-cps_e  = (let x = λz k. k () in λk. k x) (λx. x)
-cps(step_e) = λz k. k ()
-step(cps_e) = let k = λx. x in k (λz k. k ())   -- NOT the same term</code></pre>
-<p>The CPS translation introduces <em>administrative redexes</em> — beta
-redexes that were not present in the source. Here, after one
-direct-style step we get a value, but the CPS term needs one more step
-to eliminate the administrative <code>let</code>. The two sides are
-equal only after further reduction.</p>
-<p>The correct small-step statement is:</p>
-<pre><code>eval(cps(step(e))) == eval(step(cps(e)))</code></pre>
-<p>Both sides reduce to the same final value: the left evaluates
-<code>cps</code> of the stepped term, and the right evaluates one step
-of the CPS term. This follows from the big-step correctness theorem
-(<code>prop_cps_eval</code>) and the fact that <code>eval</code> is
-stable under single steps (<code>prop_evalStep</code> from Lecture
-1).</p>
-<hr />
-<h2 id="summary">7. Summary</h2>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th>Concept</th>
-<th>Implementation</th>
-<th>Key idea</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>CPS translation</td>
-<td><code>cpsExp</code></td>
-<td>inductive on term structure; continuation is threaded through</td>
-</tr>
-<tr>
-<td>Two continuation forms</td>
-<td><code>Cont</code> (<code>Obj</code>/<code>Meta</code>)</td>
-<td><code>Meta</code> avoids administrative redexes by substituting
-directly</td>
-</tr>
-<tr>
-<td><code>reifyCont</code></td>
-<td>turns <code>Meta k</code> into <code>Lam k</code></td>
-<td>needed when continuation must appear as an object-level value</td>
-</tr>
-<tr>
-<td>Index remapping</td>
-<td><code>CpsCtx</code> / <code>cpsIdx</code></td>
-<td>GADT tracks how source scope maps to CPS scope</td>
-</tr>
-<tr>
-<td><code>CpsLam</code></td>
-<td><code>FZ → FS FZ</code></td>
-<td>lambda body: continuation takes slot 0, param moves to slot 1</td>
-</tr>
-<tr>
-<td><code>CpsMeta</code></td>
-<td><code>FZ → FZ</code></td>
-<td>meta-binder body: bound value stays at slot 0</td>
-</tr>
-<tr>
-<td><code>CpsLift</code></td>
-<td><code>FZ → FZ</code>, <code>FS v → FS (FS ...)</code></td>
-<td>case branch: pattern var stays at 0, scrutinee is at 1</td>
-</tr>
-<tr>
-<td>Weakening</td>
-<td><code>applyE weaken</code>,
-<code>applyE (weaken .&gt;&gt; weaken)</code></td>
-<td>lift arguments/continuations into larger scopes</td>
-</tr>
-<tr>
-<td>Big-step correctness</td>
-<td><code>prop_cps_eval</code></td>
-<td><code>cps(eval(e)) == eval(cps(e))</code> — passes</td>
-</tr>
-<tr>
-<td>Small-step simulation</td>
-<td><code>prop_cps_step</code> as written</td>
-<td>too strong; administrative redexes break syntactic equality</td>
-</tr>
-</tbody>
-</table>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>cpsExpOpt r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    cpsExpOpt r e (<span class="dt">Meta</span> (bind1 (getLocalName b)</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>        (cpsExpOpt r&#39; (getBody1 b) k&#39;)))</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
+<p>What administrative redex does the <code>Meta</code> here avoid
+compared to <code>cpsExp</code>?</p>
+<p><strong>(c)</strong> After adding both cases, run
+<code>qc prop_cps_result_firstorder</code> and verify it still
+passes.</p>
 </main>
 
 <footer>
