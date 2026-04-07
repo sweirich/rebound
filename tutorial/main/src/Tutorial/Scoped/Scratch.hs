@@ -35,12 +35,16 @@ f1 = FS FZ
 f2 :: Fin (S (S (S n)))
 f2 = FS (FS FZ)
 
+-- "3" in any scope that has at least four numbers
+f3 :: Fin (S (S (S (S n))))
+f3 = FS (FS (FS FZ))
+
 
 -- >>> :t (f1 :: Fin N3)
--- (f1 :: Fin N3) :: Fin N3
+
 
 -- >>> :t (f2 :: Fin N3)
--- (f2 :: Fin N3) :: Fin N3
+
 
 
 ------------------------------------------------------------------------
@@ -56,7 +60,7 @@ data Tm (n :: Nat) where
     Unit  :: Tm n
     Pair  :: Tm n -> Tm n -> Tm n
     Inj   :: Int -> Tm n -> Tm n
-    -- application 
+    -- application `e0 e1`
     App   :: Tm n -> Tm n -> Tm n
     -- simple pattern matching
     -- `case e0 of () -> e1`
@@ -103,7 +107,7 @@ ex_swap = Lam (Bind1
         (Bind2 (Pair (Var f1) (Var FZ)))))
 
 ------------------------------------------------------------------------
--- * Substitution
+-- * Substitution environments
 ------------------------------------------------------------------------
 
 -- | A substitution environment mapping @m@ variables to terms in scope @n@.
@@ -151,22 +155,22 @@ shift x = Var (FS x)
 -- binder so that bound variables are not modified.
 applyE :: Env m n -> Tm m -> Tm n
 applyE env (Var x)              = env x
-applyE env (Lam (Bind1 b))      = Lam (Bind1 (applyE (lift env) b))
+applyE env (Lam (Bind1 b))      = Lam (Bind1 (applyE (up env) b))
 applyE _   Unit                 = Unit
 applyE env (Pair a b)           = Pair (applyE env a) (applyE env b)
 applyE env (Inj i t)            = Inj i (applyE env t)
 applyE env (App f a)            = App (applyE env f) (applyE env a)
 applyE env (MatchUnit a b)      = MatchUnit (applyE env a) (applyE env b)
 applyE env (MatchPair a (Bind2 b)) =
-    MatchPair (applyE env a) (Bind2 (applyE (lift (lift env)) b))
+    MatchPair (applyE env a) (Bind2 (applyE (up (up env)) b))
 applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
-    MatchSum (applyE env a) (Bind1 (applyE (lift env) b1)) (Bind1 (applyE (lift env) b2))
+    MatchSum (applyE env a) (Bind1 (applyE (up env) b1)) (Bind1 (applyE (up env) b2))
 
 -- | Lift an environment under one binder.
 -- The new outermost variable @FZ@ maps to itself; all others are
 -- shifted by one so that the result is in the extended scope.
-lift :: Env m n -> Env (S m) (S n)
-lift env = Var FZ .: (applyE shift . env)
+up :: Env m n -> Env (S m) (S n)
+up env = Var FZ .: (applyE shift . env)
 
 ------------------------------------------------------------------------
 -- * Binders and instantiation

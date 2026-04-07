@@ -240,29 +240,29 @@ Weakens a scope: applying `applyE shift` to a term in scope `n` produces the sam
 -- | Apply a substitution environment to a term
 applyE :: Env m n -> Tm m -> Tm n
 applyE env (Var x)               = env x
-applyE env (Lam (Bind1 b))       = Lam (Bind1 (applyE (lift env) b))
+applyE env (Lam (Bind1 b))       = Lam (Bind1 (applyE (up env) b))
 applyE _   Unit                  = Unit
 applyE env (Pair a b)            = Pair (applyE env a) (applyE env b)
 applyE env (Inj i t)             = Inj i (applyE env t)
 applyE env (App f a)             = App (applyE env f) (applyE env a)
 applyE env (MatchUnit a b)       = MatchUnit (applyE env a) (applyE env b)
 applyE env (MatchPair a (Bind2 b)) =
-    MatchPair (applyE env a) (Bind2 (applyE (lift (lift env)) b))
+    MatchPair (applyE env a) (Bind2 (applyE (up (up env)) b))
 applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
     MatchSum (applyE env a)
-             (Bind1 (applyE (lift env) b1))
-             (Bind1 (applyE (lift env) b2))
+             (Bind1 (applyE (up env) b1))
+             (Bind1 (applyE (up env) b2))
 
 -- | Lift an environment under one binder
-lift :: Env m n -> Env (S m) (S n)
-lift env = Var FZ .: (applyE shift . env)
+up :: Env m n -> Env (S m) (S n)
+up env = Var FZ .: (applyE shift . env)
 ```
 
-The key cases are the binders. For `Lam (Bind1 b)`, the body lives in scope `S m`, so we apply `lift env :: Env (S m) (S n)`. For `MatchPair (Bind2 b)`, which binds two variables, we apply `lift (lift env)`.
+The key cases are the binders. For `Lam (Bind1 b)`, the body lives in scope `S m`, so we apply `up env :: Env (S m) (S n)`. For `MatchPair (Bind2 b)`, which binds two variables, we apply `up (up env)`.
 
-In the `lift` environment, the new outermost variable maps to itself; every other variable `x` maps to `env x` weakened into the larger scope.
+In the `up` environment, the new outermost variable maps to itself; every other variable `x` maps to `env x` weakened into the larger scope.
 
-Note that `applyE` and `lift` are mutually recursive. In a proof assistant like Agda or Rocq, this mutual recursion through non-structural calls makes termination checking difficult. The standard fix is to first define a *renaming* function (mapping variables to variables, not terms), use that for shifting, and then define substitution separately. We sidestep this here since Haskell has no termination checker.
+Note that `applyE` and `up` are mutually recursive. In a proof assistant like Agda or Rocq, this mutual recursion through non-structural calls makes termination checking difficult. The standard fix is to first define a *renaming* function (mapping variables to variables, not terms), use that for shifting, and then define substitution separately. We sidestep this here since Haskell has no termination checker.
 
 Finally, let's define a helper function for instantiating binders.
 If we were to evaluate `(λx. body) arg` we need to *instantiate* the binder: substitute `arg` for `FZ` in `body`. An environment that does this is `arg .: idE`, which maps `FZ → arg` and `FS x → Var x`:
@@ -368,9 +368,9 @@ type level using a natural-number index appears in Altenkirch and Reus,
 lambda calculus terms efficiently.
 
 **Renamings and the termination problem.** The mutual recursion between
-`applyE` and `lift` (noted in Section 5) is a real obstacle in proof
+`applyE` and `up` (noted in Section 5) is a real obstacle in proof
 assistants. The standard fix — define `applyRen` on renamings first, use it to
-implement `lift`, then build `applyE` on top — is described in, e.g., Benton,
+implement `up`, then build `applyE` on top — is described in, e.g., Benton,
 Hur, Kennedy, and McBride, "Strongly Typed Term Representations in Coq"
 (2012). Exercise 4 asks you to implement this version.
 
@@ -423,11 +423,11 @@ variables rather than terms:
 type Ren m n = Fin m -> Fin n
 ```
 
-Define `applyRen :: Ren m n -> Tm m -> Tm n` by structural recursion, analogous to `applyE`. You will also need `liftRen :: Ren m n -> Ren (S m) (S n)`.
+Define `applyRen :: Ren m n -> Tm m -> Tm n` by structural recursion, analogous to `applyE`. You will also need `upRen :: Ren m n -> Ren (S m) (S n)`.
 
 Now observe: every renaming `r :: Ren m n` induces a substitution `Var . r :: Env m n`, and `applyRen r = applyE (Var . r)`.
 
-The reason proof assistants define `applyRen` separately is that `applyRen` *is* structurally recursive (it produces variables, not terms), so it can be used to define `lift` without the mutual recursion that troubles Agda and Rocq.
+The reason proof assistants define `applyRen` separately is that `applyRen` *is* structurally recursive (it produces variables, not terms), so it can be used to define `up` without the mutual recursion that troubles Agda and Rocq.
 
 
 

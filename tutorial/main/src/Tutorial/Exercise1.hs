@@ -90,28 +90,28 @@ type Ren m n = Fin m -> Fin n
 
 -- | Lift a renaming under one binder: FZ maps to itself, FS x to FS (r x).
 --
--- Unlike 'lift' for substitutions, liftRen does not call applyRen.
+-- Unlike 'up' for substitutions, liftRen does not call applyRen.
 -- That is why applyRen (below) is structurally recursive — the cycle that
 -- troubles Agda and Rocq does not arise.
-liftRen :: Ren m n -> Ren (S m) (S n)
-liftRen _ FZ     = FZ
-liftRen r (FS x) = FS (r x)
+upRen :: Ren m n -> Ren (S m) (S n)
+upRen _ FZ     = FZ
+upRen r (FS x) = FS (r x)
 
 -- | Apply a renaming to a term.  Structurally recursive: no mutual recursion.
 applyRen :: Ren m n -> Tm m -> Tm n
 applyRen r (Var x)                 = Var (r x)
-applyRen r (Lam (Bind1 b))         = Lam (Bind1 (applyRen (liftRen r) b))
+applyRen r (Lam (Bind1 b))         = Lam (Bind1 (applyRen (upRen r) b))
 applyRen _ Unit                    = Unit
 applyRen r (Pair a b)              = Pair (applyRen r a) (applyRen r b)
 applyRen r (Inj i t)               = Inj i (applyRen r t)
 applyRen r (App f a)               = App (applyRen r f) (applyRen r a)
 applyRen r (MatchUnit a b)         = MatchUnit (applyRen r a) (applyRen r b)
 applyRen r (MatchPair a (Bind2 b)) =
-    MatchPair (applyRen r a) (Bind2 (applyRen (liftRen (liftRen r)) b))
+    MatchPair (applyRen r a) (Bind2 (applyRen (upRen (upRen r)) b))
 applyRen r (MatchSum a (Bind1 b1) (Bind1 b2)) =
     MatchSum (applyRen r a)
-             (Bind1 (applyRen (liftRen r) b1))
-             (Bind1 (applyRen (liftRen r) b2))
+             (Bind1 (applyRen (upRen r) b1))
+             (Bind1 (applyRen (upRen r) b2))
 
 -- | Every renaming r induces a substitution Var . r, and applyRen agrees
 -- with applyE on that substitution.

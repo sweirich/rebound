@@ -30,17 +30,17 @@ Recall the hand-written substitution from `Scratch.hs`:
 type Env m n = Fin m -> Tm n
 
 applyE :: Env m n -> Tm m -> Tm n
-applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (lift env) b))
+applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (up env) b))
 applyE env (App f a)       = App (applyE env f) (applyE env a)
 -- ...
 
-lift :: Env m n -> Env (S m) (S n)
-lift env = Var FZ .: (applyE shift . env)
+up :: Env m n -> Env (S m) (S n)
+up env = Var FZ .: (applyE shift . env)
 ```
 
 Every call to `applyE` traverses the entire term, recursing into every
-sub-term.  Crucially, `lift` is called *once per binder encountered during
-traversal*, and each `lift` itself calls `applyE shift` on every term in the
+sub-term.  Crucially, `up` is called *once per binder encountered during
+traversal*, and each `up` itself calls `applyE shift` on every term in the
 range of `env`.
 
 Consider a deeply-nested expression: normalizing it requires many rounds of
@@ -82,7 +82,7 @@ data Bind1 n = Bind1 (Tm (S n))
 ```
 
 There is nowhere to store a pending substitution.  When we cross a binder
-with `applyE`, we must call `lift env` and descend into the body immediately.
+with `applyE`, we must call `up env` and descend into the body immediately.
 
 The library's `Bind` type adds a slot for the name hint *and* a slot for the
 pending substitution.  The tutorial's `Bind1 Tm Tm n` (from `Rebound.Bind.Local`)
@@ -167,7 +167,7 @@ Compare this to the naive version:
 
 ```haskell
 -- Scratch.hs (naive)
-applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (lift env) b))
+applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (up env) b))
 --                                        ^^^^^^^^^^^^^^^^^^^^
 --                                        traverses the entire body eagerly
 ```
@@ -383,7 +383,7 @@ body with zero traversal.
 
 When a substitution must be applied *under* binders — as happens inside
 `getBody` — we need to *lift* it past the bound variables.  The `up` function
-is the library's version of `lift` from `Scratch.hs`:
+corresponds to `up` from `Scratch.hs`:
 
 ```haskell
 up :: SubstVar v => Env v m n -> Env v (S m) (S n)
@@ -393,7 +393,7 @@ up e        = var Fin.f0 .: comp e (Inc s1)
 
 The special case recognises the identity and returns it immediately — lifting
 the identity is still the identity.  The general case is the familiar
-`lift`:
+`up`:
 
 - `FZ` maps to `Var FZ` (the newly-bound variable stays at index 0).
 - Every other variable `x` maps to `env x`, then shifted up by one (`Inc s1`)
@@ -487,7 +487,7 @@ calls the generic machinery to recurse over all fields, applying `applyE`
 recursively to each sub-term and the O(1) binder instance to each `Bind`.
 
 In contrast, `Scratch.hs` requires a hand-written `applyE` that explicitly
-dispatches on every constructor and manually calls `lift` at each binder.
+dispatches on every constructor and manually calls `up` at each binder.
 With `rebound` you write `deriving Generic1` and two-line `SubstVar`/`Subst`
 instances, and the library handles everything else.
 
