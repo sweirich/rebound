@@ -66,9 +66,8 @@ representative timings:
 |---|---|---|
 | `SubstV` | Naive eager substitution (à la `Scratch.hs`) | 3330 ms |
 | `BindV` | Delayed substitution inside `Bind` | 0.767 ms |
-| `EnvV` | Explicit environment threaded everywhere | 0.586 ms |
 
-The delayed-substitution approach (`BindV`) is roughly **4300× faster** than
+The delayed-substitution approach (`BindV`) is significantly faster than
 the naive one.  The remaining sections explain how the library achieves this.
 
 ---
@@ -302,7 +301,7 @@ this directly:
 | `Functional` (plain function) | 126 ms |
 | `Lazy` (defunctionalized + smart composition) | 0.84 ms |
 
-The defunctionalized representation is roughly **150× faster** for full
+The defunctionalized representation is significantly faster for full
 normalization — almost entirely because it enables the smart composition rules
 described next.
 
@@ -529,9 +528,7 @@ every new language implementation gets them for free.
 
 **The λυ and σ families.** Several explicit-substitution calculi followed λσ, addressing properties such as confluence and strong normalization: λs (Kamareddine and Ríos, 1995), λυ (Lescanne, 1994), and the suspension calculus (Nadathur and Wilson, 1998). The smart composition rules in `comp` (Section 4) correspond to the reduction rules of these calculi applied at composition time rather than during term traversal.
 
-**Defunctionalized environments.** Representing environments as *data* rather than functions so that they can be inspected and simplified is an instance of *defunctionalization* (Reynolds, "Definitional Interpreters for Higher-Order Programming Languages", 1972). Applied to de Bruijn substitutions, this idea appears in work on closure representations for the lambda calculus (Hardin, Maranget, and Pagano, "Functional Runtime Systems within the Lambda-Sigma Calculus", 1998) and in implementations of proof assistants such as Agda's kernel.
-
-TODO: read the Hardin paper
+**Defunctionalized environments.** Representing environments as *data* rather than functions so that they can be inspected and simplified is an instance of *defunctionalization* (Reynolds, "Definitional Interpreters for Higher-Order Programming Languages", 1972). Applied to de Bruijn substitutions, this idea appears in implementations of proof assistants such as Agda's kernel.
 
 **Shift fusion.** The observation that consecutive weakenings can be merged (`Inc k1 .>> Inc k2 = Inc (k1+k2)`) is closely related to the use of *relative* (offset-based) de Bruijn shifts in some implementations, e.g., the suspension calculus mentioned above and the environments used in the Caml Light and OCaml bytecode interpreters.
 

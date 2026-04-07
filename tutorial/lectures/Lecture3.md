@@ -2,6 +2,9 @@
 
 ## Modules referenced in this lecture
 
+- [Tutorial.Scoped.CPS](Tutorial/Scoped/CPS.hs)
+
+
 ## Overview and Goals
 
 Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
@@ -9,7 +12,7 @@ issues that occur when working with them in an implementation. In this lecture, 
 some of the payoff for working with this sort of representation: we can work with and reason about 
 open code. 
 
-As an extended example, we will use a nontrivial *term-to-term transformation*:
+As an extended example, we will use a nontrivial *term-to-term transformation*: called the
 continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as a compiler intermediate language and for the implementation of cooperative multithreading. If you haven't seen it before, you should learn more about it.
 
 For our purposes, CPS is a good case study because it changes the binding
@@ -18,21 +21,22 @@ when implementing this operation, we need to work in a changing scope -- the
 scope of the input term is not necessarily the same as the scope of the
 output. Because we are working with de Bruijn indices, we need to be careful
 what scope we are in, and the types help us with that.  At the same time, when
-we go to test our implementation, we don't need to worry about variable names;
-we are naturally working with terms up to alpha-equivalence.
+we go to test our implementation, to make sure that it has the desired
+properties, we don't need to worry about variable names; we are naturally
+working with terms up to alpha-equivalence.
 
 ---
 
 ## 1. What is CPS?
 
 In direct style, a function returns its result to its caller implicitly.  In
-*continuation-passing style* every function receives an extra argument — the
-*continuation* — which represents "what to do with the result".  Instead of
+*continuation-passing style* every function receives an extra argument--—the
+*continuation*-—-which represents "what to do with the result".  Instead of
 returning, a function calls its continuation.
 
-The transformation is defined inductively on terms.  We write `[[e]] k` to
-mean "translate `e`, passing results to continuation `k`". An informal 
-definition of this operation is below:
+Here's a simple version of the CPS transformation, defined inductively on
+terms.  We write `[[e]] k` to mean "translate `e`, passing results to
+continuation `k`". An informal definition of this operation is below:
 
 ```
 [[x]]          k = k x
@@ -67,9 +71,12 @@ it is inside the body of a lambda expression. However, the result is going to be
 that binds not just `x` but also `k'`. What that means is that the *variable* case is also challenging. Even though with names above we say `[[x]]k` produces `k x`, the scope of the first `x`
 may be different from the scope of the second `x`, so they may be different indices.
 
-Therefore, we need to parameterize our cps conversion function with a substitution that talks about the scope change. If the input term is in some scope `n` and the output scope is `m`, then we need 
-an argument of type `Env Tm n m` to go between the two.  Furthermore, the continuation argument 
-should be in the *output* scope.  
+Therefore, we will parameterize our cps conversion function with an additional
+argument---a substitution that talks about the scope change. If the input term
+is in some scope `n` and the output scope is `m`, then we need an argument of
+type `Env Tm n m` to go between the two.  Furthermore, the continuation
+argument should be in the *output* scope (`m`) because it needs to be applied
+to the result.
 
 For the variable case, we apply this renaming to the variable, to get its version in the 
 output scope. We can then use it to construct the application of the continuation to this 
@@ -141,7 +148,7 @@ that we get the same result from evaluation for any term and its cps conversion:
 prop_same_result e = eval e == eval (cps e)
 ```
 
-But already we have a problem, here. This property is not true.
+But already we have a problem. This property is not true.
 ```
 ghci> qc prop_cps_result
 *** Failed! Falsified (after 1 test):  

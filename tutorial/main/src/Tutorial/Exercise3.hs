@@ -58,13 +58,11 @@ colon r (App e1 e2) k =
     where 
         r' = r .>> wk
         k' = applyE (wk .>> wk) k
-{- SOLN -}
 colon r (Pair v1 e2) k | isVal v1 = 
     colon r e2 (Lam (bind1 (LocalName "w")
                   (App k' (Pair v1' (Var FZ)))))
     where v1' = applyE wk (cpsVal r v1)
           k'  = applyE wk k
-{- STUBWITH -- TODO: add a case for Pair, when e1 is a value -}
 -- standard translation, when e1 and e2 are not values
 colon r (Pair e1 e2) k = 
     colon r e1 (Lam (bind1 (LocalName "v")
@@ -79,17 +77,14 @@ colon r (Inj i e1) k =
     colon r e1 (Lam (bind1 (LocalName "w")
                   (App k' (Inj i (Var FZ)))))
     where k'  = applyE wk k
-{- SOLN -}
 colon r (MatchUnit v1 e2) k | isVal v1 = 
     MatchUnit (cpsVal r v1) (colon r e2 k)
-{- STUBWITH -- TODO: add a case for MatchUnit when e1 is a value -}
 -- standard translation: e1 is not a value
 colon r (MatchUnit e1 e2) k = 
     colon r e1 (Lam (bind1 (LocalName "v1")
                     (MatchUnit (Var FZ) (colon r' e2 k'))))
     where r' = r .>> wk
           k' = applyE wk k
-{- SOLN -}
 colon r (MatchPair v1 e2) k | isVal v1 = 
     MatchPair (cpsVal r v1) 
         (bind2 x y 
@@ -100,7 +95,6 @@ colon r (MatchPair v1 e2) k | isVal v1 =
         names = getLocalName2 e2
         x = names ! FZ
         y = names ! (FS FZ)
-{- STUBWITH -- TODO: add a case for MatchPair when e1 is a value -}
 colon r (MatchPair e1 b) k = 
     colon r e1 (Lam (bind1 (LocalName "v1")
       (MatchPair (Var FZ) (bind2 x1 x2 
@@ -110,7 +104,6 @@ colon r (MatchPair e1 b) k =
             x1 = names ! FZ
             x2 = names ! FS FZ
             k''' = applyE (wk .>> wk .>> wk) k
-{- SOLN -}
 colon r (MatchSum v1 e1 e2) k | isVal v1 = 
     (MatchSum (cpsVal r v1)
            (bind1 (getLocalName e1)

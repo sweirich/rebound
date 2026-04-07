@@ -626,4 +626,39 @@ For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`
 
 If you would like a hint: check out the "Skewed Substitutions" described in this [blog post](https://mathisbd.github.io/blog/esubstitutions.html).
 
+---
+
+**8. Full reduction (normalization).** The `reduce` function in `Tutorial.Scoped.Eval` is a *weak* reducer: the `Lam` case returns the lambda unchanged without looking inside the body. Implement *full* reduction (also called *normalization*), which reduces everywhere — including under binders:
+
+```haskell
+normalize :: Tm n -> Maybe (Tm n)
+normalize = _
+```
+
+Hints:
+
+- The key new case is `Lam b`. Use `unbindl1 b` to extract the stored local name and the body (of type `Tm (S n)`). Recursively normalize the body, then re-package it with `bind1`. Because `Tm (S n)` is an *open* term, the recursive call is well-typed without any extra constraint.
+- For `App`, first normalize both sub-terms. If the function normalizes to `Lam b` and the argument to `nv`, perform the beta step with `instantiate1 b nv` and normalize the result. If the function is inert, return the application of the normalized sub-terms.
+- The other cases (`Pair`, `Inj`, `MatchSum`, `MatchPair`, `MatchUnit`) follow the same pattern as in `reduce`, but calling `normalize` recursively instead of `reduce`, and also normalizing inside constructor arguments.
+- `normalize` should agree with `reduce` on terms that contain no redexes under binders. State and test this as a QuickCheck property on `Tm (S Z)`:
+
+  ```haskell
+  prop_normalize_reduce :: Tm (S Z) -> Property
+  prop_normalize_reduce t = ...
+  ```
+
+  *Hint*: find a predicate `noLambdaRedex :: Tm n -> Bool` that holds when there are no beta redexes inside any lambda body, and use `QC.classify` to report what fraction of generated terms satisfy it.
+
+- Define `isNormal :: Tm n -> Bool` that holds when a term contains no beta redexes *anywhere* (including under binders). Then state and test:
+
+  ```haskell
+  prop_normalize_normal :: Tm (S Z) -> Property
+  prop_normalize_normal t =
+      case normalize t of
+          Just nf -> property (isNormal nf)
+          Nothing -> discard
+  ```
+
+- On closed terms, does `normalize t` succeed exactly when `eval t` succeeds? State this as a property and test it. Does it hold for well-scoped terms? For well-typed terms? Explain any discrepancies you observe.
+
 
