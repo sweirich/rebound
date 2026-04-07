@@ -131,9 +131,9 @@ alpha-equivalence.</p>
 <h2 id="what-is-cps">1. What is CPS?</h2>
 <p>In direct style, a function returns its result to its caller
 implicitly. In <em>continuation-passing style</em> every function
-receives an extra argument–—the <em>continuation</em>-—-which represents
-“what to do with the result”. Instead of returning, a function calls its
-continuation.</p>
+receives an extra argument — the <em>continuation</em> — which
+represents “what to do with the result”. Instead of returning, a
+function calls its continuation.</p>
 <p>Here’s a simple version of the CPS transformation, defined
 inductively on terms. We write <code>[[e]] k</code> to mean “translate
 <code>e</code>, passing results to continuation <code>k</code>”. An
@@ -244,7 +244,7 @@ is <code>(λ x k. k x)</code>. And this is not the same as
 <code>(λ x. x)</code>. We can fix this by only looking at the cases
 where the result of evaluation is “first-order”, i.e. a value that does
 not contain a function.</p>
-<p>This solves the issue, but we need to throwaway a lot of cases.</p>
+<p>This solves the issue, but we need to throw away a lot of cases.</p>
 <pre><code>ghci&gt; qc prop_cps_result_firstorder
 +++ OK, passed 1000 tests; 1373 discarded.</code></pre>
 <h3 id="simulation-properties-big-step">Simulation properties
@@ -278,6 +278,7 @@ abstract. Instead of using the identity function, if we use a
 distinguished variable, then that solves the problem for
 <code>()</code>.</p>
 <p>However, this solution will not scale to the full language.</p>
+<hr />
 <h2 id="optimized-cps-conversion">4. Optimized CPS conversion</h2>
 <p>A naive implementation would represent every continuation
 <code>k</code> as a <code>Tm g</code> (an object-level lambda) and apply

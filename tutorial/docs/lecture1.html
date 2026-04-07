@@ -317,31 +317,31 @@ environment and lifting under each binder:</p>
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Apply a substitution environment to a term</span></span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Var</span> x)               <span class="ot">=</span> env x</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b))       <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (lift env) b))</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b))       <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (up env) b))</span>
 <span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>applyE _   <span class="dt">Unit</span>                  <span class="ot">=</span> <span class="dt">Unit</span></span>
 <span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Pair</span> a b)            <span class="ot">=</span> <span class="dt">Pair</span> (applyE env a) (applyE env b)</span>
 <span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Inj</span> i t)             <span class="ot">=</span> <span class="dt">Inj</span> i (applyE env t)</span>
 <span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">App</span> f a)             <span class="ot">=</span> <span class="dt">App</span> (applyE env f) (applyE env a)</span>
 <span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">MatchUnit</span> a b)       <span class="ot">=</span> <span class="dt">MatchUnit</span> (applyE env a) (applyE env b)</span>
 <span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">MatchPair</span> a (<span class="dt">Bind2</span> b)) <span class="ot">=</span></span>
-<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MatchPair</span> (applyE env a) (<span class="dt">Bind2</span> (applyE (lift (lift env)) b))</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MatchPair</span> (applyE env a) (<span class="dt">Bind2</span> (applyE (up (up env)) b))</span>
 <span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">MatchSum</span> a (<span class="dt">Bind1</span> b1) (<span class="dt">Bind1</span> b2)) <span class="ot">=</span></span>
 <span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MatchSum</span> (applyE env a)</span>
-<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>             (<span class="dt">Bind1</span> (applyE (lift env) b1))</span>
-<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>             (<span class="dt">Bind1</span> (applyE (lift env) b2))</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>             (<span class="dt">Bind1</span> (applyE (up env) b1))</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>             (<span class="dt">Bind1</span> (applyE (up env) b2))</span>
 <span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Lift an environment under one binder</span></span>
-<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a><span class="ot">lift ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
-<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>lift env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>up env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
 <p>The key cases are the binders. For <code>Lam (Bind1 b)</code>, the
 body lives in scope <code>S m</code>, so we apply
-<code>lift env :: Env (S m) (S n)</code>. For
+<code>up env :: Env (S m) (S n)</code>. For
 <code>MatchPair (Bind2 b)</code>, which binds two variables, we apply
-<code>lift (lift env)</code>.</p>
-<p>In the <code>lift</code> environment, the new outermost variable maps
+<code>up (up env)</code>.</p>
+<p>In the <code>up</code> environment, the new outermost variable maps
 to itself; every other variable <code>x</code> maps to
 <code>env x</code> weakened into the larger scope.</p>
-<p>Note that <code>applyE</code> and <code>lift</code> are mutually
+<p>Note that <code>applyE</code> and <code>up</code> are mutually
 recursive. In a proof assistant like Agda or Rocq, this mutual recursion
 through non-structural calls makes termination checking difficult. The
 standard fix is to first define a <em>renaming</em> function (mapping
@@ -449,10 +449,10 @@ Bruijn Notation as a Nested Datatype” (1999). These papers inspired
 Kmett’s “bound” library for working with well-scoped lambda calculus
 terms efficiently.</p>
 <p><strong>Renamings and the termination problem.</strong> The mutual
-recursion between <code>applyE</code> and <code>lift</code> (noted in
+recursion between <code>applyE</code> and <code>up</code> (noted in
 Section 5) is a real obstacle in proof assistants. The standard fix —
 define <code>applyRen</code> on renamings first, use it to implement
-<code>lift</code>, then build <code>applyE</code> on top — is described
+<code>up</code>, then build <code>applyE</code> on top — is described
 in, e.g., Benton, Hur, Kennedy, and McBride, “Strongly Typed Term
 Representations in Coq” (2012). Exercise 4 asks you to implement this
 version.</p>
@@ -506,14 +506,14 @@ that maps variables to variables rather than terms:</p>
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Ren</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Fin</span> n</span></code></pre></div>
 <p>Define <code>applyRen :: Ren m n -&gt; Tm m -&gt; Tm n</code> by
 structural recursion, analogous to <code>applyE</code>. You will also
-need <code>liftRen :: Ren m n -&gt; Ren (S m) (S n)</code>.</p>
+need <code>upRen :: Ren m n -&gt; Ren (S m) (S n)</code>.</p>
 <p>Now observe: every renaming <code>r :: Ren m n</code> induces a
 substitution <code>Var . r :: Env m n</code>, and
 <code>applyRen r = applyE (Var . r)</code>.</p>
 <p>The reason proof assistants define <code>applyRen</code> separately
 is that <code>applyRen</code> <em>is</em> structurally recursive (it
 produces variables, not terms), so it can be used to define
-<code>lift</code> without the mutual recursion that troubles Agda and
+<code>up</code> without the mutual recursion that troubles Agda and
 Rocq.</p>
 </main>
 

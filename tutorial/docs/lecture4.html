@@ -131,17 +131,17 @@ Traversal Cost for Substitutions</h2>
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Env</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (lift env) b))</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (up env) b))</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">App</span> f a)       <span class="ot">=</span> <span class="dt">App</span> (applyE env f) (applyE env a)</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- ...</span></span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ot">lift ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>lift env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>up env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
 <p>Every call to <code>applyE</code> traverses the entire term,
-recursing into every sub-term. Crucially, <code>lift</code> is called
+recursing into every sub-term. Crucially, <code>up</code> is called
 <em>once per binder encountered during traversal</em>, and each
-<code>lift</code> itself calls <code>applyE shift</code> on every term
-in the range of <code>env</code>.</p>
+<code>up</code> itself calls <code>applyE shift</code> on every term in
+the range of <code>env</code>.</p>
 <p>Consider a deeply-nested expression: normalizing it requires many
 rounds of substitution, and each round descends through all the binders
 above the redex. In the worst case — reducing a sequence of
@@ -191,7 +191,7 @@ wrapper around the body:</p>
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bind1</span> n <span class="ot">=</span> <span class="dt">Bind1</span> (<span class="dt">Tm</span> (<span class="dt">S</span> n))</span></code></pre></div>
 <p>There is nowhere to store a pending substitution. When we cross a
-binder with <code>applyE</code>, we must call <code>lift env</code> and
+binder with <code>applyE</code>, we must call <code>up env</code> and
 descend into the body immediately.</p>
 <p>The library’s <code>Bind</code> type adds a slot for the name hint
 <em>and</em> a slot for the pending substitution. The tutorial’s
@@ -287,7 +287,7 @@ the new environment with the existing one. The body is untouched.</p>
 <p>Compare this to the naive version:</p>
 <div class="sourceCode" id="cb9"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (lift env) b))</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (up env) b))</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        ^^^^^^^^^^^^^^^^^^^^</span></span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        traverses the entire body eagerly</span></span></code></pre></div>
 <p>With the library:</p>
@@ -533,15 +533,15 @@ traversal.</p>
 <code>upN</code> Operations</h2>
 <p>When a substitution must be applied <em>under</em> binders — as
 happens inside <code>getBody</code> — we need to <em>lift</em> it past
-the bound variables. The <code>up</code> function is the library’s
-version of <code>lift</code> from <code>Scratch.hs</code>:</p>
+the bound variables. The <code>up</code> function corresponds to
+<code>up</code> from <code>Scratch.hs</code>:</p>
 <div class="sourceCode" id="cb21"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v m n <span class="ot">-&gt;</span> <span class="dt">Env</span> v (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>up (<span class="dt">Inc</span> <span class="dt">SZ</span>) <span class="ot">=</span> <span class="dt">Inc</span> <span class="dt">SZ</span></span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>up e        <span class="ot">=</span> var Fin.f0 <span class="op">.:</span> comp e (<span class="dt">Inc</span> s1)</span></code></pre></div>
 <p>The special case recognises the identity and returns it immediately —
 lifting the identity is still the identity. The general case is the
-familiar <code>lift</code>:</p>
+familiar <code>up</code>:</p>
 <ul>
 <li><code>FZ</code> maps to <code>Var FZ</code> (the newly-bound
 variable stays at index 0).</li>
@@ -628,10 +628,10 @@ generic machinery to recurse over all fields, applying
 instance to each <code>Bind</code>.</p>
 <p>In contrast, <code>Scratch.hs</code> requires a hand-written
 <code>applyE</code> that explicitly dispatches on every constructor and
-manually calls <code>lift</code> at each binder. With
-<code>rebound</code> you write <code>deriving Generic1</code> and
-two-line <code>SubstVar</code>/<code>Subst</code> instances, and the
-library handles everything else.</p>
+manually calls <code>up</code> at each binder. With <code>rebound</code>
+you write <code>deriving Generic1</code> and two-line
+<code>SubstVar</code>/<code>Subst</code> instances, and the library
+handles everything else.</p>
 <hr />
 <h2 id="summary">9. Summary</h2>
 <table>
