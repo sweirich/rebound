@@ -71,7 +71,7 @@ prop_weaken t u = instantiate1 (Bind1 (weaken t)) u == t
 --     so lift the environment, exactly as for Lam:
 --
 --       applyE env (Let e (Bind1 b)) =
---           Let (applyE env e) (Bind1 (applyE (lift env) b))
+--           Let (applyE env e) (Bind1 (applyE (up env) b))
 --
 -- (3) New case in 'eval' — evaluate the
 --     scrutinee to a value, then instantiate the body:
@@ -90,7 +90,7 @@ type Ren m n = Fin m -> Fin n
 
 -- | Lift a renaming under one binder: FZ maps to itself, FS x to FS (r x).
 --
--- Unlike 'up' for substitutions, liftRen does not call applyRen.
+-- Unlike 'up' for substitutions, upRen does not call applyRen.
 -- That is why applyRen (below) is structurally recursive — the cycle that
 -- troubles Agda and Rocq does not arise.
 upRen :: Ren m n -> Ren (S m) (S n)
