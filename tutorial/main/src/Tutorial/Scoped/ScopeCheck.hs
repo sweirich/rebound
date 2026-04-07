@@ -350,6 +350,10 @@ prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Right i
 prop_parse_round_trip :: S.Tm Z -> Bool
 prop_parse_round_trip i = N.parseTm (show (N.test (injectTm i :: N.Tm))) == Right (injectTm i)
 
+------------------------------------------------------------------------
+-- * Utilities for testing
+------------------------------------------------------------------------
+
 -- | Test a property on a closed term 
 forAll0 :: Testable a => Constraint -> Language -> (S.Tm Z -> a) -> Property
 forAll0 c l = forAllShrinkShow (genTm c l) (shrinkTm c) pp

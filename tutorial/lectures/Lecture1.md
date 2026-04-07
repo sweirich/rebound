@@ -337,74 +337,43 @@ The file `Tutorial.Scoped.Syntax` shows the updated version. The differences are
 
 ---
 
-## 8. Testing with QuickCheck — `TestEval.hs`
-
-With the evaluator in hand we can state and test natural correctness properties. Two main properties:
-
-**`prop_evalVal`** — evaluation always produces a value (when it succeeds):
-
-```haskell
-prop_evalVal :: Tm Z -> Property
-prop_evalVal e = case eval e of
-    Nothing -> discard
-    Just v  -> counterexample ("term: "  ++ pp e) $
-               counterexample ("value: " ++ pp v) $
-               isVal v
-```
-
-**`prop_evalStep`** — one small step does not change the final result:
-
-```haskell
-prop_evalStep :: Tm Z -> Property
-prop_evalStep e =
-    case step e of
-        Nothing  -> discard
-        Just e'  -> counterexample ("e  = " ++ pp e)  $
-                    counterexample ("e' = " ++ pp e') $
-                    eval e == eval e'
-```
-
-The `counterexample` calls translate to named syntax before printing, so failures look like
-
-```
-*** Failed! ...
-term:  (λ x0. x0) ()
-value: ...
-```
-
-rather than raw constructor soup.
-
-Running the tests:
-
-```
-ghci> qc prop_evalVal
-+++ OK, passed 1000 tests; 871 discarded.
-ghci> qc prop_evalStep
-+++ OK, passed 1000 tests; 543 discarded.
-```
-
-The high discard rate reflects the fact that randomly generated terms are
-often stuck (they are not well-typed). Random terms could in principle also
-diverge, but that is rare here. Importantly, all randomly generated terms are
-*well-scoped* — the type index guarantees that — so we at least avoid
-out-of-scope variable errors at runtime. Next time we will look at how to
-generate well-typed terms.
-
----
-
 ## Historical Notes
 
-**Named variables and capture-avoiding substitution.** The difficulty of substitution under binders — and the need for alpha-renaming — was already understood by Church (1941) and Kleene (1952). The *Barendregt convention* (assume all bound variables are distinct from free variables) is a paper-level workaround; implementing it correctly in software is error-prone and was a recognized problem in early theorem provers and language implementations.
+**Named variables and capture-avoiding substitution.** The difficulty of
+substitution under binders — and the need for alpha-renaming — was understood
+by Church (1941) and Kleene (1952). The *Barendregt convention* (assume all
+bound variables are distinct from free variables) is a paper-level workaround;
+implementing it correctly in software is error-prone and was a recognized
+problem in early theorem provers and language implementations.
 
-**De Bruijn indices.** Introduced by Nicolaas de Bruijn in "Lambda Calculus Notation with Nameless Dummies" (1972) specifically to give a *canonical* representation of lambda terms in which alpha-equivalent terms are syntactically identical. The name "de Bruijn index" (counting binders outward from the use site) is the convention adopted here; de Bruijn himself used the opposite convention in some papers. An alternative is *de Bruijn levels*, which count inward from the outermost binder and simplify some operations at the cost of others.
+**De Bruijn indices.** Introduced by Nicolaas de Bruijn in "Lambda Calculus
+Notation with Nameless Dummies" (1972) specifically to give a *canonical*
+representation of lambda terms in which alpha-equivalent terms are
+syntactically identical. The name "de Bruijn index" (counting binders outward
+from the use site) is the convention adopted here; de Bruijn himself used the
+opposite convention in some papers. An alternative is *de Bruijn levels*,
+which count inward from the outermost binder.
 
-**Parallel substitution.** The use of an environment `Fin m -> Tm n` that maps all variables simultaneously — rather than one at a time — is sometimes called *parallel substitution*. It was systematized in the substitution-lemma proofs of Martin-Löf type theory (Nordström, Petersson, and Smith, 1990) and is the foundation for the substitution calculi studied in Lecture 4.
+**Parallel substitution.** The use of an environment `Fin m -> Tm n` that maps
+all variables simultaneously — rather than one at a time — is sometimes called
+*parallel* substitutions or *vector* substitutions. The version we present
+here is inspired by the Autosubst tool for working with de Bruijn indices in
+the Rocq proof assistant, which itself was inspired by the "Explicit
+Substitutions" of Abadi, Cardelli, Curien, and Lévy. (1991).
 
-**Well-scoped de Bruijn terms.** Tracking the number of free variables at the type level using a natural-number index appears in Altenkirch and Reus, "Monadic Presentations of Lambda Terms Using Generalized Inductive Types" (1999), and in Bird and Paterson, "De Bruijn Notation as a Nested Datatype" (1999). 
+**Well-scoped de Bruijn terms.** Tracking the number of free variables at the
+type level using a natural-number index appears in Altenkirch and Reus,
+"Monadic Presentations of Lambda Terms Using Generalized Inductive Types"
+(1999), and in Bird and Paterson, "De Bruijn Notation as a Nested Datatype"
+(1999). These papers inspired Kmett's "bound" library for working with well-scoped
+lambda calculus terms efficiently.
 
-TODO: add mention of Kmett's "bound" library.
-
-**Renamings and the termination problem.** The mutual recursion between `applyE` and `lift` (noted in Section 6) is a real obstacle in proof assistants. The standard fix — define `applyRen` on renamings first, use it to implement `lift`, then build `applyE` on top — is described in, e.g., Benton, Hur, Kennedy, and McBride, "Strongly Typed Term Representations in Coq" (2012). Exercise 4 asks you to implement this version.
+**Renamings and the termination problem.** The mutual recursion between
+`applyE` and `lift` (noted in Section 5) is a real obstacle in proof
+assistants. The standard fix — define `applyRen` on renamings first, use it to
+implement `lift`, then build `applyE` on top — is described in, e.g., Benton,
+Hur, Kennedy, and McBride, "Strongly Typed Term Representations in Coq"
+(2012). Exercise 4 asks you to implement this version.
 
 ---
 

@@ -1,6 +1,6 @@
 -- Solutions to the exercises in Lecture 2.
--- These solutions use the rebound library via Tutorial.Scoped.ScopeCheck and
--- Tutorial.Scoped.Gen; they do not require hand-written infrastructure.
+-- These solutions use Tutorial.Scoped.ScopeCheck and
+-- Tutorial.Scoped.Gen.
 
 module Tutorial.Exercise2 where
 
@@ -35,9 +35,13 @@ import           Tutorial.Scoped.Gen
 --   outer Lam body = S.Lam (S.bind1 (S.LocalName "y") (S.Var (FS FZ))) :: S.Tm (S Z)
 --   result         = S.Lam (S.bind1 (S.LocalName "x") (...))            :: S.Tm Z
 
+
 ex1_result1 :: Either ScopeCheckError (S.Tm Z)
 ex1_result1 = projectTm (N.Lam "x" (N.Lam "y" (N.Var "x")))
--- Right (Lam (bind1 "x" (Lam (bind1 "y" (Var (FS FZ))))))
+
+-- >>> ex1_result1
+-- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
 
 -- The expected de Bruijn term:
 --   λ. λ. 1          (x is one binder away)
@@ -46,9 +50,14 @@ ex1_expected1 = S.Lam (S.bind1 (S.LocalName "x")
                   (S.Lam (S.bind1 (S.LocalName "y")
                     (S.Var (FS FZ)))))
 
+-- >>> ex1_expected1
+-- Lam (bind1 (Lam (bind1 (Var 1))))
+
 -- Verify:
 ex1_check1 :: Bool
 ex1_check1 = ex1_result1 == Right ex1_expected1
+
+-- >>> ex1_check1
 -- True
 
 -- ---------------------------------------------------------------------------
@@ -71,27 +80,25 @@ ex1_check1 = ex1_result1 == Right ex1_expected1
 --
 -- Answer: "y" maps to FZ; "x" maps to FS FZ.
 -- The convention matches instantiate2 in Eval.hs:
---   instantiate2 bnd v1 v2 maps FZ → v1 (first component) and FS FZ → v2 ...
--- Wait — actually in the MatchPair rule, v2 is innermost:
---   b' = projectTmWith ((v2,"y") -> FZ, (v1,"x") -> FS FZ, ...)
--- So FZ refers to the second name listed in the source pattern (y here),
--- and FS FZ refers to the first (x).  This reflects the convention in
--- instantiate2 where the scrutinee's first component is substituted for
--- FS FZ and the second for FZ.
+--   instantiate2 bnd v1 v2 maps FS FZ → v1 (first component) and FZ → v2 ...
 
 ex1_result2 :: Either ScopeCheckError (S.Tm Z)
 ex1_result2 = projectTm
     (N.Case (N.Var "p")
         [(N.Pair [N.Var "x", N.Var "y"], N.Var "x")])
--- Left (UnboundVariable "p"), because "p" is a free variable
+
+-- >>> ex1_result2
+-- Left (UnboundVariable "p")
+
 
 -- With "p" in scope (scope S Z):
 ex1_result2_open :: Either ScopeCheckError (S.Tm (S Z))
 ex1_result2_open = projectTmWith [("p", FZ)]
     (N.Case (N.Var "p")
         [(N.Pair [N.Var "x", N.Var "y"], N.Var "x")])
--- Right (MatchPair (Var FZ) (bind2 "x" "y" (Var (FS FZ))))
--- "x" → FS FZ (first component)
+
+-- >>> ex1_result2_open
+-- Right (MatchPair (Var 0) (bind2 (Var 1)))
 
 ------------------------------------------------------------------------
 -- * Exercise 2: Extending the conversions with let
@@ -147,11 +154,13 @@ ex1_result2_open = projectTmWith [("p", FZ)]
 -- instance (which always returns True), so the names play no role.
 -- This gives the correct notion of α-equivalence: λx.x and λy.y are equal.
 
-prop_alpha_equiv :: Bool
-prop_alpha_equiv =
+test_alpha_equiv :: Bool
+test_alpha_equiv =
     S.Lam (S.bind1 (S.LocalName "x") (S.Var FZ))
       ==
     S.Lam (S.bind1 (S.LocalName "y") (S.Var FZ))
+
+-- >>> test_alpha_equiv
 -- True
 
 -- (b) Failing term if LocalName had a real Eq instance
@@ -208,7 +217,7 @@ ex3b_project = projectTm ex3b_inject
 ------------------------------------------------------------------------
 --
 -- After adding Let :: Tm n -> Bind1 Tm Tm n -> Tm n to S.Tm, extend
--- genTm in Tutorial.Scoped.Gen by adding to the Full branch:
+-- genScopedTm in Tutorial.Scoped.Gen by adding to the Full branch:
 --
 --   , Let <$> gen <*> gen1
 --
@@ -255,3 +264,37 @@ prop_project_round_trip_open t =
         named  = injectTmWith (freeVarName ::: VNil) t
         scoped = projectTmWith [(freeVarName, FZ)] named
     in scoped == Right t
+
+
+------------------------------------------------------------------------
+-- * Exercise 5: Substitution laws
+------------------------------------------------------------------------
+
+-- | Identity law: applying the identity substitution is a no-op.
+prop_idE :: Property
+prop_idE = forAll0 Scoped Full $ \t -> applyE @Tm idE t == t
+
+-- | Identity law for open terms (where variables can actually occur).
+prop_idE_open :: Property
+prop_idE_open = forAll1 Scoped Full $ \t -> applyE @Tm idE t == t
+
+-- | Composition law: applying f after g equals applying compE f g directly.
+-- We test with a concrete environment g that closes the one free variable.
+-- compE requires the types to line up: g :: Env (S Z) Z,  f :: Env Z Z.
+prop_compE :: Property
+prop_compE = 
+    forAll0 Scoped Full $ \u0 ->
+    forAll1 Scoped Full $ \u1 ->
+    forAll1 Scoped Full $ \t ->
+    let g :: Env Tm N1 N1 
+        g = u1 .: zeroE    
+        f :: Env Tm N1 N0 
+        f = u0 .: idE      
+    in applyE f (applyE g t) == applyE (g .>> f) t
+
+weaken :: Tm n -> Tm (S n)
+weaken = applyE @Tm shift1E
+
+-- | Instantiate-shift round-trip: instantiating a weakened term is identity.
+prop_instantiate_weaken :: Tm Z -> Tm Z -> Bool
+prop_instantiate_weaken t u = instantiate1 (bind1 (LocalName "x") (weaken t)) u == t

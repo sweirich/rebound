@@ -5,7 +5,6 @@
 module Tutorial.Exercise1 where
 
 import Tutorial.Scoped.Scratch
-import Test.QuickCheck
 
 ------------------------------------------------------------------------
 -- * Exercise 1: Example terms
@@ -14,14 +13,21 @@ import Test.QuickCheck
 -- | First projection: λp. match p with (x, y) → x
 --
 -- Inside the outer Bind1: p = FZ in scope S Z.
--- Inside the Bind2:       x = FZ, y = FS FZ, p = FS (FS FZ).
--- (FZ is the first pair component; see instantiate2 and ex_swap.)
-ex_fst :: Tm Z
-ex_fst = Lam (Bind1 (MatchPair (Var FZ) (Bind2 (Var FZ))))
+-- Inside the Bind2:       x = FS FZ, y = FZ, p = FS (FS FZ).
+-- (FS FZ is the first pair component; see instantiate2 and ex_swap.)
+ex_fst :: Tm n
+ex_fst = Lam (Bind1 (MatchPair (Var FZ) (Bind2 (Var (FS FZ)))))
 
 -- | Second projection: λp. match p with (x, y) → y
-ex_snd :: Tm Z
-ex_snd = Lam (Bind1 (MatchPair (Var FZ) (Bind2 (Var (FS FZ)))))
+ex_snd :: Tm n
+ex_snd = Lam (Bind1 (MatchPair (Var FZ) (Bind2 (Var FZ))))
+
+
+-- >>> eval (App ex_fst (Pair (Inj 0 Unit) (Inj 1 Unit)))
+-- Just (Inj 0 Unit)
+
+-- >>> eval (App ex_snd (Pair (Inj 0 Unit) (Inj 1 Unit)))
+-- Just (Inj 1 Unit)
 
 -- | S combinator: λf. λg. λx. f x (g x)
 --
@@ -67,7 +73,7 @@ prop_weaken t u = instantiate1 (Bind1 (weaken t)) u == t
 --       applyE env (Let e (Bind1 b)) =
 --           Let (applyE env e) (Bind1 (applyE (lift env) b))
 --
--- (3) New case in 'eval' in Tutorial.Scoped.Eval — evaluate the
+-- (3) New case in 'eval' — evaluate the
 --     scrutinee to a value, then instantiate the body:
 --
 --       eval (Let e b) = eval e >>= \v -> eval (instantiate1 b v)
@@ -112,78 +118,3 @@ applyRen r (MatchSum a (Bind1 b1) (Bind1 b2)) =
 prop_renShift :: Tm Z -> Bool
 prop_renShift t = applyRen FS t == applyE shift t
 
-------------------------------------------------------------------------
--- * Exercise 5: Substitution laws
-------------------------------------------------------------------------
---
--- For Tm Z (closed terms) there are no free variables, so the identity
--- and composition laws hold trivially.  The interesting cases arise in
--- Tm (S Z) and larger.  To test those with QuickCheck we need an
--- Arbitrary instance; a minimal one is given below.
-
--- | Singleton natural numbers (needed to parameterise the generator).
-data SNat n where
-    SZ :: SNat Z
-    SS :: SNat n -> SNat (S n)
-
--- | Generate a random term in scope n.
-genTm :: SNat n -> Int -> Gen (Tm n)
-genTm sn sz = case sn of
-    SZ ->
-        if sz <= 0 then pure Unit
-        else oneof $ closedGens sn sz
-    SS _ ->
-        if sz <= 0 then oneof [Var <$> genFin sn, pure Unit]
-        else oneof $ (Var <$> genFin sn) : closedGens sn sz
-  where
-    sz' = sz `div` 2
-    closedGens :: SNat n -> Int -> [Gen (Tm n)]
-    closedGens sn' s =
-        [ pure Unit
-        , Lam . Bind1 <$> genTm (SS sn') s'
-        , App  <$> genTm sn' s' <*> genTm sn' s'
-        , Pair <$> genTm sn' s' <*> genTm sn' s'
-        , Inj  <$> elements [0,1] <*> genTm sn' s'
-        ]
-      where s' = s `div` 2
-
-genFin :: SNat (S n) -> Gen (Fin (S n))
-genFin (SS SZ)    = pure FZ
-genFin (SS sn'@(SS _)) = oneof [pure FZ, FS <$> genFin sn']
-
-instance Arbitrary (Tm Z) where
-    arbitrary = sized (genTm SZ)
-
--- A newtype for terms with one free variable, so we can give a separate
--- Arbitrary instance without an overlapping instance.
-newtype Tm1 = Tm1 { unTm1 :: Tm (S Z) }
-    deriving (Eq, Show)
-
-instance Arbitrary Tm1 where
-    arbitrary = Tm1 <$> sized (genTm (SS SZ))
-
--- | Identity law: applying the identity substitution is a no-op.
-prop_idE :: Tm Z -> Bool
-prop_idE t = applyE idE t == t
-
--- | Identity law for open terms (where variables can actually occur).
-prop_idE_open :: Tm1 -> Bool
-prop_idE_open (Tm1 t) = applyE idE t == t
-
-
-compE :: Env m n -> Env l m -> Env l n
-compE f g x = applyE f (g x)
-
--- | Composition law: applying f after g equals applying compE f g directly.
---
--- We test with a concrete environment g that closes the one free variable.
--- compE requires the types to line up: g :: Env (S Z) Z,  f :: Env Z Z.
-prop_compE :: Tm1 -> Bool
-prop_compE (Tm1 t) =
-    let g = Unit .: idE   -- Env (S Z) Z: substitute Unit for the free variable
-        f = idE           -- Env Z Z
-    in applyE f (applyE g t) == applyE (compE f g) t
-
--- | Instantiate-shift round-trip: instantiating a weakened term is identity.
-prop_instantiate_weaken :: Tm Z -> Tm Z -> Bool
-prop_instantiate_weaken t u = instantiate1 (Bind1 (weaken t)) u == t

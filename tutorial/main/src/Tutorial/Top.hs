@@ -3,7 +3,7 @@
 -- quickcheck that increase the number of iterations for the 
 -- property 
 module Tutorial.Top (
-  module Tutorial.Scoped.Syntax,
+
   module Tutorial.Scoped.Gen,
   module Tutorial.Scoped.ScopeCheck,
   module Tutorial.Scoped.Eval,
@@ -13,7 +13,6 @@ module Tutorial.Top (
   qc100k
 ) where
 
-import Tutorial.Scoped.Syntax
 import Tutorial.Scoped.Gen
 import Tutorial.Scoped.ScopeCheck hiding (testAll)
 import Tutorial.Scoped.Eval hiding (testAll)

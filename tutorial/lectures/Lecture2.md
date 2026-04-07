@@ -17,12 +17,14 @@ evaluator. We also saw that we could use `rebound` to implement substitution
 and alpha-conversion automatically for our well-scoped syntax.
 
 How do we know that our evaluator is correct? We use property-based testing,
-of course.
+with Haskell's Quickcheck library (QC). With this approach, we state
+properties of our definitions, and then test those properties extensively,
+using randomly generated values.
 
-However, to using Haskell's Quickcheck library we need to generate
-well-scoped terms. Furthermore, if QC finds a bug, we want to see it in 
-the most convenient form: with indices replaced by variable names and converted
-to a concise concrete syntax.
+However, to use Quickcheck we need to generate *well-scoped*
+terms. Furthermore, if QC finds a bug, we want to see it in the most
+convenient form: with indices replaced by variable names and converted to a
+concise concrete syntax.
 
 We also want to use this named representation for parsing: users do not want
 to write their code using abstract syntax and de Bruijn indices — instead we
@@ -42,7 +44,8 @@ variable names consistently.
 
 The goals of this lecture are to:
 
-- cover more practical aspects of working with de Bruijn indices: maintaining user-supplied variable names and generating well-scoped syntax trees
+- cover more practical aspects of working with de Bruijn indices: maintaining
+  user-supplied variable names and generating well-scoped syntax trees
 
 - show how to convert between syntax representations
 
@@ -83,7 +86,8 @@ Where do the names come from during pretty printing? Of course, we can just
 make up names, making sure that we always use new ones. However, that can lead 
 to confusion---we'd like to keep any user-supplied names if possible. 
 
-Therefore, we use a simple type, called `LocalName` to remember such names for printing, while making sure that they do not interfere with alpha-equivalence.
+Therefore, we use a simple type, called `LocalName` to remember such names for
+printing, while making sure that they do not interfere with alpha-equivalence.
 
 When a user writes `λx. x` and we scope-check it, we produce
 
@@ -205,10 +209,11 @@ The key idea is to carry the *scope* — the number of variables currently
 in scope — as a runtime parameter for the generator.  When the generator recurses under a
 binder it increments the scope, making the newly bound variable available.
 
-### A well-scoped generator for pure lambda calculus terms
+## 4. A well-scoped generator for pure lambda calculus terms
 
-The simplest well-scoped generator targets only pure lambda calculus terms
-(`Lam`, `App`, `Var`).  It is a good warm-up before tackling the full language.
+Let's start with a simple well-scoped generator that targets only pure lambda
+calculus terms (`Lam`, `App`, `Var`).  It is a good warm-up before tackling
+the full language.
 
 ```haskell
 genScopedPureLC :: forall n. SNatI n => QC.Gen (Tm n)
@@ -229,12 +234,16 @@ genScopedPureLC = QC.sized (go snat)
 ```
 
 The generator is parameterized by the number of free variables in scope `n ::
-Nat`, which is a *type*-level natural number.  To use it at runtime we need a
-*singleton* — the `SNatI n` constraint (explained below) provides one.
+Nat`, which is a *type*-level natural number.  To use this number at runtime
+we need a *singleton*; the `SNatI n` constraint (explained below) provides
+one.
 
-`QC.sized` passes the current size budget to the inner function `go`.  The
-`snat` call converts the `SNatI n` constraint into an explicit `SNat n` value
-that `go` can inspect and pass to recursive calls.
+The `go` function does the main work of generation. The first argument `n` is
+the number of variables in scope, the second is `sz`, a size budget. During
+property-based testing the `QC.sized` operation passes the current size budget
+to the inner function `go` to generate progressively larger terms.  The `snat`
+call converts the `SNatI n` constraint into an explicit `SNat n` value that
+`go` can inspect and pass to recursive calls.
 
 The local helper `go :: SNat n -> Int -> QC.Gen (Tm n)` carries both the
 scope witness and the size budget:
@@ -246,7 +255,7 @@ scope witness and the size budget:
   produces a *closed* term when `n = Z`.
 
 - **Recursive case**: three choices via `QC.oneof`:
-  - `genBase n` — a variable or `tmId` (same as base, but available at any size)
+  - `genBase n` — a variable or `tmId` (same as before, but available at any size)
   - `Lam <$> gen1` — wrap a binder; `gen1` generates the body in scope `S n`
     by calling `go (next n) (sz - 1)`.  The budget decreases by 1 (not halved)
     because a lambda chain `λx.λy.λz.…` is a linear sequence, not a tree.
@@ -258,33 +267,9 @@ scope witness and the size budget:
   body of a `Lam`, the new variable `FZ` is automatically available because
   `Fin.universe` for `S n` includes `FZ`.
 
-### The `SNatI` typeclass
+### Enumerating variables
 
-The scope `n :: Nat` is a type-level natural number.  To *use* it at runtime
-(e.g. to enumerate all variables in scope), we need a singleton:
-
-```haskell
-class SNatI n where
-    snat :: SNat n
-```
-
-`SNat n` is a runtime witness for the scope size — essentially a Peano
-numeral `Z`, `S Z`, `S (S Z)`, … that can be inspected at runtime.  The
-typeclass constraint `SNatI n` says "at this type, we have a witness available."
-
-The library provides:
-
-```haskell
-snat  :: SNatI n => SNat n         -- retrieve the witness
-next  :: SNat n -> SNat (S n)      -- successor
-snat_ :: SNat n -> SNatView n      -- case analysis
-```
-
-where `SNatView n` is either `SZ_` (n = Z) or `SS_ (SNat m)` (n = S m).
-
-### Enumerating variables in scope
-
-Given `SNatI n`, we can list every valid variable:
+Given `SNatI n`, we can list every valid variable in scope `n`:
 
 ```haskell
 Fin.universe :: SNatI n => [Fin n]
@@ -293,19 +278,177 @@ Fin.universe :: SNatI n => [Fin n]
 For `n = S (S (S Z))` this gives `[FZ, FS FZ, FS (FS FZ)]` — all three
 variables in scope.
 
-Binders need names for pretty-printing.  QuickCheck draws them from a small pool:
+Binders also need names for pretty-printing.  QuickCheck draws them from a
+small pool:
 
 ```haskell
 genLocalName :: QC.Gen LocalName
 genLocalName = LocalName <$> QC.elements ["x", "y", "z", "w", "v", "u", "t", "s"]
 ```
 
-This intentionally produces name collisions (e.g. `"x"` can appear in
-nested binders), which is why `injectTm` must freshen names when the same
-name is already in scope.  Correctness is unaffected because
+This can produce name collisions (e.g. `"x"` can appear in nested
+binders). However, this is not a problem:`injectTm` freshens names when
+the same name is already in scope.  Correctness is unaffected because
 `LocalName` equality ignores the stored string.
 
-### Two dimensions of generation
+### Seeing the round trip in action
+
+With this generator we can run our tests:
+
+```
+ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_project_round_trip)
++++ OK, passed 100 tests.
+ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_parse_round_trip)
++++ OK, passed 100 tests.
+```
+
+We can inspect a single randomly generated term end-to-end:
+
+```
+ghci> t <- generate (genScopedPureLC :: Gen (S.Tm Z))
+ghci> putStrLn (N.pp (injectTm t))
+λ x1. case x1 of | Inj0 y2 -> (λ z3. z3) y2 | Inj1 w4 -> ()
+ghci> projectTm (injectTm t) == Right t
+True
+```
+
+The pretty-printer uses the `LocalName` values stored in the binders to
+produce readable output.  The round-trip property confirms that
+scope-checking the named term recovers exactly the original de Bruijn term.
+
+## 4. Testing `eval` 
+
+Now let's consider some properties that we might test for our evaluator.
+
+### Big-step properties
+
+The most basic property is that every well-typed term evaluates to a value:
+
+```haskell
+prop_evalVal :: Tm Z -> Property
+prop_evalVal = \t ->
+    case eval t of
+        Just v  -> property (isVal v)
+        Nothing -> property False     -- well-typed terms must not get stuck
+```
+
+The multi-step (`reduce`) function is a call-by-value big-step evaluator that
+also works on open terms.  For closed, well-typed terms it should agree with
+`eval`:
+
+```haskell
+prop_eval_reduce :: Tm Z -> Property
+prop_eval_reduce = \t ->
+    case eval t of
+        Just v  -> reduce t == Just v
+        Nothing -> discard
+```
+
+We also test that `reduce` produces an *inert* term (one that cannot step
+further).  This property is checked at both the closed scope `Z` and the
+open scope `S Z` (one free variable):
+
+```haskell
+prop_reduce_inert :: forall n. SNatI n => Tm n -> Property
+prop_reduce_inert = \t ->
+    case reduce t of
+        Just v  -> property (isInert v)
+        Nothing -> discard
+```
+
+### Small-step properties
+
+The small-step function `step` either returns a reduct or `Nothing` (the term
+is already a value).  Two properties connect it to `eval` and `reduce`:
+
+```haskell
+-- for well-typed closed terms, step always reaches a value
+prop_stepVal :: Tm Z -> Property
+prop_stepVal = 
+    let loop e =
+          if isVal e then property True
+          else case step e of
+                 Nothing -> counterexample ("stuck at: " ++ pp e) (property False)
+                 Just e' -> loop e'
+    in loop
+
+-- stepping preserves the final evaluation result
+prop_evalStep :: Tm Z -> Property
+prop_evalStep = \e ->
+    case step e of
+        Nothing -> property (isVal e)
+        Just e' -> eval e == eval e'
+```
+
+## 5. A well-typed generator?
+
+The well-scoped generator (`genScopedTm`) produces any structurally valid
+term — but "well-scoped" does not mean "well-typed".  In an untyped
+setting, terms like the ω combinator
+
+```haskell
+-- (λx. x x) (λx. x x)
+omega :: Tm Z
+omega = let self = Lam (bind1 (LocalName "x") (App (Var FZ) (Var FZ)))
+        in App self self
+```
+
+are perfectly well-scoped and will be generated regularly.  Running
+`eval omega` diverges: the evaluator loops forever.
+
+This means properties tested with `genScopedTm` can hang rather than
+fail, making it difficult to get useful QuickCheck output. This is a
+real problem, because our well-scoped generator can produce such 
+terms in practice.
+
+```haskell
+ghci> quickCheck (forAll genScopedPureLC prop_evalVal)
+*** Failed! Timeout of 1000000 microseconds exceeded. (after 25 tests):
+App (Lam (bind1 (Var 0))) (App (App (Lam (bind1 (App (Var 0) (Var 0)))) (Lam (bind1 (App (Var 0) (Var 0))))) (Lam (bind1 (Var 0))))
+term: (\ x. x) ((\ u. u u) (\ v. v v) (\ x. x))
+```
+
+If we add shrinking, we can even see this smallest term.
+
+```haskell
+ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped Tutorial.Top.pp prop_evalVal)
+*** Failed! Timeout of 1000000 microseconds exceeded. (after 65 tests and 4 shrinks):
+(\ x. x x) (\ s. s s)
+term: (\ x. x x) (\ s. s s)
+```
+
+The solution is to restrict generation to *well-typed* terms.  In the
+simply-typed lambda calculus every term is strongly normalizing, so `eval` is
+guaranteed to terminate on every well-typed input.
+
+This also lets us state stronger type-soundness properties.  For example,
+every well-typed closed term must evaluate to a value:
+
+```haskell
+prop_evalVal :: Property
+prop_evalVal = forAll0 Typed Full $ \t ->
+    case eval t of
+        Just v  -> property (isVal v)
+        Nothing -> property False   -- well-typed terms must not get stuck
+```
+
+And `reduce` (the big-step evaluator for open terms) must agree with
+`eval` on closed, well-typed terms:
+
+```haskell
+prop_eval_reduce :: Property
+prop_eval_reduce = forAll0 Typed Full $ \t ->
+    case eval t of
+        Just v  -> reduce t == Just v
+        Nothing -> discard
+```
+
+These properties hold by type soundness (progress + preservation) and
+would not be testable with the well-scoped generator alone.
+
+
+
+## 5. Full Two dimensions of generation
 
 The generator is parameterized over two orthogonal dimensions:
 
@@ -385,149 +528,7 @@ Key observations:
 - **Names are generated independently**: `genLocalName` draws from a small pool with no freshness guarantee.  That is fine — `LocalName` equality ignores names, so correctness is unaffected.
 
 
-Running these:
 
-```
-ghci> qc prop_project_round_trip
-+++ OK, passed 1000 tests.
-ghci> qc prop_parse_round_trip
-+++ OK, passed 1000 tests.
-```
-
-No discards: every randomly generated `Tm Z` is well-scoped by construction,
-so both directions of the round trip always succeed.
-
-### Seeing the round trip in action
-
-We can inspect a single randomly generated term end-to-end:
-
-```
-ghci> t <- generate (arbitrary :: Gen (Tm Z))
-ghci> putStrLn (PP.pp (injectTm t))
-λ x1. case x1 of | Inj0 y2 -> (λ z3. z3) y2 | Inj1 w4 -> ()
-ghci> projectTm (injectTm t) == Right t
-True
-```
-
-The pretty-printer uses the `LocalName` values stored in the binders to
-produce readable output.  The round-trip property confirms that
-scope-checking the named term recovers exactly the original de Bruijn term.
-
----
-
-## 4. Testing the evaluator 
-
-All properties in this section use `arbitrary :: Gen (Tm Z)`, which by
-default generates well-typed closed terms (see Section 6).  This means
-QuickCheck will never generate a stuck term, and `eval` is guaranteed to
-return a value on every test input.
-
-### Big-step properties
-
-The most basic property is that every well-typed term evaluates to a value:
-
-```haskell
-prop_evalVal :: Property
-prop_evalVal = forAll (arbitrary :: Gen (Tm Z)) $ \t ->
-    case eval t of
-        Just v  -> property (isVal v)
-        Nothing -> property False     -- well-typed terms must not get stuck
-```
-
-The multi-step (`reduce`) function is a call-by-value big-step evaluator that
-also works on open terms.  For closed, well-typed terms it should agree with
-`eval`:
-
-```haskell
-prop_eval_reduce :: Property
-prop_eval_reduce = forAll (arbitrary :: Gen (Tm Z)) $ \t ->
-    case eval t of
-        Just v  -> reduce t == Just v
-        Nothing -> discard
-```
-
-We also test that `reduce` produces an *inert* term (one that cannot step
-further).  This property is checked at both the closed scope `Z` and the
-open scope `S Z` (one free variable):
-
-```haskell
-prop_reduce_inert :: forall n. SNatI n => Property
-prop_reduce_inert = forAll (arbitrary :: Gen (Tm n)) $ \t ->
-    case reduce t of
-        Just v  -> property (isInert v)
-        Nothing -> discard
-```
-
-### Small-step properties
-
-The small-step function `step` either returns a reduct or `Nothing` (the term
-is already a value).  Two properties connect it to `eval` and `reduce`:
-
-```haskell
--- for well-typed closed terms, step always reaches a value
-prop_stepVal :: Property
-prop_stepVal = forAll (arbitrary :: Gen (Tm Z)) $
-    let loop e =
-          if isVal e then property True
-          else case step e of
-                 Nothing -> counterexample ("stuck at: " ++ pp e) (property False)
-                 Just e' -> loop e'
-    in loop
-
--- stepping preserves the final evaluation result
-prop_evalStep :: Property
-prop_evalStep = forAll (arbitrary :: Gen (Tm Z)) $ \e ->
-    case step e of
-        Nothing -> property (isVal e)
-        Just e' -> eval e == eval e'
-```
-
-## 5. A well-typed generator?
-
-The well-scoped generator (`genScopedTm`) produces any structurally valid
-term — but "well-scoped" does not mean "well-typed".  In an untyped
-setting, terms like the ω combinator
-
-```haskell
--- (λx. x x) (λx. x x)
-omega :: Tm Z
-omega = let self = Lam (bind1 (LocalName "x") (App (Var FZ) (Var FZ)))
-        in App self self
-```
-
-are perfectly well-scoped and will be generated regularly.  Running
-`eval omega` diverges: the evaluator loops forever.
-
-This means properties tested with `genScopedTm` can hang rather than
-fail, making it nearly impossible to get useful QuickCheck output.  The
-solution is to restrict generation to *well-typed* terms.  In the
-simply-typed lambda calculus every term is strongly normalizing, so
-`eval` is guaranteed to terminate on every well-typed input.
-
-This also lets us state stronger type-soundness properties.  For example,
-every well-typed closed term must evaluate to a value:
-
-```haskell
-prop_evalVal :: Property
-prop_evalVal = forAll0 Typed Full $ \t ->
-    case eval t of
-        Just v  -> property (isVal v)
-        Nothing -> property False   -- well-typed terms must not get stuck
-```
-
-And `reduce` (the big-step evaluator for open terms) must agree with
-`eval` on closed, well-typed terms:
-
-```haskell
-prop_eval_reduce :: Property
-prop_eval_reduce = forAll0 Typed Full $ \t ->
-    case eval t of
-        Just v  -> reduce t == Just v
-        Nothing -> discard
-```
-
-These properties hold by type soundness (progress + preservation) and
-would not be testable with the well-scoped generator alone.
 
 ## 6. Implementing a well-typed generator
 

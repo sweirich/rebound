@@ -1,6 +1,11 @@
 module Tutorial.Exercise3 where
 
-import Tutorial.Top
+import Tutorial.Scoped.Syntax
+import Tutorial.Scoped.CPS
+import Tutorial.Scoped.Gen
+import Tutorial.Scoped.ScopeCheck
+import Tutorial.Scoped.Eval
+import Test.QuickCheck as QC    
 import Data.Vec 
 
 

@@ -60,8 +60,8 @@ isVal e = False
 -------------------------------------------------------------------
 
 -- all *well-typed* terms produce values
-prop_evalVal :: Property
-prop_evalVal = forAll (genTm Typed Full) $ \t ->
+prop_evalVal :: Tm Z -> Property
+prop_evalVal = \t ->
     counterexample ("term: " ++ pp t) $
     within 1000000 $
     case eval t of
@@ -117,7 +117,7 @@ reduce (MatchPair e m) = do
 reduce (MatchUnit e m) = do
     v <- reduce e
     case v of 
-        Unit          -> reduce m
+        _ | isVal v   -> reduce m
         _ | isInert v -> return (MatchUnit v m)
         _             -> Nothing
 
@@ -142,19 +142,21 @@ isInert (MatchSum t u1 u2) = isInert t
 -------------------------------------------------------------------
 
 -- | If reduce produces a term, it is inert
-prop_reduce_inert :: forall n. SNatI n => Property
-prop_reduce_inert = forAll (genTm Typed Full :: Gen (Tm n)) $ \t ->
+prop_reduce_inert :: forall n. SNatI n => Tm n -> Property
+prop_reduce_inert t =
+    within 1000000 $ 
     case reduce t of
         Just v -> property (isInert v)
         Nothing -> discard
 
--- | reduce agrees with eval on closed, well-typed terms
-prop_eval_reduce :: Property
-prop_eval_reduce = forAll (genTm Typed Full :: Gen (Tm Z)) $ \t ->
+-- | reduce agrees with eval on closed terms
+prop_eval_reduce :: Tm Z -> Property
+prop_eval_reduce t =
+    within 1000000 $ 
     counterexample ("term: " ++ pp t) $
-    case eval t of 
+    case eval t of
         Just v -> counterexample ("evals t: " ++ pp v) $
-            case reduce t of 
+            case reduce t of
             Just i -> counterexample ("reduces to: " ++ pp i) $
                       property (v == i)
             Nothing -> property False
@@ -170,44 +172,44 @@ step :: Tm n -> Maybe (Tm n)
 step (Var x) = Nothing
 step (Lam b) = Nothing
 step (App (Lam b) a) | isVal a = return (instantiate1 b a)
-step (App f a)       | isInert f = case step a of 
-    Nothing -> Nothing
-    Just a' -> Just (App f a')
-step (App f a) = case step f of 
-    Just f' -> Just (App f' a)
-    Nothing -> Nothing
+step (App f a)       | isInert f = do
+    a' <- step a
+    return (App f a')
+step (App f a) = do
+    f' <- step f
+    return (App f' a)
 step Unit = Nothing
-step (MatchUnit u s) | isVal u = Just s
-step (MatchUnit u s) = case step u of
-    Nothing -> Nothing
-    Just u' -> Just (MatchUnit u' s)
-step (Pair a1 a2) | isInert a1 = case step a2 of 
-    Nothing -> Nothing
-    Just a2' -> Just (Pair a1 a2')
-step (Pair a1 a2) = case step a1 of
-    Nothing  -> Nothing
-    Just a1' -> Just (Pair a1' a2)
+step (MatchUnit u s) 
+  | isVal u = Just s
+step (MatchUnit u s) = do
+    u' <- step u
+    return (MatchUnit u' s)
+step (Pair a1 a2) | isInert a1 = do
+    a2' <- step a2
+    return (Pair a1 a2')
+step (Pair a1 a2) = do
+    a1' <- step a1
+    return (Pair a1' a2)
 step (MatchPair (Pair v1 v2) b) | isVal v1 && isVal v2 = Just (instantiate2 b v2 v1)
-step (MatchPair p b) = case step p of 
-    Nothing -> Nothing
-    Just p' -> Just (MatchPair p' b)
-step (Inj i a) = case step a of
-    Nothing -> Nothing
-    Just a' -> Just (Inj i a')
+step (MatchPair p b) = do
+    p' <- step p
+    return (MatchPair p' b)
+step (Inj i a) = do
+    a' <- step a
+    return (Inj i a')
 step (MatchSum (Inj 0 v) b1 b2) | isVal v = Just (instantiate1 b1 v)
-step (MatchSum (Inj 1 v) b1 b2) | isVal v = Just (instantiate1 b2 v)    
-step (MatchSum s b1 b2) = case step s of
-    Nothing -> Nothing
-    Just s' -> Just (MatchSum s' b1 b2)
+step (MatchSum (Inj 1 v) b1 b2) | isVal v = Just (instantiate1 b2 v)
+step (MatchSum s b1 b2) = do
+    s' <- step s
+    return (MatchSum s' b1 b2)
 
 -------------------------------------------------------------------
 -- Small-step reduction properties
 -------------------------------------------------------------------
 
-
 -- | the step function produces a value for closed terms
-prop_stepVal :: Property
-prop_stepVal = forAll0 Typed Full $
+prop_stepVal :: Tm Z -> Property
+prop_stepVal e =
     let loop e =
           if isVal e then property True
           else case step e of
@@ -215,30 +217,28 @@ prop_stepVal = forAll0 Typed Full $
                 counterexample ("stuck at: " ++ pp e) $
                 property False
              Just e' -> loop e'
-    in loop
+    in within 1000000 $ loop e
 
 -- | The step function respects evaluation
-prop_evalStep :: Property
-prop_evalStep = forAll0 Typed Full $ \ e ->
+prop_evalStep :: Tm Z -> Property
+prop_evalStep e =
     counterexample ("e  = " ++ pp e) $
     within 1000000 $
     case step e of
-        Nothing  -> property (isVal e)
-        Just e'  -> counterexample ("e  = " ++ pp e) $
-                    counterexample ("e' = " ++ pp e') $
+        Nothing  -> discard
+        Just e'  -> counterexample ("e' = " ++ pp e') $
                     eval e == eval e'
 
 
--- | The step function respects evaluation
-prop_reduceStep :: Property
-prop_reduceStep = forAll1 Typed Full $ \ e ->
+-- | The step function respects reduce
+prop_reduceStep :: Tm (S Z) -> Property
+prop_reduceStep e =
     let pp' = ppWith ("x" ::: VNil) in
     counterexample ("e  = " ++ pp' e) $
     within 1000000 $
     case step e of
-        Nothing  -> property (isVal e)
-        Just e'  -> counterexample ("e  = " ++ pp' e) $
-                    counterexample ("e' = " ++ pp' e') $
+        Nothing  -> property (isInert e)
+        Just e'  -> counterexample ("e' = " ++ pp' e') $
                     reduce e == reduce e'
 
 -------------------------------------------------------------------
@@ -248,10 +248,11 @@ prop_reduceStep = forAll1 Typed Full $ \ e ->
 testAll :: IO ()
 testAll = do
     let args = stdArgs { maxSuccess = 1000 }
-    putStrLn "prop_evalVal:"               >> quickCheckWith args prop_evalVal
-    putStrLn "prop_reduce_inert @Z:"       >> quickCheckWith args (prop_reduce_inert @Z)
-    putStrLn "prop_reduce_inert @(S Z):"   >> quickCheckWith args (prop_reduce_inert @(S Z))
-    putStrLn "prop_eval_reduce:"           >> quickCheckWith args prop_eval_reduce
-    putStrLn "prop_stepVal:"               >> quickCheckWith args prop_stepVal
-    putStrLn "prop_evalStep:"              >> quickCheckWith args prop_evalStep
+    putStrLn "prop_evalVal:"               >> quickCheckWith args (forAll0 Typed Full prop_evalVal)
+    putStrLn "prop_reduce_inert @Z:"       >> quickCheckWith args (forAll0 Typed Full (prop_reduce_inert @Z))
+    putStrLn "prop_reduce_inert @(S Z):"   >> quickCheckWith args (forAll1 Typed Full (prop_reduce_inert @(S Z)))
+    putStrLn "prop_eval_reduce:"           >> quickCheckWith args (forAll0 Typed Full prop_eval_reduce)
+    putStrLn "prop_stepVal:"               >> quickCheckWith args (forAll0 Typed Full prop_stepVal)
+    putStrLn "prop_evalStep:"              >> quickCheckWith args (forAll0 Typed Full prop_evalStep)
+    putStrLn "prop_reduceStep:"            >> quickCheckWith args (forAll1 Typed Full prop_reduceStep)
 
