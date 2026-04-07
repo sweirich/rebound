@@ -136,6 +136,11 @@ exampleE = ex_id .: ex_const .: ex_comp .: zeroE
 id3E :: Env N3 N3
 id3E = Var FZ .: Var f1 .: Var f2 .: zeroE
 
+
+
+
+
+
 -- | The identity environment: maps each variable to itself.
 idE :: Env n n
 idE = Var
@@ -170,7 +175,7 @@ applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
 -- The new outermost variable @FZ@ maps to itself; all others are
 -- shifted by one so that the result is in the extended scope.
 up :: Env m n -> Env (S m) (S n)
-up env = Var FZ .: (applyE shift . env)
+up env = Var FZ .: applyE shift . env
 
 ------------------------------------------------------------------------
 -- * Binders and instantiation

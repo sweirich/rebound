@@ -16,55 +16,62 @@ module Tutorial.Scoped.Syntax(
 
 import Rebound hiding (Ctx)
 import Rebound.Bind.Local
+import Data.Fin
 
--- | Types of the simply-typed lambda calculus
-data Ty
-  -- | Unit type (terminal object)
-  = One
-  -- | Function type
-  | Ty :-> Ty
-  -- | Binary product
-  | Ty :* Ty
-  -- | Binary sum (coproduct)
-  | Ty :+ Ty
+data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
 
 
--- | Terms of the simply-typed lambda calculus, indexed by the number of
--- free variables @n@ in scope.  
 data Tm (n :: Nat) where
-    -- | Variable occurrence — a de Bruijn index into scope @n@
     Var   :: Fin n -> Tm n
-    -- | Lambda abstraction — binds one variable
     Lam   :: Bind1 Tm Tm n -> Tm n
-    -- | Unit value @()@
     Unit  :: Tm n
-    -- | Binary pair @(e1, e2)@
     Pair  :: Tm n -> Tm n -> Tm n
-    -- | Injection into a sum: @Inj 0 e@ or @Inj 1 e@
     Inj   :: Int -> Tm n -> Tm n
-    -- | Function application
+    -- application `e0 e1`
     App       :: Tm n -> Tm n -> Tm n
-    -- | Unit elimination — match scrutinee against @()@, then evaluate body
+    -- simple pattern matching
+    -- `case e0 of () -> e1`
     MatchUnit :: Tm n -> Tm n -> Tm n
-    -- | Pair elimination — bind both components in body
+    -- `case e0 of (x,y) -> e1`
     MatchPair :: Tm n -> Bind2 Tm Tm n -> Tm n
-    -- | Sum elimination — one branch for each injection, each binding its payload
+    -- `case e0 of {inj1 x -> e1 ; inj2 y -> e2 }`
     MatchSum  :: Tm n -> Bind1 Tm Tm n -> Bind1 Tm Tm n -> Tm n
       deriving (Generic1, Eq, Show)
+
+--------------------------------------------------------------------
+-- Automatic derivation of substitution
+--------------------------------------------------------------------
+
+instance SubstVar Tm where
+  var :: Fin n -> Tm n
+  var = Var
+instance Subst Tm Tm where
+  isVar :: Tm n -> Maybe (Tm :~: Tm, Fin n)
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+
+
+-- >>> applyE (Unit .: zeroE) (Var FZ)
+-- Unit
+
+-- >>> applyE (Unit .: zeroE) (Lam (bind1 (LocalName "x") (Var f1)))
+-- Lam (bind1 (Unit))
+
+--------------------------------------------------------------------
+-- Show instances for Bind1/Bind2
+--------------------------------------------------------------------
 
 instance Show (Bind1 Tm Tm n) where
     show bnd = "(bind1 (" ++ show (getBody1 bnd) ++ "))"
 instance Show (Bind2 Tm Tm n) where
     show bnd = "(bind2 (" ++ show (getBody2 bnd) ++ "))"
 
-instance SubstVar Tm where
-    var = Var
-instance Subst Tm Tm where
-  isVar (Var x) = Just (Refl, x)
-  isVar _ = Nothing
 
-
+--------------------------------------------------------------------
+-- Additional functions on syntax
+--------------------------------------------------------------------
+-- | Count the number of nodes in an AST
 tmSize :: Tm n -> Int
 tmSize (Var x)            = 1
 tmSize (Lam b)            = 1 + tmSize (getBody1 b)
@@ -89,6 +96,7 @@ maxScope (MatchUnit e1 e2)  = max (maxScope e1) (maxScope e2)
 maxScope (MatchPair e b)    = max (maxScope e) (2 + maxScope (getBody2 b))
 maxScope (MatchSum e b1 b2) = maximum [maxScope e, 1 + maxScope (getBody1 b1), 1 + maxScope (getBody1 b2)]
 
+-- | Determine the length of the longest path
 height :: Tm n -> Int
 height (Var x)            = 1
 height (Lam b)            = 1 + height (getBody1 b)
