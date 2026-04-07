@@ -322,19 +322,27 @@ Now let's consider some properties that we might test for our evaluator.
 
 ### Big-step properties
 
-The most basic property is that every well-typed term evaluates to a value:
+The most basic property is that if a term evaluates to some result, then the 
+result is a value.
 
 ```haskell
+
+-- if a term evaluates, it produces a value
 prop_evalVal :: Tm Z -> Property
 prop_evalVal = \t ->
+    counterexample ("term: " ++ pp t) $
+    within 1000000 $
     case eval t of
-        Just v  -> property (isVal v)
-        Nothing -> property False     -- well-typed terms must not get stuck
+        Just v -> 
+            counterexample ("not a value: " ++ pp v) $
+            property (isVal v)
+        Nothing -> 
+            discard
 ```
 
-The multi-step (`reduce`) function is a call-by-value big-step evaluator that
-also works on open terms.  For closed, well-typed terms it should agree with
-`eval`:
+What else can we test? We can define a generalization of call-by-value evaluation called `reduce` that works with open terms. 
+
+For closed terms it should agree with `eval`:
 
 ```haskell
 prop_eval_reduce :: Tm Z -> Property
@@ -358,6 +366,7 @@ prop_reduce_inert = \t ->
 
 ### Small-step properties
 
+Finally, we also develop a small-step version of `reduce`.
 The small-step function `step` either returns a reduct or `Nothing` (the term
 is already a value).  Two properties connect it to `eval` and `reduce`:
 
@@ -380,7 +389,7 @@ prop_evalStep = \e ->
         Just e' -> eval e == eval e'
 ```
 
-## 5. A well-typed generator?
+## 5. Going further: A well-typed generator?
 
 The well-scoped generator (`genScopedTm`) produces any structurally valid
 term — but "well-scoped" does not mean "well-typed".  In an untyped
@@ -417,7 +426,14 @@ ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped Tutorial.Top.pp 
 term: (\ x. x x) (\ s. s s)
 ```
 
-The solution is to restrict generation to *well-typed* terms.  In the
+The solution is to add timeouts to our properties. However, if we do so, we end up discarding many cases.
+
+```
+prop_evalVal:
++++ OK, passed 1000 tests; 2133 discarded.
+```
+
+Alternatively, we can restrict generation to *well-typed* terms.  In the
 simply-typed lambda calculus every term is strongly normalizing, so `eval` is
 guaranteed to terminate on every well-typed input.
 
@@ -425,32 +441,36 @@ This also lets us state stronger type-soundness properties.  For example,
 every well-typed closed term must evaluate to a value:
 
 ```haskell
-prop_evalVal :: Property
-prop_evalVal = forAll0 Typed Full $ \t ->
+prop_eval_exists_Val :: Tm Z -> Property
+prop_eval_exists_Val = \t ->
     case eval t of
         Just v  -> property (isVal v)
         Nothing -> property False   -- well-typed terms must not get stuck
 ```
 
-And `reduce` (the big-step evaluator for open terms) must agree with
-`eval` on closed, well-typed terms:
+And the `step` function *must* produces a value for closed terms.
 
 ```haskell
-prop_eval_reduce :: Property
-prop_eval_reduce = forAll0 Typed Full $ \t ->
-    case eval t of
-        Just v  -> reduce t == Just v
-        Nothing -> discard
+
+-- | the step 
+prop_stepVal :: Tm Z -> Property
+prop_stepVal e =
+    let loop e =
+          if isVal e then property True
+          else case step e of
+             Nothing ->
+                counterexample ("stuck at: " ++ pp e) $
+                property False
+             Just e' -> loop e'
+    in within 1000000 $ loop e
 ```
 
 These properties hold by type soundness (progress + preservation) and
 would not be testable with the well-scoped generator alone.
 
+## 6. Two dimensions of generation
 
-
-## 5. Full Two dimensions of generation
-
-The generator is parameterized over two orthogonal dimensions:
+Therefore, we can define a generator for our syntax that is parameterized over two orthogonal dimensions:
 
 ```haskell
 data Constraint = Scoped | Typed
@@ -462,79 +482,11 @@ data Language   = PureLC | Full
 - **`PureLC`** — only use `Lam`, `App`, and `Var` (the pure lambda calculus).
 - **`Full`** — also include `Unit`, `Pair`, `MatchPair`, `Inj`, `MatchUnit`, and `MatchSum`.
 
-The top-level entry point dispatches accordingly:
 
-```haskell
-genTm :: SNatI n => Constraint -> Language -> Gen (Tm n)
-genTm Scoped l = QC.sized (genScopedTm l snat)
-genTm Typed  l = do
-    ctx <- genCtx snat
-    ty  <- arbitrary
-    QC.sized (genTypedTm l snat ctx ty)
-```
-
-
-### Extending to the full language
-
-`genScopedTm` generates any structurally well-formed term without caring about types.  It takes a `Language` flag, a scope `SNat n`, and a size bound:
-
-```haskell
-genScopedTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
-genScopedTm l n sz =
-    let
-        gen  = genScopedTm l n (sz `div` 2)
-        gen1 = bind1 @Tm <$> genLocalName <*> genScopedTm l (next n) (sz `div` 2)
-        gen2 = bind2 @Tm <$> genLocalName <*> genLocalName
-                         <*> genScopedTm l (next (next n)) (sz `div` 2)
-
-        gens = case l of
-          PureLC ->
-              [ Lam <$> gen1
-              , App <$> gen <*> gen
-              ]
-          Full ->
-              [ Lam <$> gen1
-              , App <$> gen <*> gen
-              , MatchUnit <$> gen <*> gen
-              , Pair      <$> gen <*> gen
-              , MatchPair <$> gen <*> gen2
-              , Inj       <$> QC.elements [0,1] <*> gen
-              , MatchSum  <$> gen <*> gen1 <*> gen1
-              ]
-
-        genVar :: forall n. SNat n -> Gen (Tm n) -> Gen (Tm n)
-        genVar SZ def = def
-        genVar SS def = Var <$> QC.elements Fin.universe
-
-        base = case l of
-            PureLC -> genVar n (return tmId)
-            Full   -> genVar n (return Unit)
-
-    in if sz <= 1
-        then base
-        else QC.oneof (base : gens)
-```
-
-Key observations:
-
-- **Binders increase the scope**: generating a `Lam` body uses `gen1`, which calls `genScopedTm l (next n) sz'`, running in scope `S n`.  The fresh variable `FZ` is automatically in scope inside.
-
-- **Two binders**: `gen2` uses `next (next n)` for `MatchPair`'s body, binding two variables at once.
-
-- **Variables use `Fin.universe`**: `genVar` picks uniformly among all variables in scope.  In a closed scope (`SZ`) there are none, so the base case falls back to `Unit` (or `tmId` for pure LC).
-
-- **Base case**: when `sz <= 1` we only generate a variable or the base term, preventing infinite recursion.
-
-- **Names are generated independently**: `genLocalName` draws from a small pool with no freshness guarantee.  That is fine — `LocalName` equality ignores names, so correctness is unaffected.
-
-
-
-
-## 6. Implementing a well-typed generator
-
-`genTypedTm` works by type-directed synthesis.  At each recursive call it
-has a *target type* and a *typing context* (a vector mapping each de Bruijn
-index to its type), and it only produces terms that have exactly that type.
+For the `Typed` constraint, `genTypedTm` works by type-directed synthesis.  At
+each recursive call it has a *target type* and a *typing context* (a vector
+mapping each de Bruijn index to its type), and it only produces terms that
+have exactly that type.
 
 The high-level strategy is:
 
@@ -559,45 +511,15 @@ The top-level call also picks a random context and a random target type
 before calling `genTypedTm`, so the resulting term may have free variables
 with known types — or be closed if the context is empty.
 
-### The well-typed generator
-
-`genTypedTm` is type-directed: given a typing context and a target type it only produces terms of exactly that type.  Introduction forms are selected by the target type; elimination forms use a fresh type generated for the sub-term being eliminated:
-
-```haskell
-genTypedTm :: forall n. Language -> SNat n -> Vec n Ty -> Ty -> Int -> QC.Gen (Tm n)
-```
-
-This generator is used by properties that need well-typed terms, such as `prop_evalVal` in `Eval`.
-
-### The `Arbitrary` instance
-
-```haskell
-instance SNatI n => QC.Arbitrary (Tm n) where
-    arbitrary = genTm Typed Full
-    shrink    = shrinkTyped
-```
-
-The default `arbitrary` generates well-typed terms from the full language.
-For generating *closed* terms we use `n = Z`, so the instance becomes
-`Arbitrary (Tm Z)`.  Properties that want only pure lambda calculus terms
-call `genTm Typed PureLC` (or `genTm Scoped PureLC`) directly.
-
 ### Shrinking
 
-`shrinkTyped` produces smaller terms by:
+Random generation also requires shrinking. Because we have two different constraints for the terms that we generate, we need two different shrinking 
+functions: `shrinkScoped` and `shrinkTyped`. 
 
-- For `Lam b`: shrink the body, wrapping back in `Lam` with the same name.
-- For `App a b`: return each sub-term `a` and `b` alone (without shrinking further).
-- For `Pair`, `Inj`, `MatchUnit`, `MatchPair`, `MatchSum`: return the scrutinee alone, plus recursive shrinks of the branches.
-- For `Var`, `Unit`: return `[]` — already minimal.
+Both shrinking function take a counter example (a term) and produce a list 
+of smaller terms that satisfy the same constraint. For `shrinkScoped`, the constraint is that the smaller terms must have the same scope as the original term. The type system guarantees this constraint automatically. For `shrinkTyped` the smaller terms must still be well-typed, but because we are not tracking types in the type system, they may not have the *same* type.
 
-Crucially, shrinking preserves the scope: a shrunken `Tm n` is still a `Tm n`.
-
----
-
-## 7. Demo: The Round Trip
-
-## 8. Historical Notes
+## 7. Historical Notes
 
 
 **Scope checking as a compiler pass.** The idea of converting named surface syntax to an internal nameless or index-based form is standard in compiler design. Early Lisp interpreters used association lists (`alist`) to map symbol names to values at runtime — the direct ancestor of the `[(String, Fin n)]` context used in `projectTmWith`. In modern compilers this conversion is a distinct front-end pass, often called *name resolution* or *scope analysis*, that runs after parsing and before type checking, and uses a more efficient data structure.
@@ -662,7 +584,7 @@ S.Lam (S.bind1 (S.LocalName "y") (S.Var FZ))
 
 ---
 
-**4. Extending `genTm`.** After adding `Let` to the language (Exercises 2–3 in Lecture 1 and Exercise 2 above), extend `genTm` in `Tutorial.Scoped.Gen` to also generate `let`-expressions.
+**4. Extending `genTm`.** After adding `Let` to the language (Exercise 3 in Lecture 1 and Exercise 2 above), extend `genTm` in `Tutorial.Scoped.Gen` to also generate `let`-expressions.
 
 ```haskell
 -- In the Full branch of gens inside genTm:
@@ -692,7 +614,7 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 - What initial `[(String, Fin (S Z))]` do you pass to `projectTmWith`?
 - Does the choice of name matter?  Why or why not?
 
-**5. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
+**6. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
 
 - *Identity*: `applyE idE t == t`
 - *Composition*: `applyE f (applyE g t) == applyE (compE f g) t`
@@ -700,7 +622,7 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 
 For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`, or build simple environments with `(.:)`. Can you find a counterexample to any of these properties if you get the implementation of `lift` wrong?
 
-**6. More efficient scope checking** Instead of using the type `[(String, Var n)]` to map variable names to indices, design a more efficient data structure. This data structure should allow logarithmic lookup of names and constant time insertion of a new binding (while incrementing the indices of previous bindings).
+**7. More efficient scope checking** Instead of using the type `[(String, Var n)]` to map variable names to indices, design a more efficient data structure. This data structure should allow logarithmic lookup of names and constant time insertion of a new binding (while incrementing the indices of previous bindings).
 
 If you would like a hint: check out the "Skewed Substitutions" described in this [blog post](https://mathisbd.github.io/blog/esubstitutions.html).
 

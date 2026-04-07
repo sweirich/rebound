@@ -59,9 +59,22 @@ isVal e = False
 -- Properties of `eval`
 -------------------------------------------------------------------
 
--- all *well-typed* terms produce values
+-- if a term evaluates, it produces a value
 prop_evalVal :: Tm Z -> Property
 prop_evalVal = \t ->
+    counterexample ("term: " ++ pp t) $
+    discardAfter 1000000 $
+    case eval t of
+        Just v -> 
+            counterexample ("not a value: " ++ pp v) $
+            property (isVal v)
+        Nothing -> 
+            discard
+
+
+-- all terms produce values (NB: this holds for well-typed terms only!)
+prop_eval_exists_Val :: Tm Z -> Property
+prop_eval_exists_Val = \t ->
     counterexample ("term: " ++ pp t) $
     within 1000000 $
     case eval t of
@@ -71,7 +84,6 @@ prop_evalVal = \t ->
         Nothing -> 
             counterexample ("doesn't eval") $
             property False
-
 
 -------------------------------------------------------------------
 -- CBV reduction for open terms
@@ -144,15 +156,24 @@ isInert (MatchSum t u1 u2) = isInert t
 -- | If reduce produces a term, it is inert
 prop_reduce_inert :: forall n. SNatI n => Tm n -> Property
 prop_reduce_inert t =
-    within 1000000 $ 
+    discardAfter 1000000 $ 
     case reduce t of
         Just v -> property (isInert v)
         Nothing -> discard
 
+
+-- | All terms reduce to inert versions (NB:well-typed terms only)
+prop_reduce_exists_inert :: forall n. SNatI n => Tm n -> Property
+prop_reduce_exists_inert t =
+    within 1000000 $ 
+    case reduce t of
+        Just v -> property (isInert v)
+        Nothing -> property False
+
 -- | reduce agrees with eval on closed terms
 prop_eval_reduce :: Tm Z -> Property
 prop_eval_reduce t =
-    within 1000000 $ 
+    discardAfter 1000000 $ 
     counterexample ("term: " ++ pp t) $
     case eval t of
         Just v -> counterexample ("evals t: " ++ pp v) $
@@ -207,7 +228,7 @@ step (MatchSum s b1 b2) = do
 -- Small-step reduction properties
 -------------------------------------------------------------------
 
--- | the step function produces a value for closed terms
+-- | the step function produces a value for closed terms (NB: well-typed only)
 prop_stepVal :: Tm Z -> Property
 prop_stepVal e =
     let loop e =
@@ -219,11 +240,11 @@ prop_stepVal e =
              Just e' -> loop e'
     in within 1000000 $ loop e
 
--- | The step function respects evaluation
+-- | The step function respects evaluation (NB: well-typed only. why?)
 prop_evalStep :: Tm Z -> Property
 prop_evalStep e =
     counterexample ("e  = " ++ pp e) $
-    within 1000000 $
+    discardAfter 1000000 $
     case step e of
         Nothing  -> discard
         Just e'  -> counterexample ("e' = " ++ pp e') $
@@ -235,7 +256,7 @@ prop_reduceStep :: Tm (S Z) -> Property
 prop_reduceStep e =
     let pp' = ppWith ("x" ::: VNil) in
     counterexample ("e  = " ++ pp' e) $
-    within 1000000 $
+    discardAfter 1000000 $
     case step e of
         Nothing  -> property (isInert e)
         Just e'  -> counterexample ("e' = " ++ pp' e') $
@@ -248,11 +269,18 @@ prop_reduceStep e =
 testAll :: IO ()
 testAll = do
     let args = stdArgs { maxSuccess = 1000 }
-    putStrLn "prop_evalVal:"               >> quickCheckWith args (forAll0 Typed Full prop_evalVal)
-    putStrLn "prop_reduce_inert @Z:"       >> quickCheckWith args (forAll0 Typed Full (prop_reduce_inert @Z))
-    putStrLn "prop_reduce_inert @(S Z):"   >> quickCheckWith args (forAll1 Typed Full (prop_reduce_inert @(S Z)))
-    putStrLn "prop_eval_reduce:"           >> quickCheckWith args (forAll0 Typed Full prop_eval_reduce)
+    putStrLn "prop_evalVal:"               >> quickCheckWith args (forAll0 Scoped Full prop_evalVal)
+    putStrLn "prop_eval_exists_Val:"       >> quickCheckWith args (forAll0 Typed Full prop_eval_exists_Val)
+
+    putStrLn "prop_reduce_inert @Z:"       >> quickCheckWith args (forAll0 Scoped Full (prop_reduce_inert @Z))
+    putStrLn "prop_reduce_inert @(S Z):"   >> quickCheckWith args (forAll1 Scoped Full (prop_reduce_inert @(S Z)))
+
+    putStrLn "prop_reduce_inert @Z:"       >> quickCheckWith args (forAll0 Typed Full (prop_reduce_exists_inert @Z))
+    putStrLn "prop_reduce_inert @(S Z):"   >> quickCheckWith args (forAll1 Typed Full (prop_reduce_exists_inert @(S Z)))
+
+    putStrLn "prop_eval_reduce:"           >> quickCheckWith args (forAll0 Scoped Full prop_eval_reduce)
+
     putStrLn "prop_stepVal:"               >> quickCheckWith args (forAll0 Typed Full prop_stepVal)
     putStrLn "prop_evalStep:"              >> quickCheckWith args (forAll0 Typed Full prop_evalStep)
-    putStrLn "prop_reduceStep:"            >> quickCheckWith args (forAll1 Typed Full prop_reduceStep)
+    putStrLn "prop_reduceStep:"            >> quickCheckWith args (forAll1 Scoped Full prop_reduceStep)
 

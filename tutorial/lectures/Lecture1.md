@@ -100,7 +100,7 @@ data Fin n where
 Our object language is a simply-typed lambda calculus with binary products and sums:
 
 ```haskell
-data Ty = One | Zero | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
+data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
 ```
 
 Terms are indexed by their scope:
@@ -252,7 +252,6 @@ applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
     MatchSum (applyE env a)
              (Bind1 (applyE (lift env) b1))
              (Bind1 (applyE (lift env) b2))
-applyE env (Ann t ty)            = Ann (applyE env t) ty
 
 -- | Lift an environment under one binder
 lift :: Env m n -> Env (S m) (S n)
