@@ -38,7 +38,6 @@ module Rebound.Env
     toVec,
     tabulate,
     fromTable,
-    weakenER,
     shiftFromApplyE,
     skip
   )

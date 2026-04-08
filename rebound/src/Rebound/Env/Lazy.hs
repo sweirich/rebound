@@ -54,16 +54,15 @@ class GSubst v (e :: Nat -> Type) where
 -- | Maps variables in scope @n@ to terms (of type @a@) in scope @m@.
 data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
   Zero  :: Env a Z n
-  WeakR :: (SNat m) -> Env a n (n + m) --  weaken values in range by m
   Weak  :: (SNat m) -> Env a n (m + n) --  weaken values in range by m
   Inc   :: (SNat m) -> Env a n (m + n) --  increment values in range (shift) by m
   Cons  :: (a m) -> (Env a n m) -> Env a ('S n) m --  extend a substitution (like cons)
   (:<>) :: (Env a m n) -> (Env a n p) -> Env a m p --  compose substitutions
 
+--- Fin n -> Tm m
 
 instance (forall n. NFData (a n)) => NFData (Env a n m) where
   rnf Zero = ()
-  rnf (WeakR m) = rnf m
   rnf (Weak m) = rnf m
   rnf (Inc m) = rnf m
   rnf (Cons x r) = rnf x `seq` rnf r
@@ -76,9 +75,8 @@ instance (forall n. NFData (a n)) => NFData (Env a n m) where
 -- | Value of the index x in the substitution s
 
 applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
-applyEnv Zero x = Fin.absurd x
+applyEnv Zero x = case x of {}
 applyEnv (Inc m) x = var (Fin.shiftN m x)
-applyEnv (WeakR m) x = var (Fin.weakenFinRight m x)
 applyEnv (Weak m) x = var (Fin.weakenFin m x)
 applyEnv (Cons ty _s) FZ = ty
 applyEnv (Cons _ty s) (FS x) = applyEnv s x
@@ -86,12 +84,10 @@ applyEnv (s1 :<> s2) x = applyE s2 (applyEnv s1 x)
 {-# INLINEABLE applyEnv #-}
 
 -- | Build an optimized version of applyE.
--- Checks to see if we are applying the identity substitution first.
+-- Checks to see if we are applying an identity substitution first.
 applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
 applyOpt f (Inc SZ) x = x
 applyOpt f (Weak SZ) x = x
-applyOpt f (WeakR SZ) (x :: c m) =
-  case axiomPlusZ @m of Refl -> x
 applyOpt f r x = f r x
 {-# INLINEABLE applyOpt #-}
 
@@ -103,11 +99,6 @@ applyOpt f r x = f r x
 zeroE :: Env v Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
-
--- | Increase the bound on free variables (on the right), without changing any free variable.
-weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = WeakR
-{-# INLINEABLE weakenER #-}
 
 -- | Increase the bound on free variables (on the left), without changing any free variable.
 weakenE' :: forall m v n. (SubstVar v) => SNat m -> Env v n (m + n)
@@ -143,7 +134,7 @@ tail x = shiftNE s1 .>> x
 -- Some of the applied optimizations are:
 -- - Identity environments (e.g., @'shiftNE' SZ@) are eliminated
 -- - Absorbing environments on the right (i.e., 'zeroE') are eliminated
--- - Compatible environments are fused (e.g., @'weakenER' n@ and @'weakenER' m)
+-- - Compatible environments are fused (e.g., @'weakenE'' n@ and @'weakenE'' m@)
 comp :: forall a m n p. SubstVar a =>
          Env a m n -> Env a n p -> Env a m p
 comp Zero s = Zero
@@ -152,18 +143,10 @@ comp (Weak (k1 :: SNat m1)) (Weak (k2 :: SNat m2))  =
     Refl -> Weak (sPlus k2 k1)
 comp (Weak SZ) s = s
 comp s (Weak SZ) = s
-comp (WeakR (k1 :: SNat m1)) (WeakR (k2 :: SNat m2))  =
-  case axiomAssoc @m @m1 @m2 of
-    Refl -> WeakR (sPlus k1 k2)
-comp (WeakR SZ) s =
-  case axiomPlusZ @m of
-    Refl -> s
-comp s (WeakR SZ) =
-  case axiomPlusZ @n of
-    Refl -> s
 comp (Inc (k1 :: SNat m1)) (Inc (k2 :: SNat m2))  =
   case axiomAssoc @m2 @m1 @m of
-    Refl -> Inc (sPlus k2 k1)
+    Refl -> 
+      Inc (sPlus k2 k1)
 comp s (Inc SZ) = s
 comp (Inc SZ) s = s
 comp (Inc (snat_ -> SS_ p1)) (Cons _t p) = comp (Inc p1) p
@@ -176,7 +159,6 @@ comp s1 s2 = s1 :<> s2
 up :: (SubstVar v) => Env v m n -> Env v (S m) (S n)
 up (Inc SZ) = Inc SZ
 up (Weak SZ) = Weak SZ
-up (WeakR SZ) = WeakR SZ
 up e = var Fin.f0 .: comp e (Inc s1)
 {-# INLINEABLE up #-}
 
@@ -184,7 +166,6 @@ up e = var Fin.f0 .: comp e (Inc s1)
 transform :: (SubstVar b) => (forall m. a m -> b m) -> Env a n m -> Env b n m
 transform f Zero = Zero
 transform f (Weak x) = Weak x
-transform f (WeakR x) = WeakR x
 transform f (Inc x) = Inc x
 transform f (Cons a r) = Cons (f a) (transform f r)
 transform f (r1 :<> r2) = transform f r1 :<> transform f r2
