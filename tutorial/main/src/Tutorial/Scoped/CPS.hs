@@ -36,14 +36,16 @@ import Tutorial.Scoped.ScopeCheck
 -- * Top-level entry point 
 ------------------------------------------------------------------------
 
--- | Apply the CPS translation to a closed term, using the identity
--- continuation @λx. x@ so that the result is still a closed term.
-cps :: Tm Z -> Tm Z
-cps e = cpsExp idE e idTm
 
 -- | Identity function  "\x.x"
 idTm :: Tm Z
 idTm = Lam (bind1 (LocalName "x") (Var FZ))
+
+
+-- | Apply the CPS translation to a closed term, using the identity
+-- continuation @λx. x@ so that the result is still a closed term.
+cps :: Tm Z -> Tm Z
+cps e = cpsExp zeroE e idTm
 
 -- | Apply the CPS translation to a closed term, using a variable
 -- as the continuation so that the result has one free variable.
@@ -57,29 +59,42 @@ cpsK e = cpsExp zeroE e (Var FZ)
 wk :: Env Tm n (S n)
 wk = shift1E 
 
+-- [[ \x.x ]] k == k (\x.\k'. k' x)
+-- [[ \.0 ]] k == k (\ \ . 0 1)
+
 cpsExp :: forall n m. Env Tm n m -> Tm n -> Tm m -> Tm m
+-- [[x]] k = k x
 cpsExp r (Var x) k = App k (applyEnv r x)
+-- [[()]] k = k ()
 cpsExp r Unit k    = App k Unit
-cpsExp r (Lam b) k = App k 
-    (Lam (bind1 (getLocalName b) 
-      (Lam (bind1 (LocalName "k")
-          (cpsExp r' (getBody b) (Var FZ))))))
-    where 
-        r' = up r .>> wk
-cpsExp r (App t1 t2) k = 
-    cpsExp r t1 (Lam (bind1 (LocalName "v")
-      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
-          (App (App (Var (FS FZ)) (Var FZ)) k''))))))  
-       where
-         r'  = r .>> wk
-         k'' = applyE (wk .>> wk) k
+-- [[λx. e]] k = k (λx. λk'. [[e]] k')
+cpsExp r (Lam b) k = 
+    App k (Lam (bind1 (LocalName (name (getLocalName b))) 
+            (Lam (bind1 (LocalName "k") (cpsExp r' (getBody b) k')))))
+       where r' :: Env Tm (S n) (S (S m))
+             r' = up r .>> wk 
+             k' :: Tm (S (S m))
+             k' = Var FZ
+-- [[e1 e2]] k = [[e1]] (λx. [[e2]] (λy. x y k))
+cpsExp r (App e1 e2) k = 
+    cpsExp r e1 (Lam (bind1 (LocalName "x") 
+                       (cpsExp (r .>> wk) e2 (Lam (bind1 (LocalName "y")
+                            (App (App (Var (FS FZ)) (Var FZ)) k'))))))
+        where k' :: Tm (S (S m))
+              k' = applyE (wk .>> wk) k
+-- [[case e of () -> b]] k = [[e]] (λz. case z of () -> [[b]] k)
 cpsExp r (MatchUnit e1 e2) k = 
-    cpsExp r e1 (Lam (bind1 (LocalName "v")
-       (MatchUnit (Var FZ) 
-          (cpsExp r' e2 k'))))
-    where
-        r' = r .>> wk
-        k' = applyE wk k
+    cpsExp r e1 (Lam (bind1 (LocalName "z") (MatchUnit (Var FZ) (cpsExp r' e2 k'))))
+       where r' :: Env Tm n (S m)
+             r' = r .>> wk
+             k' :: Tm (S m)
+             k' = applyE wk k
+
+
+
+
+
+-- [[(e1, e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 cpsExp r (Pair t1 t2) k =
     cpsExp r t1 (Lam (bind1 (LocalName "v")
        (cpsExp (skip r) t2 (Lam (bind1 (LocalName "w")
@@ -87,6 +102,7 @@ cpsExp r (Pair t1 t2) k =
       where 
         r'  = r .>> wk
         k'' = applyE (wk .>> wk) k
+-- [[case e of (x,y) → b]]      k = [[e]]  (λz. case z of (x,y) → [[b]] k)
 cpsExp r (MatchPair e1 b) k = 
     cpsExp r e1 (Lam (bind1 (LocalName "v1")
       (MatchPair (Var FZ) (bind2 x1 x2 
@@ -117,7 +133,7 @@ cpsExp r (MatchSum e0 e1 e2) k =
 --
 -- @eval(e) == eval(cps(e))@
 --      
---  i.e.       e =>  v     <->   [[e]]_id => v
+--  i.e.       e =>  v1     and   [[e]]_id => v2  and   v1 == v2
 --         
 -- 
 -- NB: this is not true, what is a counter example?
@@ -186,7 +202,7 @@ prop_cps_eval_cps = forAll0 Typed Full $ \e ->
 -- use reduction instead of evaluation. 
 -- NB: this fails for terms that use pattern matching
 prop_cps_reduce_cps :: Property
-prop_cps_reduce_cps = forAll0 Typed Full $ \e ->
+prop_cps_reduce_cps = forAll0 Typed PureLC $ \e ->
    let 
       cps_e = cpsK e 
       eval_e = case reduce e of
@@ -385,6 +401,8 @@ cpsExpOpt r (MatchSum e0 e1 e2) k =
 -- * Properties of Optimized CPS translation
 ------------------------------------------------------------------------
   
+
+
 -- | __Correctness__: CPS opt preserves big-step evaluation
 --
 -- @eval(e) == eval(cps(e))@ for firstorder values

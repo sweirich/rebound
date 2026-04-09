@@ -60,29 +60,52 @@ import qualified Tutorial.Scoped.Syntax as S
 import Tutorial.Scoped.Gen 
 import Text.Parsec ( ParseError )
 
+-- | Find the index of the first element that satisfies the given predicate
+findIndex :: (a -> Bool) -> Vec n a -> Maybe (Fin n)
+findIndex f VNil = Nothing
+findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
+
+
 ------------------------------------------------------------------------
 -- * Parsing and Pretty Printing examples
 ------------------------------------------------------------------------
 
--- >>> N.parseTm "λ x y. x"
--- Right (Lam "x" (Lam "y" (Var "x")))
+{-
+       N.parse                 project
+String ------> Named Syntax --------> Scoped Syntax
+
+               inject                N.pp
+Scoped Syntax -------> Named Syntax -------> String
+
+-}
+
+
+-- >>> N.parseTm "\\ x y. x"
+
+
 
 -- >>> projectTm (N.Lam "x" (N.Lam "y" (N.Var "x")))
--- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
+
+
+
+-- both steps at once.
 
 -- >>> parse "λ x y. x"
--- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
+
+
 
 -- Things can go wrong. 
 
 -- >>> parse "λ x x"
--- Left (ParseError "<interactive>" (line 1, column 6):
--- unexpected end of input
--- expecting identifier or ".")
+
 
 -- >>> parse "λ y . x"
--- Left (ScopeError (UnboundVariable "x"))
 
+
+
+-- We want to work up to alpha-equivalence.
 
 t1 :: S.Tm Z
 t1 = case parse "λ x. x" of Right y -> y ; _ -> error "OOPS"
@@ -90,7 +113,12 @@ t2 :: S.Tm Z
 t2 = case parse "λ y. y" of Right y -> y ; _ -> error "OOPS"
 
 -- >>> t1 == t2
--- True
+
+
+-- >>> t1
+
+
+-- >>> t2
 
 
 t3 :: S.Tm Z
@@ -99,7 +127,8 @@ t4 :: S.Tm Z
 t4 = case parse "λ x. λ y. y" of Right y -> y ; _ -> error "OOPS"
 
 -- >>> t3 == t4
--- False
+
+
 
 -- Pretty printing also goes through the named syntax
 
@@ -108,36 +137,51 @@ n1 = injectTm t1
 n2 :: N.Tm
 n2 = injectTm t2
 
--- >>> n1
--- Lam "x" (Var "x")
+-- >>> t2
+
+
+-- >>> n2
+
+
 
 -- >>> N.pp n1
--- "\\ x. x"
 
 
--- >>> pp t1
--- "\\ x. x"
+
+
+-- >>> pp t2
+
 
 
 -- we keep the original names
 
+-- >>> t2
+
+
+
 -- >>> n2
--- Lam "y" (Var "y")
+
+
 
 -- >>> pp t3
--- "\\ x y. x"
+
+
+
+
+-- freshen if there is shadowing
 
 t5 :: S.Tm Z
 t5 = case parse "λ x. λ x. x" of Right y -> y ; _ -> error "OOPS"
 
 -- >>> t5
--- Lam (bind1 (Lam (bind1 (Var 0))))
+
 
 -- >>> pp t5
--- "\\ x x0. x0"
 
 
--- Can also parse and print open terms by providing additional information
+
+
+-- Can also parse and print *open* terms by providing additional information
 
 -- >>> :t parseWith
 -- parseWith :: [(String, Fin n)] -> String -> Either Error (Tm n)
@@ -147,11 +191,15 @@ t5 = case parse "λ x. λ x. x" of Right y -> y ; _ -> error "OOPS"
 -- Right (Lam (bind1 (Var 1)))
 
 
+
 -- >>> :t ppWith
 -- ppWith :: Vec n String -> Tm n -> String
 
 -- >>> ppWith ("x" ::: VNil) (S.Lam (S.bind1 (S.LocalName "y") (S.Var f1)))
--- "\\ y. x"
+
+
+
+
 
 ------------------------------------------------------------------------
 -- * Parsing and Pretty Printing (top-level entry points)
@@ -171,7 +219,7 @@ data ScopeCheckError
 
 -- | Top-level errors from 'parse' / 'parseWith'.
 data Error = ScopeError ScopeCheckError | ParseError ParseError
-  deriving (Show)
+  deriving (Show,Eq)
 
 -- | Parse a closed term
 parse :: String -> Either Error (S.Tm Z)
@@ -182,13 +230,13 @@ parse s = case N.parseTm s of
                             Right se -> Right se
 
 -- >>> parse "\\ x y. x"
--- Right (Lam (bind1 (Lam (bind1 (Var 1)))))
+
 
 -- >>> parse "λ y . x"
--- Left (ScopeError (UnboundVariable "x"))
+
 
 -- | Parse an open term
-parseWith :: [(String, Fin n)] -> String -> Either Error (S.Tm n)
+parseWith :: Vec n String -> String -> Either Error (S.Tm n)
 parseWith vs s = case N.parseTm s of
               Left pe  -> Left (ParseError pe)
               Right ne -> case projectTmWith vs ne of
@@ -232,12 +280,6 @@ projectTy = to where
 -- * Term conversions
 ------------------------------------------------------------------------
 
--- | Test whether a name is already in a naming vector.
--- >>> inVec "x" ("x" ::: VNil)
--- True
-inVec :: String -> Vec n String -> Bool
-inVec _ VNil       = False
-inVec x (y ::: ys) = x == y || inVec x ys
 
 -- | Return @s@ if it does not appear in the vector, otherwise try
 -- @s0@, @s1@, @s2@, … until a fresh name is found.
@@ -248,7 +290,10 @@ inVec x (y ::: ys) = x == y || inVec x ys
 freshen :: String -> Vec n String -> String
 freshen s vs
     | not (inVec s vs) = s
-    | otherwise        = head [ s ++ show i | i <- [0 :: Int ..], not (inVec (s ++ show i) vs) ]
+    | otherwise        = 
+        head [ s ++ show i | i <- [0 :: Int ..], not (inVec (s ++ show i) vs) ]
+
+inVec s vs = any (== s) vs
 
 -- | Convert an open well-scoped term to a named term, given a vector of
 -- names for the free variables.  The head of the vector (@index 'FZ'@) names
@@ -291,14 +336,14 @@ injectTm = injectTmWith VNil
 -- indices up by one.  Returns @Left err@ if a free variable is
 -- encountered or if the term uses a syntactic form not supported by the
 -- simple language (e.g. n-ary patterns).
-projectTmWith :: [(String, Fin n)] -> N.Tm -> Either ScopeCheckError (S.Tm n)
+projectTmWith :: Vec n String -> N.Tm -> Either ScopeCheckError (S.Tm n)
 -- A variable must be in scope; fail with UnboundVariable if not found
-projectTmWith vs (N.Var v) = case lookup v vs of
+projectTmWith vs (N.Var v) = case findIndex (==v) vs of
     Nothing -> Left (UnboundVariable v)
     Just x  -> Right (S.Var x)
 -- λ-abstraction: extend the scope with the bound name
 projectTmWith vs (N.Lam v b) = do
-    b' <- projectTmWith ((v, FZ) : map (fmap FS) vs) b
+    b' <- projectTmWith (v ::: vs) b
     return $ S.Lam (S.bind1 (S.LocalName v) b')
 projectTmWith vs (N.App f a) = do
     f' <- projectTmWith vs f
@@ -307,7 +352,8 @@ projectTmWith vs (N.App f a) = do
 -- Empty tuple () maps to Unit
 projectTmWith vs (N.Pair []) = return $ S.Unit
 -- Binary tuple maps to Pair
-projectTmWith vs (N.Pair [e1,e2]) = S.Pair <$> projectTmWith vs e1 <*> projectTmWith vs e2
+projectTmWith vs (N.Pair [e1,e2]) = 
+    S.Pair <$> projectTmWith vs e1 <*> projectTmWith vs e2
 -- Only injections 0 and 1 are supported
 projectTmWith vs (N.Inj i e1)
     | i == 0 || i == 1 = S.Inj i <$> projectTmWith vs e1
@@ -319,13 +365,13 @@ projectTmWith vs (N.Case e [(N.Pair [], e1)]) =
 -- v2 is innermost (FZ), v1 is next (FS FZ)
 projectTmWith vs (N.Case e [(N.Pair [N.Var v1, N.Var v2], e1)]) = do
     a' <- projectTmWith vs e
-    b' <- projectTmWith ((v2, FZ) : (v1, FS FZ) : map (fmap (FS . FS)) vs) e1
+    b' <- projectTmWith (v2 ::: v1 ::: vs) e1
     return (S.MatchPair a' (S.bind2 (S.LocalName v1) (S.LocalName v2) b'))
 -- case e of { Inj0 v1 -> e1 ; Inj1 v2 -> e2 }  maps to MatchSum
 projectTmWith vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)]) = do
     a'  <- projectTmWith vs e
-    b1' <- projectTmWith ((v1, FZ) : map (fmap FS) vs) e1
-    b2' <- projectTmWith ((v2, FZ) : map (fmap FS) vs) e2
+    b1' <- projectTmWith (v1 ::: vs) e1
+    b2' <- projectTmWith (v2 ::: vs) e2
     return (S.MatchSum a' (S.bind1 (S.LocalName v1) b1')
                           (S.bind1 (S.LocalName v2) b2'))
 -- Any other form is not supported
@@ -335,7 +381,8 @@ projectTmWith vs t = Left (UnsupportedForm t)
 -- Returns @Left err@ if the named term contains free variables or uses
 -- syntactic forms not supported by the simple language (e.g. n-ary patterns).
 projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
-projectTm = projectTmWith []
+projectTm = projectTmWith VNil
+
 
 ------------------------------------------------------------------------
 -- * Round-trip properties
@@ -344,11 +391,13 @@ projectTm = projectTmWith []
 -- | Injecting a scoped term into named form and projecting back yields
 -- the original term.
 prop_project_round_trip :: S.Tm Z -> Bool
-prop_project_round_trip i = projectTm ((injectTm i) :: N.Tm) == Right i
+prop_project_round_trip i = 
+   projectTm (injectTm i) == Right i
 
 -- | Pretty-printing a term and parsing it back yields the original named term.
 prop_parse_round_trip :: S.Tm Z -> Bool
-prop_parse_round_trip i = N.parseTm (show (N.test (injectTm i :: N.Tm))) == Right (injectTm i)
+prop_parse_round_trip i = 
+   parse (pp i) == Right i
 
 ------------------------------------------------------------------------
 -- * Utilities for testing

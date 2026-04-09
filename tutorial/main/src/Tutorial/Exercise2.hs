@@ -94,7 +94,7 @@ ex1_result2 = projectTm
 
 -- With "p" in scope (scope S Z):
 ex1_result2_open :: Either ScopeCheckError (S.Tm (S Z))
-ex1_result2_open = projectTmWith [("p", FZ)]
+ex1_result2_open = projectTmWith ("p" ::: VNil)
     (N.Case (N.Var "p")
         [(N.Pair [N.Var "x", N.Var "y"], N.Var "x")])
 
@@ -261,9 +261,9 @@ ex3b_project = projectTm ex3b_inject
 -- the same name is used in both calls.
 prop_project_round_trip_open :: S.Tm (S Z) -> Bool
 prop_project_round_trip_open t =
-    let freeVarName = "x0"
-        named  = injectTmWith (freeVarName ::: VNil) t
-        scoped = projectTmWith [(freeVarName, FZ)] named
+    let names = "x0" ::: VNil
+        named  = injectTmWith names t
+        scoped = projectTmWith names named
     in scoped == Right t
 
 

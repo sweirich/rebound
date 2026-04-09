@@ -9,6 +9,7 @@ import Tutorial.Scoped.Syntax
 import Tutorial.Scoped.Gen
 import Test.QuickCheck
 import Tutorial.Scoped.ScopeCheck
+import Data.Fin
 
 -- | (big-step) evaluation function 
 eval :: Tm Z -> Maybe (Tm Z)
@@ -44,6 +45,12 @@ eval (MatchUnit e m) = do
     case v of 
         Unit -> eval m
         _ -> Nothing
+
+
+prop_eval t =
+    eval (MatchPair t (bind2 (LocalName "x") (LocalName "y") 
+       (Pair (Var f1) (Var f0)))) == eval t
+
 
 -- | is a term a value?
 -- Note: values are closed under substitution by values

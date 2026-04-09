@@ -4,7 +4,7 @@ Description : Well-scoped abstract syntax for a simply-typed lambda calculus
 
 A simply-typed lambda calculus with binary products and sums whose terms are
 indexed by a 'Nat' tracking the number of free variables in scope.  Variable
-occurrences are represented as 'Fin n' indices (de Bruijn style), and the
+occurrences are represented as 'Fin' n indices (de Bruijn style), and the
 `rebound` library's 'Bind1' / 'Bind2' abstractions handle binding with
 pretty-printing hints stored in 'LocalName' values.
 -}
@@ -51,12 +51,38 @@ instance Subst Tm Tm where
   isVar (Var x) = Just (Refl, x)
   isVar _ = Nothing
 
+{-
+  applyE r (Var x) = applyEnv r x
+  applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
+  applyE r (Lam b) = Lam (applyE r b)
+  applyE r Unit = Unit
+-}  
+
+-- >>> :info Subst
+-- type Subst :: (Nat -> *) -> (Nat -> *) -> Constraint
+-- class SubstVar v => Subst v c where
+--   applyE :: Env v n m -> c n -> c m
+--   default applyE :: (Generic1 c, GSubst v (Rep1 c), SubstVar v) =>
+--                     Env v m n -> c m -> c n
+--   isVar :: c n -> Maybe (v :~: c, Fin n)
+--   	-- Defined in ‘Rebound.Env.Lazy’
+-- instance Subst Tm Tm
+--   -- Defined at /Users/sweirich/github/haskell/rebound/tutorial/main/src/Tutorial/Scoped/Syntax.hs:49:10
+-- instance [overlap ok] Subst Fin Fin -- Defined in ‘Rebound.Env’
+-- instance [overlappable] SubstVar v => Subst v Fin
+--   -- Defined in ‘Rebound.Env’
+
 
 -- >>> applyE (Unit .: zeroE) (Var FZ)
 -- Unit
 
+
 -- >>> applyE (Unit .: zeroE) (Lam (bind1 (LocalName "x") (Var f1)))
 -- Lam (bind1 (Unit))
+
+
+-- >>> Lam (bind1 (LocalName "x") (Var f0))
+-- Lam (bind1 (Var 0))
 
 --------------------------------------------------------------------
 -- Show instances for Bind1/Bind2

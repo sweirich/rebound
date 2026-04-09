@@ -37,15 +37,15 @@ instance QC.Arbitrary Ty  where
 --
 --
 -- >>> QC.sample' (arbitrary :: Gen Ty)
--- [One,One :+ One,One :* (One :-> One),(One :+ One) :+ (One :-> One),((One :* One) :-> (One :-> One)) :* ((One :+ One) :-> One),((One :+ One) :-> One) :* (One :+ (One :+ One)),((One :-> One) :+ (One :-> One)) :-> ((One :+ One) :* One),((One :* One) :+ (One :* One)) :-> One,One,One :* (One :-> ((One :* One) :* (One :+ One))),One :* (((One :+ One) :* (One :* One)) :-> One)]
+
 
 -- The size argument ensures termination. In the base case,
 -- only small types (`One`) are generated. In each recursive call, 
 -- the size is divided by two (because these are trees)
 genTy :: Int -> QC.Gen Ty
 genTy sz 
-  | sz <= 1   = QC.elements [ One ]
-  | otherwise = QC.oneof [ pure One, genArr, genPair, genSum ] 
+  | sz <= 1   = return One 
+  | otherwise = QC.oneof [ return One, genArr, genPair, genSum ] 
      where   
        sz' = sz `div` 2
        genArr  = (:->) <$> genTy sz' <*> genTy sz'
@@ -69,18 +69,40 @@ shrinkTy = shrink
 
 
 ---------------------------------------------------------------------
--- * Simple version: well-scoped, pure lambda calculus terms
+-- * Simple version: generate and shrink well-scoped, pure lambda calculus terms
 ---------------------------------------------------------------------
 
 
 -- | Generate an arbitrary name for a variable
 -- These are only for printing, so ok if we reuse the same name in a scope
 genLocalName :: Gen LocalName
-genLocalName = LocalName <$> QC.elements [ "x", "y", "z", "w", "v", "u", "t", "s" ]
+genLocalName = QC.elements (map LocalName [ "x", "y", "z", "w", "v", "u", "t", "s" ])
 
 -- | Identity function, the smallest closed term
 tmId :: Tm n
 tmId = Lam (bind1 (LocalName "x") (Var FZ))
+
+
+-- For variables we need to know the number of variables in scope to 
+-- be able to generate an arbitrary variable. 
+
+-- >>> :info SNat
+-- type SNat :: Nat -> *
+-- data SNat n where
+--   SZ :: SNat 'Z
+--   SS :: SNatI n1 => SNat ('S n1)
+--   	-- Defined in ‘Data.Type.Nat’
+
+-- >>> :t snat
+-- snat :: SNatI n => SNat n
+
+-- For small terms: generate either a variable or "\x.x" depending on scope
+genBase :: forall n. SNat n -> Gen (Tm n) 
+genBase SZ = return tmId
+genBase SS = QC.elements (map Var Fin.universe)
+
+-- >>> QC.sample' (genBase (snat :: SNat N3))
+-- [Var 0,Var 1,Var 1,Var 2,Var 2,Var 1,Var 1,Var 2,Var 0,Var 1,Var 1]
 
 
 -- | Generate a well-scoped term of language 'l' in scope 'n' of size 'sz'
@@ -92,31 +114,47 @@ tmId = Lam (bind1 (LocalName "x") (Var FZ))
 -- [2,5,2,2,5,9,2,2,5,17,2]
 
 
+
 genScopedPureLC :: forall n. SNatI n => QC.Gen (Tm n)
-genScopedPureLC = QC.sized (go snat)
+genScopedPureLC = QC.sized go
     where
-        go :: forall n. SNat n -> Int -> QC.Gen (Tm n)
-        go n sz | sz <= 1 = genBase n
-        go n sz = 
+        go :: forall n. SNatI n => Int -> QC.Gen (Tm n)
+        go sz | sz <= 1 = genBase snat
+        go sz = 
             let
               -- binders generate a random name and increment the number of free variables
-              gen1 = bind1 @Tm <$> genLocalName <*> go (next n) (sz - 1)
+              gen1 = bind1 @Tm <$> genLocalName <*> go (sz - 1)
 
               -- recursive calls for App divide size by two
-              gen  = go n (sz `div` 2)
+              gen  = go (sz `div` 2)
             in 
-              QC.oneof [genBase n, Lam <$> gen1, App <$> gen <*> gen ]
+              QC.oneof [genBase snat, Lam <$> gen1, App <$> gen <*> gen ]
             
 
-        -- base case: either a variable or "\x.x" depending on scope
-        genBase :: forall n. SNat n -> Gen (Tm n) 
-        genBase SZ = return tmId
-        genBase SS = Var <$> QC.elements Fin.universe
+        
 
+
+
+--- >>> (Fin.universe :: [Fin N3])
+-- [0,1,2]
 
 ---------------------------------------------------------------------
 -- * Entry point for term generators
 ---------------------------------------------------------------------
+
+--- >>> :info QC.Args
+-- type Args :: *
+-- data Args
+--   = Args {replay :: Maybe (QCGen, Int),
+--           maxSuccess :: Int,
+--           maxDiscardRatio :: Int,
+--           maxSize :: Int,
+--           chatty :: Bool,
+--           maxShrinks :: Int}
+--   	-- Defined in ‘Test.QuickCheck.Test’
+-- instance Read Args -- Defined in ‘Test.QuickCheck.Test’
+-- instance Show Args -- Defined in ‘Test.QuickCheck.Test’
+
 
 -- We have several controls for term generation:
 -- The number of variables in scope
