@@ -18,7 +18,6 @@ module Tutorial.Named.PP where
 import Prettyprinter (Doc, (<+>))
 import Prettyprinter qualified as PP
 import Control.Monad.Reader ( MonadReader(local), asks )
-import Text.Show.Unicode
 
 import Tutorial.Named.Syntax
 
@@ -28,7 +27,7 @@ import Text.Parsec (ParseError,
 
 -- | Pretty-print on a single line (using 'PP.group' to collapse line breaks)
 oneline :: Display DispState a => a -> String
-oneline x = ushow (PP.group (display x initState))
+oneline x = show (PP.group (display x initState))
 
 -- | Pretty-print with possible line breaks
 pp :: Display DispState a => a -> String

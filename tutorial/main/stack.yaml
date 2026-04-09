@@ -1,0 +1,6 @@
+resolver: lts-24.36
+allow-newer: true
+packages:
+- .
+- ../../rebound
+

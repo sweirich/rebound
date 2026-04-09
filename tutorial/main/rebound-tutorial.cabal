@@ -49,13 +49,10 @@ library
     , rebound >= 0.1.2
     , mtl
     , HUnit
-    , QuickCheck >= 2.14.3 && < 2.15
+    , QuickCheck >= 2.14.3 && < 2.19
     , containers
     , prettyprinter
     , parsec
-    , template-haskell
-    , syb
-    , unicode-show
   exposed-modules:
     , Tutorial.Named.Syntax
     , Tutorial.Named.PP
