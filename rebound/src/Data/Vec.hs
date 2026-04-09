@@ -52,6 +52,10 @@ vlength :: Vec n a -> SNat n
 vlength VNil = SZ
 vlength (_ ::: v) = withSNat (vlength v) SS
 
+-- | Find the index of the first element of the vector that satisfies the predicate
+findIndex :: (a -> Bool) -> Vec n a -> Maybe (Fin n)
+findIndex f VNil = Nothing
+findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
 
 -- >>> all (\x -> x > 3) (4 ::: 5 ::: VNil)
 -- True
