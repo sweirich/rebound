@@ -9,20 +9,19 @@
 
 ## Overview and Goals
 
-How do we know that our evaluator is correct? We could write a bunch of unit
-tests, but it is more fun to use property-based testing, with Haskell's
-Quickcheck library (QC). With this approach, we define *properties* of our
-definitions, and then use Quickcheck test those properties extensively with
-randomly generated values.
+How do we know that the code that we have written so far is correct? We could
+write a bunch of unit tests, but it is more fun to use property-based testing,
+with Haskell's Quickcheck library (QC). With this approach, we define
+*properties* of our definitions, and then use Quickcheck test those properties
+extensively with randomly generated values.
 
-However, to use Quickcheck we need to generate *well-scoped*
-terms.
+In this lecture, we will talk about how to generate random well-scoped (and
+well-typed) terms and use them to test the parser/pretty printer and evaluator
+that we defined in the previous lecture.
 
-- demonstrate the use of Quickcheck for property-based testing
+## 1. Quick check properties for parsing and pretty printing.
 
-## 3. Quick check properties 
-
-We can connect parsing and generation — via a chain of
+Re call that we can connect parsing and generation — via a chain of
 transformations:
 
 ```
@@ -35,7 +34,7 @@ Tm Z    ────────►  N.Tm   ──────────►  E
 Tm Z    ────────►  N.Tm   ──────────►  String  ──────────► Either ParseError N.Tm  ──────────►  Either ScopeCheckError (Tm Z)
 ```
 
-Two QuickCheck properties verify that our transformations are correct
+Two QuickCheck properties (`defined in Tutorial.Scoped.ScopeCheck`) verify that our transformations are correct:
 
 ```haskell
 -- inject then project recovers the original term
@@ -44,15 +43,21 @@ prop_project_round_trip i =
     projectTm (injectTm i) == Right i
 
 -- pretty-print then parse recovers the named term
+
+-- | Pretty-printing a term and parsing it back yields the original named term.
 prop_parse_round_trip :: S.Tm Z -> Bool
 prop_parse_round_trip i =
-    N.parseTm (show (N.test (injectTm i))) == Right (injectTm i)
+   parse (pp i) == Right i
 ```
 
-However, to run QuickCheck properties we need a way to generate random `S.Tm Z`
-values!  QuickCheck provides two central abstractions for property-based testing:
+However, to run QuickCheck properties we need a way to generate random closed
+values!  
 
-- **`Gen a`** — a probability distribution over values of type `a`.
+## Quickcheck crash course
+
+QuickCheck provides two central abstractions for property-based testing:
+
+- **`Gen a`** — a type for generators of values of type `a`.
   Combinators like `QC.sized`, `QC.oneof`, and `QC.elements`, and the 
   monad operations build generators compositionally.
 
@@ -66,49 +71,58 @@ values!  QuickCheck provides two central abstractions for property-based testing
       shrink _  = []   -- default: no shrinking
   ```
 
-  QuickCheck uses `arbitrary` to generate test inputs and `shrink` to
-  reduce a failing case to a smaller one. 
+QuickCheck uses `arbitrary` to generate test inputs and `shrink` to
+reduce a failing case to a smaller one. 
 
 
-The goal of this section is to implement  `Gen (S.Tm n)` — a generator
-that only ever produces well-scoped de Bruijn terms, so that every
-randomly generated term is a legitimate input to our properties.
-
-The key idea is to carry the *scope* — the number of variables currently
-in scope — as a runtime parameter for the generator.  When the generator recurses under a
-binder it increments the scope, making the newly bound variable available.
-
-
-
-
-## 4. A well-scoped generator for pure lambda calculus terms
+## 2. A well-scoped generator for pure lambda calculus terms
 
 Let's start with a simple well-scoped generator that targets only pure lambda
 calculus terms (`Lam`, `App`, `Var`).  It is a good warm-up before tackling
 the full language.
 
+Therefore we want to implement `Gen (S.Tm n)` — a generator that only ever
+produces well-scoped de Bruijn terms, so that every randomly generated term is
+a legitimate input to our properties.
+
+The key idea is to carry the *scope* — the number of variables currently in
+scope — as an implicit runtime parameter for the generator.  When the
+generator recurses under a binder it increments the scope, making the newly
+bound variable available.
+
+The `Fin.universe` operation enumerates all indices from `0` to `n-1`. Then 
+the `QC.elements` operation picks a random one. However, this only makese sense
+if there is at least one free variable in scope. If `n` is zero, then we don't 
+have any variables to pick from. Therefore, we just return the smallest 
+closed term.
+
+```haskell
+-- At small size generate either a variable or "\x.x" depending on scope
+genBase :: forall n. SNat n -> Gen (Tm n) 
+genBase SZ = return tmId
+genBase SS = QC.elements (map Var Fin.universe)
+```
+
 ```haskell
 genScopedPureLC :: forall n. SNatI n => QC.Gen (Tm n)
-genScopedPureLC = QC.sized (go snat)
-  where
-    go :: forall n. SNat n -> Int -> QC.Gen (Tm n)
-    go n sz | sz <= 1 = genBase n
-    go n sz =
-        let
-          gen1 = bind1 @Tm <$> genLocalName <*> go (next n) (sz - 1)
-          gen  = go n (sz `div` 2)
-        in
-          QC.oneof [genBase n, Lam <$> gen1, App <$> gen <*> gen]
+genScopedPureLC = QC.sized go
+    where
+      go :: forall n. SNatI n => Int -> QC.Gen (Tm n)
+      go sz | sz <= 1 = genBase snat
+      go sz = 
+         let
+           -- generate a random name and increment the number of free variables
+           gen1 = bind <$> genLocalName <*> go (sz - 1)
 
-    genBase :: forall n. SNat n -> Gen (Tm n)
-    genBase SZ = return tmId
-    genBase SS = Var <$> QC.elements Fin.universe
+           -- recursive calls for App divide size by two
+           gen  = go (sz `div` 2)
+         in 
+         QC.oneof [genBase snat, Lam <$> gen1, App <$> gen <*> gen ]
 ```
 
 The generator is parameterized by the number of free variables in scope `n ::
 Nat`, which is a *type*-level natural number.  To use this number at runtime
-we need a *singleton*; the `SNatI n` constraint (explained below) provides
-one.
+we need a *singleton* provided by the `SNatI n`.
 
 The `go` function does the main work of generation. The first argument `n` is
 the number of variables in scope, the second is `sz`, a size budget. During
@@ -118,37 +132,15 @@ call converts the `SNatI n` constraint into an explicit `SNat n` value that
 `go` can inspect and pass to recursive calls.
 
 The local helper `go :: SNat n -> Int -> QC.Gen (Tm n)` carries both the
-scope witness and the size budget:
+scope witness and the size budget. When the size is larger than one,
+there are three choices for generation via `QC.oneof`:
 
-- **Base case** (`sz <= 1`): delegate to `genBase`, which either returns
-  `tmId` (the identity function `λx.x`, the smallest closed term) when the
-  scope is empty (`SZ`), or picks a random variable from the scope (`SS`).
-  Falling back to `tmId` rather than failing ensures the generator always
-  produces a *closed* term when `n = Z`.
-
-- **Recursive case**: three choices via `QC.oneof`:
-  - `genBase n` — a variable or `tmId` (same as before, but available at any size)
-  - `Lam <$> gen1` — wrap a binder; `gen1` generates the body in scope `S n`
-    by calling `go (next n) (sz - 1)`.  The budget decreases by 1 (not halved)
+- `genBase n` — a variable or `tmId` (same as before, but available at any size)
+- `Lam <$> gen1` — wrap a binder; `gen1` generates the body in scope `S n`
+    by calling `go (sz - 1)`.  The budget decreases by 1 (not halved)
     because a lambda chain `λx.λy.λz.…` is a linear sequence, not a tree.
-  - `App <$> gen <*> gen` — apply two sub-terms, each in the *same* scope `n`
-    but with budget `sz `div` 2` so that both branches together stay within budget.
-
-- **Binders increment the scope**: `gen1` calls `go (next n) …`, where `next ::
-  SNat n -> SNat (S n)` adds one to the runtime scope witness.  Inside the
-  body of a `Lam`, the new variable `FZ` is automatically available because
-  `Fin.universe` for `S n` includes `FZ`.
-
-### Enumerating variables
-
-Given `SNatI n`, we can list every valid variable in scope `n`:
-
-```haskell
-Fin.universe :: SNatI n => [Fin n]
-```
-
-For `n = S (S (S Z))` this gives `[FZ, FS FZ, FS (FS FZ)]` — all three
-variables in scope.
+- `App <$> gen <*> gen` — apply two sub-terms, each in the *same* scope `n`
+   but with budget `sz ``div`` 2` so that both branches together stay within budget.
 
 Binders also need names for pretty-printing.  QuickCheck draws them from a
 small pool:
@@ -163,30 +155,25 @@ binders). However, this is not a problem:`injectTm` freshens names when
 the same name is already in scope.  Correctness is unaffected because
 `LocalName` equality ignores the stored string.
 
-### Seeing the round trip in action
+## 3. Seeing the round trip in action
 
 With this generator we can run our tests:
 
 ```
+ghci> import Tutorial.Scoped.ScopeCheck
+ghci> import Tutorial.Scoped.Gen
+ghci> import Test.QuickCheck
 ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_project_round_trip)
 +++ OK, passed 100 tests.
 ghci> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_parse_round_trip)
 +++ OK, passed 100 tests.
 ```
 
-We can inspect a single randomly generated term end-to-end:
+The `forAllShrinkShow` instructs quickcheck which scoped generator, scoped shrinker, and 
+pretty printer to use when testing.
 
-```
-ghci> t <- generate (genScopedPureLC :: Gen (S.Tm Z))
-ghci> putStrLn (N.pp (injectTm t))
-λ x1. case x1 of | Inj0 y2 -> (λ z3. z3) y2 | Inj1 w4 -> ()
-ghci> projectTm (injectTm t) == Right t
-True
-```
-
-The pretty-printer uses the `LocalName` values stored in the binders to
-produce readable output.  The round-trip property confirms that
-scope-checking the named term recovers exactly the original de Bruijn term.
+The round-trip properties confirm that scope-checking the named term recovers
+exactly the original de Bruijn term.
 
 ## 4. Testing `eval` 
 

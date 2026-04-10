@@ -22,6 +22,7 @@ module Tutorial.Scoped.ScopeCheck (
   -- * pretty printer for scoped representation
   pp,
   ppWith,
+  ppPat,
   -- * parser for scoped representation
   Error(..),
   parse,
@@ -236,6 +237,10 @@ pp = N.pp . injectTm
 -- | Pretty-print an open term: requires names for the free variables
 ppWith :: Vec n String -> S.Tm n -> String
 ppWith e t = N.pp (injectTmWith e t)
+
+
+ppPat :: S.Pat m -> String
+ppPat p = N.pp (fst (injectPat p VNil))
 
 ------------------------------------------------------------------------
 -- * Type conversions

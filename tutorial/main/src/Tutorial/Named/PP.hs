@@ -193,11 +193,14 @@ instance Display DispState Tm where
            where (ys,e') = gatherBinders e
     display (Pair []) = pure $ PP.pretty "()"
     display (Pair es) = multiple "," es
-    display (Inj 0 (Pair [])) = pure (PP.pretty "False")
-    display (Inj 1 (Pair [])) = pure (PP.pretty "True")
     display (Inj i e) = do
-        s <- withPrec (levelApp + 1) (display e)
-        parens 0 (PP.pretty "inj" <> PP.pretty i <+> s)
+      useSugar <- asks sugar
+      case (i,e) of 
+        (0, Pair []) | useSugar -> pure (PP.pretty "False")
+        (1, Pair []) | useSugar -> pure (PP.pretty "True")
+        (_,_) -> do
+          s <- withPrec (levelApp + 1) (display e)
+          parens 0 (PP.pretty "inj" <> PP.pretty i <+> s)
 
     
     display (App e1 e2) = do
