@@ -14,9 +14,7 @@ The translation is defined by the following equations, where @[[e]] k@ means
 [[()]]                       k = k ()
 [[(e1, e2)]]                 k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 [[inj i e]]                  k = [[e]]  (λx. k (inj i x))
-[[case e of () -> b]]        k = [[e]]  (λz. case z of () -> [[b]] k)
-[[case e of (x,y) → b]]      k = [[e]]  (λz. case z of (x,y) → [[b]] k)
-[[case e of {inj i → b_i}]]  k = [[e]]  (λz. case z of {inj i → [[b_i]] k})
+[[case e of p_i -> b_i]]     k = [[e]]  (λz. case z of p_i -> [[b_i]] k)
 @
 
 The top-level entry point uses the identity continuation @λx. x@. We can also 
@@ -26,6 +24,7 @@ module Tutorial.Scoped.CPS where
 
 import Test.QuickCheck
 import Tutorial.Scoped.Syntax
+import qualified Rebound.Bind.Pat as Pat
 import Data.Vec ( (!) )
 import Tutorial.Scoped.Gen
 import Tutorial.Scoped.Eval
@@ -57,7 +56,7 @@ cpsK e = cpsExp zeroE e (Var FZ)
 ------------------------------------------------------------------------
 
 wk :: Env Tm n (S n)
-wk = shift1E 
+wk = shift1E
 
 -- [[ \x.x ]] k == k (\x.\k'. k' x)
 -- [[ \.0 ]] k == k (\ \ . 0 1)
@@ -82,17 +81,6 @@ cpsExp r (App e1 e2) k =
                             (App (App (Var (FS FZ)) (Var FZ)) k'))))))
         where k' :: Tm (S (S m))
               k' = applyE (wk .>> wk) k
--- [[case e of () -> b]] k = [[e]] (λz. case z of () -> [[b]] k)
-cpsExp r (MatchUnit e1 e2) k = 
-    cpsExp r e1 (Lam (bind1 (LocalName "z") (MatchUnit (Var FZ) (cpsExp r' e2 k'))))
-       where r' :: Env Tm n (S m)
-             r' = r .>> wk
-             k' :: Tm (S m)
-             k' = applyE wk k
-
-
-
-
 
 -- [[(e1, e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 cpsExp r (Pair t1 t2) k =
@@ -102,28 +90,22 @@ cpsExp r (Pair t1 t2) k =
       where 
         r'  = r .>> wk
         k'' = applyE (wk .>> wk) k
--- [[case e of (x,y) → b]]      k = [[e]]  (λz. case z of (x,y) → [[b]] k)
-cpsExp r (MatchPair e1 b) k = 
-    cpsExp r e1 (Lam (bind1 (LocalName "v1")
-      (MatchPair (Var FZ) (bind2 x1 x2 
-        (cpsExp (up (up (r .>> wk))) (getBody2 b) k'''))))) 
-        where
-            names = getLocalName2 b
-            x1 = names ! FZ
-            x2 = names ! FS FZ
-            k''' = applyE (wk .>> wk .>> wk) k
-cpsExp r (Inj i e) k = 
+cpsExp r (Inj i e) k =
     cpsExp r e (Lam (bind1 (LocalName "v")
-       (App k' (Inj i (Var FZ))))) 
+       (App k' (Inj i (Var FZ)))))
        where k' = applyE wk k
-cpsExp r (MatchSum e0 e1 e2) k = 
-    cpsExp r e0 (Lam (bind1 (LocalName "v")
-       (MatchSum (Var FZ)
-           (bind1 (getLocalName e1)
-                  (cpsExp (up (skip r)) (getBody e1) k''))
-           (bind1 (getLocalName e2)
-                  (cpsExp (up (skip r)) (getBody e2) k'')))))
-    where k'' = applyE (wk .>> wk) k
+-- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
+cpsExp r (Match e brs) k =
+    cpsExp r e (Lam (bind1 (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
+    where
+        r' = r .>> wk
+        k' = applyE wk k
+        cpsBranch :: Branch n -> Branch (S m)
+        cpsBranch (Branch b) =
+            let pat   = Pat.getPat b
+                sz    = size pat
+                body' = cpsExp (upN sz r') (Pat.getBody b) (applyE @Tm (shiftNE sz) k')
+            in Branch (Pat.bind pat body')
 
 ------------------------------------------------------------------------
 -- * Properties
@@ -368,34 +350,22 @@ cpsExpOpt r (App t1 t2) k =
        where
          r'  = r .>> wk
          k'' = applyE (wk .>> wk) k
-cpsExpOpt r (MatchPair e1 b) k = 
-    cpsExpOpt r e1 (Meta (bind1 (LocalName "v")
-      (MatchPair (Var FZ) (bind2 x1 x2 
-        (cpsExpOpt (up (up (r .>> wk))) (getBody2 b) k'''))))) 
-        where
-            names = getLocalName2 b
-            x1 = names ! FZ
-            x2 = names ! FS FZ
-            k''' = applyE (wk .>> wk .>> wk) k
-cpsExpOpt r (Inj i e) k = 
+cpsExpOpt r (Inj i e) k =
     cpsExpOpt r e (Meta (bind1 (LocalName "v")
-       (applyCont k' (Inj i (Var FZ))))) 
+       (applyCont k' (Inj i (Var FZ)))))
        where k' = applyE wk k
-cpsExpOpt r (MatchUnit e1 e2) k = 
-    cpsExpOpt r e1 (Meta (bind1 (LocalName "v")
-       (MatchUnit (Var FZ) 
-          (cpsExpOpt r' e2 k'))))
+-- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
+cpsExpOpt r (Match e brs) k =
+    cpsExpOpt r e (Meta (bind1 (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
         r' = r .>> wk
         k' = applyE wk k
-cpsExpOpt r (MatchSum e0 e1 e2) k = 
-    cpsExpOpt r e0 (Meta (bind1 (LocalName "v")
-       (MatchSum (Var FZ)
-           (bind1 (getLocalName e1)
-                  (cpsExpOpt (up (skip r)) (getBody e1) k''))
-           (bind1 (getLocalName e2)
-                  (cpsExpOpt (up (skip r)) (getBody e2) k'')))))
-    where k'' = applyE (wk .>> wk) k
+        cpsBranch :: Branch n -> Branch (S m)
+        cpsBranch (Branch b) =
+            let pat   = Pat.getPat b
+                sz    = size pat
+                body' = cpsExpOpt (upN sz r') (Pat.getBody b) (applyE @Tm (shiftNE sz) k')
+            in Branch (Pat.bind pat body')
     
 ------------------------------------------------------------------------
 -- * Properties of Optimized CPS translation

@@ -32,11 +32,9 @@ module Tutorial.Scoped.ScopeCheck (
   -- * Round-trip properties
   prop_project_round_trip,
   prop_parse_round_trip,
-  testAll,
-  -- * QuickCheck helpers
-  forAll0,
-  forAll1,
-  forAll2,
+  -- * Unit tests
+  unitTests,
+  runUnitTests,
   -- * pretty printer for scoped representation
   pp,
   ppWith,
@@ -47,17 +45,21 @@ module Tutorial.Scoped.ScopeCheck (
 ) where
 
 import Test.QuickCheck
+import Test.HUnit (Test(..), (~:), (~=?), runTestTT, Counts)
 
 import Data.Fin
 import Data.SNat
-import Data.Vec (Vec(..), (!))
+import Data.Vec (Vec(..), (!)) 
+import qualified Data.Vec as Vec
 import qualified Rebound as Rebound
 
 import qualified Tutorial.Named.Syntax as N
 import qualified Tutorial.Named.PP as N
 import qualified Tutorial.Named.Parser as N
 import qualified Tutorial.Scoped.Syntax as S
-import Tutorial.Scoped.Gen 
+import qualified Rebound.Bind.Pat as Pat
+import Data.Type.Equality ((:~:)(Refl))
+
 import Text.Parsec ( ParseError )
 
 -- | Find the index of the first element that satisfies the given predicate
@@ -290,8 +292,10 @@ projectTy = to where
 freshen :: String -> Vec n String -> String
 freshen s vs
     | not (inVec s vs) = s
-    | otherwise        = 
-        head [ s ++ show i | i <- [0 :: Int ..], not (inVec (s ++ show i) vs) ]
+    | otherwise        = go (0 :: Int)
+  where
+    go i | not (inVec (s ++ show i) vs) = s ++ show i
+         | otherwise                    = go (i + 1)
 
 inVec s vs = any (== s) vs
 
@@ -306,29 +310,46 @@ injectTmWith vs (S.App e1 e2) = N.App (injectTmWith vs e1) (injectTmWith vs e2)
 injectTmWith vs (S.Unit)      = N.Pair []
 injectTmWith vs (S.Pair e1 e2)= N.Pair [injectTmWith vs e1, injectTmWith vs e2]
 injectTmWith vs (S.Inj i e)   = N.Inj i (injectTmWith vs e)
--- MatchUnit: the body has no new binders
-injectTmWith vs (S.MatchUnit e1 e2) =
-    N.Case (injectTmWith vs e1) [(N.unitTm, injectTmWith vs e2)]
--- MatchPair: two new variables are introduced; extend the context twice
-injectTmWith vs (S.MatchPair e1 e2) =
-    N.Case (injectTmWith vs e1) [(N.Pair [N.Var s1, N.Var s2], injectTmWith vs' e2')]
-    where s1    = freshen (show (names ! FZ)) vs
-          s2    = freshen (show (names ! FS FZ)) (s1 ::: vs)
-          names = S.getLocalName2 e2
-          e2'   = S.getBody2 e2
-          vs'   = s2 ::: s1 ::: vs
--- MatchSum: each branch introduces one new variable
-injectTmWith vs (S.MatchSum e e1 e2) =
-    N.Case (injectTmWith vs e)
-        [ (N.Inj 0 (N.Var s1), injectTmWith (s1 ::: vs) (S.getBody1 e1))
-        , (N.Inj 1 (N.Var s2), injectTmWith (s2 ::: vs) (S.getBody1 e2)) ]
-    where s1 = freshen (show (S.getLocalName e1)) vs
-          s2 = freshen (show (S.getLocalName e2)) vs
+injectTmWith vs (S.Match e brs) =
+    N.Case (injectTmWith vs e) (map (injectBranch vs) brs)
 
 -- | Convert a closed well-scoped term to a named term.
 -- Variable names are taken from the 'S.LocalName' hints stored in binders.
 injectTm :: S.Tm Z -> N.Tm
 injectTm = injectTmWith VNil
+
+-- | Convert a scoped branch to a named (pattern, body) pair.
+injectBranch :: Vec n String -> S.Branch n -> (N.Tm, N.Tm)
+injectBranch vs (S.Branch b) =
+    let (npat, vs') = injectPat (Pat.getPat b) vs
+    in (npat, injectTmWith vs' (Pat.getBody b))
+
+-- | Convert a scoped pattern to a named pattern, extending the name context
+-- with fresh names for each bound variable.
+injectPat :: forall m n. S.Pat m -> Vec n String -> (N.Tm, Vec (m + n) String)
+injectPat (S.PVar ln) vs =
+    let s = freshen (show ln) vs
+    in (N.Var s, s ::: vs)
+injectPat S.PUnit vs = (N.Pair [], vs)
+injectPat (S.PPair (p1 :: S.Pat m1) (p2 :: S.Pat m2)) (vs :: Vec n String) =
+    -- PPair p1 p2 :: Pat (m2 + m1); p2's vars are innermost (lower body indices).
+    -- Process p1 first so its names sit deeper, then prepend p2's names on top.
+    let (np1, vs1) = injectPat p1 vs
+        (np2, vs2) = injectPat p2 vs1
+    in case axiomAssoc @m2 @m1 @n of
+         Refl -> (N.Pair [np1, np2], vs2)
+injectPat (S.PInj i p) vs =
+    let (np, vs') = injectPat p vs
+    in (N.Inj i np, vs')
+
+
+
+-- | Convert a named term to a closed well-scoped term.
+-- Returns @Left err@ if the named term contains free variables or uses
+-- syntactic forms not supported by the simple language (e.g. n-ary patterns).
+projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
+projectTm = projectTmWith VNil
+
 
 -- | Convert a named term to a well-scoped term in scope @n@, given an
 -- association list mapping in-scope variable names to their de Bruijn
@@ -358,31 +379,39 @@ projectTmWith vs (N.Pair [e1,e2]) =
 projectTmWith vs (N.Inj i e1)
     | i == 0 || i == 1 = S.Inj i <$> projectTmWith vs e1
     | otherwise        = Left (UnsupportedInjection i)
--- case e of { () -> e' }  maps to MatchUnit
-projectTmWith vs (N.Case e [(N.Pair [], e1)]) =
-    S.MatchUnit <$> projectTmWith vs e <*> projectTmWith vs e1
--- case e of { (v1, v2) -> e' }  maps to MatchPair
--- v2 is innermost (FZ), v1 is next (FS FZ)
-projectTmWith vs (N.Case e [(N.Pair [N.Var v1, N.Var v2], e1)]) = do
+projectTmWith vs (N.Case e brs) = do
     a' <- projectTmWith vs e
-    b' <- projectTmWith (v2 ::: v1 ::: vs) e1
-    return (S.MatchPair a' (S.bind2 (S.LocalName v1) (S.LocalName v2) b'))
--- case e of { Inj0 v1 -> e1 ; Inj1 v2 -> e2 }  maps to MatchSum
-projectTmWith vs (N.Case e [(N.Inj 0 (N.Var v1), e1), (N.Inj 1 (N.Var v2), e2)]) = do
-    a'  <- projectTmWith vs e
-    b1' <- projectTmWith (v1 ::: vs) e1
-    b2' <- projectTmWith (v2 ::: vs) e2
-    return (S.MatchSum a' (S.bind1 (S.LocalName v1) b1')
-                          (S.bind1 (S.LocalName v2) b2'))
--- Any other form is not supported
+    brs' <- mapM (projectBranchWith vs) brs
+    return (S.Match a' brs')
 projectTmWith vs t = Left (UnsupportedForm t)
 
--- | Convert a named term to a closed well-scoped term.
--- Returns @Left err@ if the named term contains free variables or uses
--- syntactic forms not supported by the simple language (e.g. n-ary patterns).
-projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
-projectTm = projectTmWith VNil
+-- | A projected pattern, binding an arbitrary number of names
+-- The names are also listed in the length-indexed vector
+data PatNames where
+    PatNames :: S.Pat m -> Vec m String -> PatNames
 
+projectPat :: N.Tm -> Either ScopeCheckError PatNames
+projectPat (N.Var x) = return (PatNames (S.PVar (S.LocalName x)) (x ::: VNil))
+projectPat (N.Inj i t) | i == 0 || i == 1 = do
+    pn <- projectPat t 
+    case pn of 
+        PatNames p vs -> return (PatNames (S.PInj i p) vs)
+projectPat (N.Pair [t1, t2]) = do
+    p1 <- projectPat t1
+    p2 <- projectPat t2
+    case (p1,p2) of 
+        (PatNames p1 vs1, PatNames p2 vs2) -> 
+            return (PatNames (S.PPair p1 p2) (vs2 Vec.++ vs1))
+projectPat (N.Pair []) = return (PatNames S.PUnit VNil)
+projectPat t = Left (UnsupportedForm t)
+
+projectBranchWith :: Vec n String -> (N.Tm,N.Tm) -> Either ScopeCheckError (S.Branch n)
+projectBranchWith vs (t1, t2) = do
+    pn <- projectPat t1
+    case pn of 
+        PatNames pat vs' -> do
+            e <- projectTmWith (vs' Vec.++ vs) t2
+            return (S.Branch (Pat.bind pat e))
 
 ------------------------------------------------------------------------
 -- * Round-trip properties
@@ -396,30 +425,72 @@ prop_project_round_trip i =
 
 -- | Pretty-printing a term and parsing it back yields the original named term.
 prop_parse_round_trip :: S.Tm Z -> Bool
-prop_parse_round_trip i = 
+prop_parse_round_trip i =
    parse (pp i) == Right i
 
 ------------------------------------------------------------------------
--- * Utilities for testing
+-- * Unit tests
 ------------------------------------------------------------------------
 
--- | Test a property on a closed term 
-forAll0 :: Testable a => Constraint -> Language -> (S.Tm Z -> a) -> Property
-forAll0 c l = forAllShrinkShow (genTm c l) (shrinkTm c) pp
+-- | Run all unit tests for this module.
+runUnitTests :: IO ()
+runUnitTests = runTestTT unitTests >>= print
 
--- | Test a property on a term with a single free variable "x" 
-forAll1 :: Testable a => Constraint -> Language -> (S.Tm (S Z) -> a) -> Property
-forAll1 c l = forAllShrinkShow (genTm c l) (shrinkTm c) (ppWith ("x" ::: VNil))
+-- | All unit tests for this module.
+unitTests :: Test
+unitTests = TestList
+    [ freshenTests
+    , parseTests
+    , ppTests
+    , tyTests
+    ]
 
--- | Test a property on a term with two free variables "x" and "y"
-forAll2 :: Testable a => Constraint -> Language -> (S.Tm (S (S Z)) -> a) -> Property
-forAll2 c l = forAllShrinkShow (genTm c l) (shrinkTm c) (ppWith ("x" ::: "y" ::: VNil))
+-- freshen
 
--- | Run all QuickCheck properties in this module.
-testAll :: IO ()
-testAll = do
-    let args = stdArgs { maxSuccess = 1000 }
-    putStrLn "prop_project_round_trip:" 
-    quickCheckWith args (forAll0 Scoped Full prop_project_round_trip)
-    putStrLn "prop_parse_round_trip:"   
-    quickCheckWith args (forAll0 Scoped Full prop_parse_round_trip)
+freshenTests :: Test
+freshenTests = "freshen" ~: TestList
+    [ "no conflict"        ~: freshen "x" VNil              ~=? "x"
+    , "one conflict"       ~: freshen "x" ("x" ::: VNil)    ~=? "x0"
+    , "skip x0"           ~: freshen "x" ("x" ::: "x0" ::: VNil) ~=? "x1"
+    , "no conflict other"  ~: freshen "x" ("y" ::: VNil)    ~=? "x"
+    ]
+
+-- parse and pp (concrete cases)
+
+parseTests :: Test
+parseTests = "parse" ~: TestList
+    [ "identity fn"    ~: parse "λ x. x"       ~=? 
+        Right S.ex_id
+    , "const fn"       ~: parse "λ x. λ y. x"  ~=? 
+        Right S.ex_const
+    , "shadowing"      ~: parse "λ x. λ x. x"  ~=? 
+        Right (S.Lam (S.bind (S.LocalName "x") (S.Lam (S.bind (S.LocalName "x") (S.Var FZ)))))
+    , "application"    ~: parse "λ f. λ x. f x" ~=? 
+        Right (S.Lam (S.bind (S.LocalName "f") (S.Lam (S.bind (S.LocalName "x") 
+            (S.App (S.Var f1) (S.Var f0))))))
+    , "unbound var"    ~: parse "λ x. y" ~=? Left (ScopeError (UnboundVariable "y"))
+    ]
+
+
+ppTests :: Test
+ppTests = "parse" ~: TestList
+    [ "identity fn"    ~: pp S.ex_id ~=? "\\ x. x"
+    , "const fn"       ~: pp S.ex_const ~=? "\\ x y. x"  
+    , "shadowing"      ~: 
+        pp (S.Lam (S.bind (S.LocalName "x") (S.Lam (S.bind (S.LocalName "x") (S.Var FZ)))))
+        ~=? "\\ x x0. x0"
+    , "application"    ~: 
+        pp (S.Lam (S.bind (S.LocalName "f") (S.Lam (S.bind (S.LocalName "x") 
+            (S.App (S.Var f1) (S.Var f0)))))) 
+        ~=? "\\ f x. f x"
+    ]
+
+-- injectTy / projectTy round trips
+
+tyTests :: Test
+tyTests = "injectTy/projectTy" ~: TestList
+    [ "One"     ~: projectTy (injectTy S.One)                  ~=? Just S.One
+    , "arrow"   ~: projectTy (injectTy (S.One S.:-> S.One))    ~=? Just (S.One S.:-> S.One)
+    , "product" ~: projectTy (injectTy (S.One S.:* S.One))     ~=? Just (S.One S.:* S.One)
+    , "sum"     ~: projectTy (injectTy (S.One S.:+ S.One))     ~=? Just (S.One S.:+ S.One)
+    ]

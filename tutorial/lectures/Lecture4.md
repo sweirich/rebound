@@ -1,535 +1,411 @@
-# Lecture 4: Efficient Implementation — Delayed and Defunctionalized Substitutions
+# Lecture 3: CPS Conversion
 
-Lectures 1–3 built a correct implementation of well-scoped de Bruijn terms,
-showed how to convert between named and scoped representations, and used the
-machinery to implement CPS conversion.  All of this worked using the `rebound`
-library, but so far we have treated it as a black box.  This lecture opens the
-box.
+## Modules referenced in this lecture
 
-The focus is efficiency.  We will see:
+- [Tutorial.Scoped.CPS](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/CPS.hs)
 
-1. **Why naive traversal is expensive** — every `applyE` call traverses
-   the entire term.
-2. **Delayed substitutions at binders** — store a pending substitution
-   *inside* the `Bind` wrapper instead of applying it immediately.
-3. **Defunctionalized environments** — represent substitutions as data
-   rather than functions so that compositions can be simplified by
-   smart constructor rules.
-4. **The `applyOpt` shortcut** — detect the identity environment and
-   bail out before touching the term.
-5. **How it all fits together** — what `getBody`, `instantiate1`, and
-   `applyE` actually do in the library.
 
----
+## Overview and Goals
 
-## 1. The Problem: Traversal Cost for Substitutions
+Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
+issues that occur when working with them in an implementation. In this lecture, we start to see 
+some of the payoff for working with this sort of representation: we can work with and reason about 
+open code. 
 
-Recall the hand-written substitution from `Scratch.hs`:
+As an extended example, we will use a nontrivial *term-to-term transformation*: called the
+continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as a compiler intermediate language and for the implementation of cooperative multithreading. If you haven't seen it before, you should learn more about it.
 
-```haskell
-type Env m n = Fin m -> Tm n
-
-applyE :: Env m n -> Tm m -> Tm n
-applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (up env) b))
-applyE env (App f a)       = App (applyE env f) (applyE env a)
--- ...
-
-up :: Env m n -> Env (S m) (S n)
-up env = Var FZ .: (applyE shift . env)
-```
-
-Every call to `applyE` traverses the entire term, recursing into every
-sub-term.  Crucially, `up` is called *once per binder encountered during
-traversal*, and each `up` itself calls `applyE shift` on every term in the
-range of `env`.
-
-Consider a deeply-nested expression: normalizing it requires many rounds of
-substitution, and each round descends through all the binders above the
-redex.  In the worst case — reducing a sequence of `n` beta redexes in a
-term of depth `d` — the naive strategy costs O(n × d) traversals.
-
-There is a classical solution, known since at least Abadi, Cardelli, Curien,
-and Lévy's *Explicit Substitutions* (1991): **delay** the
-substitution in the term instead of applying it immediately.
-
-In that calculus, substitutions can be stored anywhere in the term. But here, we would
-like to hide the delayed substitution from users. Therefore, we will only store substitutions in the
-binder type.
-
-### Measuring the cost
-
-The paper accompanying the `rebound` library benchmarked several
-implementations of full normalization on a standard stress test.  Here are
-representative timings:
-
-| Implementation | Strategy | Time (nf) |
-|---|---|---|
-| `SubstV` | Naive eager substitution (à la `Scratch.hs`) | 3330 ms |
-| `BindV` | Delayed substitution inside `Bind` | 0.767 ms |
-
-The delayed-substitution approach (`BindV`) is significantly faster than
-the naive one.  The remaining sections explain how the library achieves this.
+For our purposes, CPS is a good case study because it changes the binding
+structure of its input — each function gains an extra argument.  Therefore,
+when implementing this operation, we need to work in a changing scope -- the
+scope of the input term is not necessarily the same as the scope of the
+output. Because we are working with de Bruijn indices, we need to be careful
+what scope we are in, and the types help us with that.  At the same time, when
+we go to test our implementation, to make sure that it has the desired
+properties, we don't need to worry about variable names; we are naturally
+working with terms up to alpha-equivalence.
 
 ---
 
-## 2. From Naive to Delayed: The `Bind` Type
+## 1. What is CPS?
 
-In `Scratch.hs`, `Bind1` is a transparent wrapper around the body:
+In direct style, a function returns its result to its caller implicitly.  In
+*continuation-passing style* every function receives an extra argument — the
+*continuation* — which represents "what to do with the result".  Instead of
+returning, a function calls its continuation.
 
-```haskell
--- Scratch.hs (naive)
-data Bind1 n = Bind1 (Tm (S n))
+Here's a simple version of the CPS transformation, defined inductively on
+terms.  We write `[[e]] k` to mean "translate `e`, passing results to
+continuation `k`". An informal definition of this operation is below:
+
+```
+[[x]]          k = k x
+[[λx. e]]      k = k (λx. λk'. [[e]] k')
+[[e1 e2]]      k = [[e1]] (λx. [[e2]] (λy. x y k))
+[[()]]         k = k ()
+[[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
+[[inj i e]]    k = [[e]] (λx. k (inj i x))
+[[case e of () -> b]]      k = [[e]] (λz. case z of () -> [[b]] k)
+[[case e of (x,y) → b]]    k = [[e]] (λz. case z of (x,y) → [[b]] k)
+[[case e of inj i → b_i]]  k = [[e]] (λz. case z of inj i → [[b_i]] k)
 ```
 
-There is nowhere to store a pending substitution.  When we cross a binder
-with `applyE`, we must call `up env` and descend into the body immediately.
+The top-level call typically uses the identity continuation: `cps e = [[e]] (λx. x)`.
 
-The library's `Bind` type adds a slot for the name hint *and* a slot for the
-pending substitution.  The tutorial's `Bind1 Tm Tm n` (from `Rebound.Bind.Local`)
-is a synonym for:
-
-```haskell
-type Bind1 v c n = Pat.Bind v c LocalName n
-```
-
-The general `Bind` type (from `Rebound.Bind.Pat`) is:
-
-```haskell
-data Bind v c (pat :: Type) (n :: Nat) where
-    Bind :: pat -> Env v m n -> c (Size pat + m) -> Bind v c pat n
-```
-
-There are three fields:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `pat` | `pat` | pattern metadata (e.g. `LocalName`, `Vec N2 LocalName`) |
-| `Env v m n` | pending substitution | maps old scope `m` to current scope `n` |
-| `c (Size pat + m)` | body | term under the binder, still in old scope `m` |
-
-### Why does `Bind` carry a pattern?
-
-The body of a binder lives in a larger scope than the surrounding term: the
-scope grows by `Size pat` — the number of variables the pattern introduces.
-For a simple lambda, `pat = LocalName` and `Size LocalName = 1`, so the body
-lives in scope `S m`.  For a pair match, `pat = Vec N2 LocalName` and
-`Size (Vec N2 LocalName) = 2`, so the body lives in scope `S (S m)`.
-
-Beyond the scope bookkeeping, the pattern carries *metadata*.  For the
-tutorial's `LocalName` pattern, that metadata is the user-visible name hint
-used for pretty-printing:
-
-```haskell
--- Lam stores the name "x" alongside the body
-ex_id :: Tm Z
-ex_id = Lam (bind1 (LocalName "x") (Var FZ))
-
--- retrieve the name hint later
-getLocalName :: Bind1 v c n -> LocalName
-```
-
-The `Eq` instance for `LocalName` ignores the name (`x == y = True`), so
-two binders with different names but identical bodies are considered equal.
-The de Bruijn indices do the real comparison; `LocalName` is only for display.
-
-### Constructing a binder
-
-In `Rebound.Bind.Local`, `bind1` takes the name as an explicit argument:
-
-```haskell
-bind1 :: Subst v c => LocalName -> c (S n) -> Bind1 v c n
-bind1 name body = Pat.bind name body    -- stores: Bind name idE body
-```
-
-The internal `Pat.bind` sets the pending environment to `idE`:
-
-```haskell
-bind :: Sized pat => Subst v c => pat -> c (Size pat + n) -> Bind v c pat n
-bind pat = Bind pat idE
-```
-
-No traversal.  The body is stored as-is with a zero-cost identity substitution.
-
-### Applying a substitution to a binder — O(1)
-
-Here is the key insight.  The `Subst` instance for `Bind` is:
-
-```haskell
-instance SubstVar v => Subst v (Bind v c p) where
-    applyE env1 (Bind p env2 body) = Bind p (env2 .>> env1) body
-```
-
-Applying environment `env1` to a binder does **not** touch the body at all.
-It simply *composes* the new environment with the existing one.  The body is
-untouched.
-
-Compare this to the naive version:
-
-```haskell
--- Scratch.hs (naive)
-applyE env (Lam (Bind1 b)) = Lam (Bind1 (applyE (up env) b))
---                                        ^^^^^^^^^^^^^^^^^^^^
---                                        traverses the entire body eagerly
-```
-
-With the library:
-
-```haskell
--- rebound (delayed)
-applyE env (Lam bnd) = Lam (applyE env bnd)
---                        = Lam (Bind p (old_env .>> env) body)
---                                       ^^^^^^^^^^^^^^^^
---                                       just a composition — no traversal
-```
-
-Every time a substitution passes over a binder, the cost is O(1).  The
-traversal of the body is *deferred* until the body is actually needed.
-
-### Forcing the body — `getBody`
-
-The suspended substitution is applied on demand by `getBody`:
-
-```haskell
-getBody :: Subst v c => Bind v c pat n -> c (Size pat + n)
-getBody (Bind (pat :: pat) (env :: Env v m n) body) =
-    applyOpt applyE (upN (size pat) env) body
-```
-
-`upN k env` lifts `env` under `k` binders: the `k` locally-bound variables
-map to themselves, and all outer variables are shifted appropriately.
-`applyOpt` is described in §5.
+Note that this is a call-by-value translation: the evaluation of the result of the translation
+should occur in the same order as the call-by-value evaluation.
 
 ---
 
-## 3. Defunctionalized Environments
+## 2. Implementation using `rebound` (pure lambda calculus)
 
-In `Scratch.hs` we used a function type:
+Let's look at how we could translate the definition above to executable Haskell code. 
+The difficult part of this translation is right there near the top: when we translate a function, we need to introduce a new argument `k'` to pass in the "continuation" of the function.
 
-```haskell
-type Env m n = Fin m -> Tm n
+```
+[[ \x.e ]] k = k (λx. λk'. [[e]] k')
 ```
 
-Shifting a substitution over a binder is O(1), but only if environment
-*composition* — the `.>>` operator — is itself cheap.  With a plain function,
-we can compose:
+That means that when we call the translation recursively, `e` might be in some scope `S n`, because 
+it is inside the body of a lambda expression. However, the result is going to be in some larger scope
+that binds not just `x` but also `k'`. What that means is that the *variable* case is also challenging. Even though with names above we say `[[x]]k` produces `k x`, the scope of the first `x`
+may be different from the scope of the second `x`, so they may be different indices.
 
-```haskell
-compE f g x = applyE f (g x)   -- O(1) to build, but no simplification possible
+Therefore, we will parameterize our cps conversion function with an additional
+argument---a substitution that talks about the scope change. If the input term
+is in some scope `n` and the output scope is `m`, then we need an argument of
+type `Env Tm n m` to go between the two.  Furthermore, the continuation
+argument should be in the *output* scope (`m`) because it needs to be applied
+to the result.
+
+For the variable case, we apply this renaming to the variable, to get its version in the 
+output scope. We can then use it to construct the application of the continuation to this 
+new variable.
+
+```
+cpsExp :: Env Tm n m -> Tm n -> Tm m -> Tm m
+cpsExp r (Var x) k = App k (applyEnv r x)
 ```
 
-But there is no way to inspect a function to detect special cases like the
-identity or consecutive shifts.  In particular, we cannot detect that
-`shift .>> shift` should simplify to a single shift-by-two.
+For the lambda case, we will also apply the continuation `k` to a value. 
+But this value is the function of two parameters. The first parameter is the same 
+one as the original function, the second is a new parameter. We then call the 
+cps conversion function recursively on the body of the lambda expression, using 
+this new parameter (variable 0 in the output scope) as the continuation.
 
-The `rebound` library uses a **defunctionalized** representation — substitutions
-are *data*, not functions, so they can be inspected, simplified, and fused:
+```
+cpsExp r (Lam b) k = App k 
+    (Lam (bind1 (getLocalName b) 
+      (Lam (bind1 (LocalName "k")
+          (cpsExp r' (getBody b) (Var FZ))))))
+    where 
+        r' = up r .>> wk
+```
+What is the renaming for this recursive call? We need to translate this renaming 
+to be used under the body of the lambda expression, with `up r`, but then we also 
+need to account for the second binder for the continuation. This binder only
+affects the output scope, as opposed to the first that is part of both. Therefore,
+we need to shift the variables in the output, which we do by post-composing
+the substitution with `wk`.
 
-```haskell
-data Env (a :: Nat -> Type) (n :: Nat) (m :: Nat) where
-    Zero  :: Env a Z n                            -- empty domain (scope Z)
-    Inc   :: SNat m -> Env a n (m + n)            -- shift every index up by m
-    Cons  :: a m -> Env a n m -> Env a (S n) m    -- FZ ↦ head, rest to tail
-    (:<>) :: Env a m n -> Env a n p -> Env a m p  -- sequential composition
+For applications, our original definition is 
+
+```
+[[e1 e2]]k = [[e1]] (λv. [[e2]] (λw. v w k))
 ```
 
+Note that in this case, our output scope introduces two binders: `v` and `w`, naming 
+the values of `e1` and `e2`. Because `v` is a function, we can apply it to both 
+its argument `w` and the current continuation `k`.
 
-Each constructor represents a specific, commonly-occurring substitution:
+With CPS translation, we need to create the two lambda bindings, for `v` and `w` above, and 
+use them for the continuations as we translate `t1` and `t2`.  In the body of the 
+second continuation `v w k`, `v` is at index 1, `w` is at index 0, and k needs to 
+be shifted two steps.
 
-| Constructor | Naive function equivalent | Meaning |
-|---|---|---|
-| `Zero` | `\x -> case x of {}` | empty domain (scope 0) |
-| `Inc m` | `\x -> Var (shiftN m x)` | shift every variable up by `m` |
-| `Cons t r` | `\case FZ -> t; FS x -> r x` | extend: `FZ ↦ t`, rest via `r` |
-| `e1 :<> e2` | `\x -> applyE e2 (applyEnv e1 x)` | sequential composition |
-
-### `Fin.shiftN` — adding to an index
-
-`Fin.shiftN m x` adds the natural number `m` to the de Bruijn index `x`,
-producing a larger index in `Fin (m + n)`:
-
-```haskell
-Fin.shiftN :: SNat m -> Fin n -> Fin (m + n)
+```
+cpsExp r (App t1 t2) k = 
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
+          (App (App (Var (FS FZ)) (Var FZ)) k''))))))  
+       where
+         r'  = r .>> wk
+         k'' = applyE (wk .>> wk) k
 ```
 
-For example, `shiftN s2 FZ = FS (FS FZ)` — index 0 becomes index 2.  The
-`Inc m` constructor uses this: `applyEnv (Inc m) x = var (shiftN m x)`.
-
-### `shiftNE` — building an `Inc` environment
-
-`shiftNE m` is the smart constructor that wraps `m` in `Inc`:
-
-```haskell
-shiftNE :: SubstVar v => SNat m -> Env v n (m + n)
-shiftNE = Inc
-```
-
-Two standard aliases are built on top:
-
-```haskell
-idE     :: SubstVar v => Env v n n
-idE     = shiftNE s0        -- Inc SZ  (shift by zero = identity)
-
-shift1E :: SubstVar v => Env v n (S n)
-shift1E = shiftNE s1        -- Inc s1  (shift by one)
-```
-
-Because `idE = Inc SZ` is *data*, `applyOpt` (§5 below) can inspect it without
-calling into `applyE`.
-
-### Interpreting the environment
-
-The application function `applyEnv` interprets these constructors:
-
-```haskell
-applyEnv :: SubstVar a => Env a n m -> Fin n -> a m
-applyEnv Zero        x      = Fin.absurd x
-applyEnv (Inc m)     x      = var (Fin.shiftN m x)
-applyEnv (Cons t _)  FZ     = t
-applyEnv (Cons _ r)  (FS x) = applyEnv r x
-applyEnv (s1 :<> s2) x      = applyE s2 (applyEnv s1 x)
-```
-
-### Why not a plain function?
-
-The naive function-based environment (`type Env m n = Fin m -> Tm n`) is
-perfectly correct, but cannot be inspected.  You cannot tell whether a function
-is the identity, and you cannot fuse two consecutive shifts.  The paper measures
-this directly:
-
-| Environment | Time (nf) |
-|---|---|
-| `Functional` (plain function) | 126 ms |
-| `Lazy` (defunctionalized + smart composition) | 0.84 ms |
-
-The defunctionalized representation is significantly faster for full
-normalization — almost entirely because it enables the smart composition rules
-described next.
+Note that this function is structurally recursive on the input. 
 
 ---
 
-## 4. Smart Composition — `comp` and `.>>`
+## 3. What does it mean for CPS conversion to be correct?
 
-The function `comp` (exposed as `.>>`) builds a composed environment, but
-applies a battery of algebraic simplifications before resorting to `(:<>)`:
+If we implement the cps conversion algorithm, we want to know that we did so correctly. Intuitively, this means that when we apply this transformation to some code, the output should produce the same result when we run it.
 
-```haskell
-(.>>) :: Subst v v => Env v p n -> Env v n m -> Env v p m
-(.>>) = comp
+But what does that mean formally?  We can start with this simple statement, which asserts
+that we get the same result from evaluation for any term and its cps conversion:
 
-comp :: SubstVar a => Env a m n -> Env a n p -> Env a m p
-comp Zero       _               = Zero
-comp (Inc k1)   (Inc k2)        = Inc (k1 + k2)       -- merge two shifts
-comp (Inc SZ)   s               = s                    -- shift by 0 = identity
-comp s          (Inc SZ)        = s
-comp (Inc (SS p)) (Cons _ r)    = comp (Inc p) r      -- skip the Cons head
-comp (s1 :<> s2) s3             = comp s1 (comp s2 s3) -- re-associate right
-comp (Cons t s1) s2             = Cons (applyE s2 t) (comp s1 s2)
-comp s1          s2             = s1 :<> s2            -- fallback
+```
+prop_same_result e = eval e == eval (cps e)
 ```
 
-Key cases:
+But already we have a problem. This property is not true.
+```
+ghci> qc prop_cps_result
+*** Failed! Falsified (after 1 test):  
+Lam (bind1 (Var 0))
+e          = (λ x. x)
+cps_e      = (λ x. x) (λ x k. k x)
+```
 
-- **Shift fusion**: `Inc k1 .>> Inc k2 = Inc (k1+k2)` — two consecutive
-  shifts merge into one `Inc` without any traversal.
-- **Identity elimination**: `Inc SZ .>> s = s` and `s .>> Inc SZ = s` —
-  shifting by zero is the identity; discard it.
-- **`Inc` and `Cons`**: `Inc (S p) .>> Cons _ r = Inc p .>> r` — a shift
-  past the head of a `Cons` consumes the head and continues into the tail.
+The result of evaluation after CPS translating the identity function is `(λ x k. k x)`. 
+And this is not the same as `(λ x. x)`. We can fix this by only looking at the cases 
+where the result of evaluation is "first-order", i.e. a value that does not contain 
+a function.
 
-These rules mean that common patterns like repeatedly weakening a term never
-accumulate deep `(:<>)` chains; they collapse to a single `Inc` at composition
-time.
+This solves the issue, but we need to throw away a lot of cases.
 
-### How much does smart composition contribute?
+```
+ghci> qc prop_cps_result_firstorder
++++ OK, passed 1000 tests; 1373 discarded.
+```
 
-The paper isolates each optimization with ablation benchmarks:
+### Simulation properties (big-step)
 
-| Variant | What is missing | Time (nf) |
-|---|---|---|
-| `Lazy` (full) | — | 0.84 ms |
-| `LazyA` | no `applyOpt` identity shortcut | 0.844 ms |
-| `LazyB` | no smart composition | 2.36 ms |
+We can do better by thinking about simulation properties.
 
-Removing smart composition (`LazyB`) gives a **~2.8× slowdown** on full
-normalization.  Removing just the identity shortcut (`LazyA`) is almost
-negligible — smart composition already handles most identity eliminations at
-construction time.  The paper concludes: *"much of the speed up comes from
-'smart composition'."*
+Another way to state the correctness of CPS conversion is through a simulation relation:
+if the source language evaluates a term to a result, then the CPS-converted language
+evaluates the converted term to an equivalent result. We might draw a picture like this:
+
+```
+           e  =>  v 
+           |      |
+        cps e => cps v
+```
+
+In other words, we want to show that if `e` evaluates to `v`, then `cps e` evaluates to `cps v`.
+```
+prop_cps_eval_simulates :: Property
+prop_cps_eval_simulates = forAll0 Typed Full $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       eval (cps e) == (cps <$> eval e)
+```
+
+Note that this property is not true. 
+
+```
+ghci> qc prop_cps_eval_simulates
+*** Failed! Falsified (after 1 test):  
+Unit
+e          = ()
+cps_e      = (λ x. x) ()
+```
+In this counterexample, we have a value that translates to a non-value.
+
+We can (partially) repair it by keeping our "top-level" continuation abstract. Instead of 
+using the identity function, if we use a distinguished variable, then that solves the 
+problem for `()`.
+
+However, this solution will not scale to the full language.
 
 ---
 
-## 5. The Identity Shortcut — `applyOpt`
+## 4. Optimized CPS conversion
 
-Even with smart composition, we still need to call `applyE` when forcing a
-binder.  But a very common case is that the environment *is already the
-identity* — we are just retrieving a freshly-constructed body with no pending
-substitution.  `applyOpt` detects this before touching the term:
+A naive implementation would represent every continuation `k` as a `Tm g`
+(an object-level lambda) and apply it with `App k v`.  But this introduces
+*administrative redexes* — beta redexes of the form `(λx. body) v` that were
+not present in the source and must be reduced away.
+
+
+### Introducing Meta continuations
+
+To avoid this we distinguish two cases:
 
 ```haskell
-applyOpt :: (Env v n m -> c n -> c m) -> (Env v n m -> c n -> c m)
-applyOpt f (Inc SZ) x = x
-applyOpt f r        x = f r x
+data Cont (g :: Nat) where
+    Obj  :: Tm g          -> Cont g   -- object-level term (usual)
+    Meta :: Bind1 Tm Tm g -> Cont g   -- meta-level binder (new!)
 ```
 
-When the environment is `Inc SZ` (= `idE`, shift by zero), the term is
-returned untouched.  This short-circuit fires routinely: every
-`bind1 name body` stores `idE` as the initial environment, so if no
-substitution has been composed in since construction, `getBody` returns the
-body with zero traversal.
+- **`Obj t`** — the continuation is an existing object-level term `t`.  To
+  apply it we emit a genuine `App`: `applyCont (Obj t) v = App t v`.
+
+- **`Meta k`** — the continuation is represented as a Haskell-level binder.
+  To apply it we substitute directly, *without* introducing a lambda in the
+  output: `applyCont (Meta k) v = instantiate1 k v`.
+
+```haskell
+applyCont :: Cont g -> Tm g -> Tm g
+applyCont (Obj  o) v = App o v
+applyCont (Meta k) v = instantiate1 k v
+```
+
+When a `Meta` continuation must appear as an object-level term (e.g. as the
+extra argument passed to a CPS'd function), we reify it:
+
+```haskell
+reifyCont :: Cont g -> Tm g
+reifyCont (Obj  o) = o
+reifyCont (Meta k) = Lam k
+```
+
+`Meta` continuations are used for all the intermediate continuations built
+*inside* `cpsExp`; the top-level call uses `Meta (bind1 "x" (Var FZ))` (the
+identity function `λx. x` as a meta-continuation).
+
+Since `Cont g` contains `Tm g` values, it needs a `Subst` instance so that
+the library can apply environments to it:
+
+```haskell
+instance Subst Tm Cont where
+```
+
+The instance body is empty because the library's default generic machinery 
+handles it.
+
+### Updating the translation to use Meta continuations
+
+To update the translation, we change the type of the continuation 
+argument to be a `Cont m` instead of a raw term. 
+
+```
+cpsOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
+```
+
+The Haskell typechecker then 
+points out all of the places where we need to change uses of `App` 
+to `applyCont`, and insert a use of `reifyCont` when we use 
+a `Cont m` as a `Tm m`.  Whenever we construct a continuation using 
+`Lam`, we have a choice: we can either wrap it with `Obj` or change 
+the `Lam` to `Meta` .... but using the `Meta` continuation is more 
+efficient.
 
 ---
 
-## 6. The `up` and `upN` Operations
+## 5. Historical Notes
 
-When a substitution must be applied *under* binders — as happens inside
-`getBody` — we need to *lift* it past the bound variables.  The `up` function
-corresponds to `up` from `Scratch.hs`:
+**The CPS transformation.** The idea of compiling programs into continuation-passing style has two early origins. Fischer ("Lambda Calculus Schemata", 1972; published in revised form 1993) and Plotkin ("Call-by-Name, Call-by-Value and the Lambda-Calculus", 1975) independently described the CPS translation as a way to explain evaluation order. Plotkin's paper is particularly influential: it proved that call-by-value and call-by-name evaluation correspond to two different CPS translations, and it coined the term *administrative redex* for the spurious beta-redexes introduced by a naive translation.
 
-```haskell
-up :: SubstVar v => Env v m n -> Env v (S m) (S n)
-up (Inc SZ) = Inc SZ
-up e        = var Fin.f0 .: comp e (Inc s1)
-```
+**CPS as a compiler intermediate language.** Steele's "Rabbit: A Compiler for Scheme" (1978) first used CPS as a compiler intermediate representation, making continuations explicit so that tail calls, closures, and control effects could all be handled uniformly. This idea was further developed in the SML/NJ compiler (Appel, "Compiling with Continuations", 1992) and influenced many subsequent compiler designs.
 
-The special case recognises the identity and returns it immediately — lifting
-the identity is still the identity.  The general case is the familiar
-`up`:
+**One-pass CPS and administrative redexes.** A naive CPS translation produces many administrative redexes. Eliminating them requires a separate reduction pass. Danvy and Filinski ("Representing Control: A Study of the CPS Transformation", 1992) showed how to produce administrative-redex-free output in a single pass by distinguishing *meta-level* continuations (Haskell functions) from *object-level* continuations (lambda terms in the target). The `Cont` datatype with `Meta` and `Obj` constructors in Section 4 directly implements this idea. 
 
-- `FZ` maps to `Var FZ` (the newly-bound variable stays at index 0).
-- Every other variable `x` maps to `env x`, then shifted up by one (`Inc s1`)
-  to make room for the new binder.
+**CPS and classical logic.** Griffin ("A Formulae-as-Types Notion of Control", 1990) observed that continuations correspond to classical logic under the Curry–Howard correspondence: the call/cc operator corresponds to the law of excluded middle. This connection was further developed by Parigot (λμ-calculus, 1992) and many others, giving a logical foundation for the computational behavior of control operators.
 
-`upN p env` lifts `env` under `p` binders by iterating this operation,
-producing an environment of type `Env v (p + m) (p + n)`.  `getBody` calls
-`upN (size pat) env` to bring `env` into scope before applying it to the body.
 
 ---
 
-## 7. Putting It All Together
+## 6. Exercises
 
-Let us trace what happens when the evaluator opens a lambda binder:
+**1. Tracing `cpsExp` by hand.** Work through the following calls step by step, writing down the output term produced at each recursive call.  Verify your answers in GHCi using `pp (cps e)`.
 
-```haskell
-eval (App m n) = do
-    mv <- eval m
-    nv <- eval n
-    case mv of
-        Lam b -> eval (instantiate1 b nv)
-        _     -> Nothing
-```
+**(a)** Trace `cpsExp idE Unit idTm`.
+- What rule applies?
+- What is the output term?
 
-`instantiate1 b nv` expands to:
+**(b)** Trace `cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm`:
+- When the rule for `Lam` calls `cpsExp r' (Var FZ) (Var FZ)` recursively, what is the environment `r'`?
+  - `r' = up idE .>> wk :: Env Tm (S Z) (S (S Z))`
+  - What does `r'` map `FZ` to?  (Hint: `up idE` is the identity on `Tm (S Z)`, then `.>> wk` shifts.)
+- What is the full output term?  Use `pp` to check your answer looks like `(λ x. x) (λ x. λ k. k x)`.
 
-```haskell
-instantiate1 b v1 = Pat.instantiate b (v1 .: zeroE)
-```
-
-which calls:
-
-```haskell
-instantiate b e =
-    unbindWith b
-        (\p r body -> applyOpt applyE (withSNat (size p) $ e .++ r) body)
-```
-
-Breaking this down step by step:
-
-1. **`unbindWith`** extracts the stored environment `r :: Env v m n` and the
-   body `body :: Tm (1 + m)` *without forcing the body*.
-
-2. **`e .++ r`** appends the instantiation environment `e = (nv .: zeroE)` to
-   the stored environment `r`, giving an environment of type `Env v (1 + m) n`
-   that maps:
-   - `FZ` → `nv` (the argument value)
-   - `FS x` → `applyEnv r x` (outer variables via the stored `r`)
-
-3. **`applyOpt applyE env body`** applies the combined environment to the body.
-   If `r` was `idE` (common when `b` was freshly created with `bind1`), the
-   combined environment simplifies to `nv .: idE`, and the full traversal
-   proceeds once.
-
-The important observation: *building the binder* (`Lam b`) was O(1), and
-*every substitution that passed over this binder* while evaluating the outer
-context was O(1).  The single traversal happens once, precisely when the binder
-is opened.
+**(c)** Trace `cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm`.
+The `App` case introduces two intermediate continuations.  Write down the complete output term and verify it matches `pp (cps (App (Lam ...) Unit))`.
 
 ---
 
-## 8. What You Get for Free — `Generic1`
-
-In `Tutorial.Scoped.Syntax`, the term type derives `Generic1`:
+**2. Scope arithmetic in the `App` case.**  The `App` case of `cpsExp` is:
 
 ```haskell
-data Tm (n :: Nat) where
-    Var   :: Fin n -> Tm n
-    Lam   :: Bind1 Tm Tm n -> Tm n
-    -- ...
-      deriving (Generic1, Eq, Show)
-
-instance SubstVar Tm where
-    var = Var
-
-instance Subst Tm Tm where
-    isVar (Var x) = Just (Refl, x)
-    isVar _       = Nothing
+cpsExp r (App t1 t2) k =
+    cpsExp r t1 (Lam (bind1 (LocalName "v")
+      (cpsExp r' t2 (Lam (bind1 (LocalName "w")
+          (App (App (Var (FS FZ)) (Var FZ)) k''))))))
+    where
+      r'  = r .>> wk
+      k'' = applyE (wk .>> wk) k
 ```
 
-The `Subst Tm Tm` instance has a default method body:
+Answer the following:
 
-```haskell
-applyE :: Env Tm m n -> Tm m -> Tm n
-applyE = gapplyE   -- dispatches through Generic1
-```
+**(a)** If the input scope is `n` and output scope is `m`, what is the output scope when translating `t2`?  The continuation for `t2` is a lambda we are *building*, so we are one binder deeper.
 
-`gapplyE` first calls `isVar`: if the term is a variable, it looks it up in
-the environment directly via `applyEnv env x` — the fast path.  Otherwise it
-calls the generic machinery to recurse over all fields, applying `applyE`
-recursively to each sub-term and the O(1) binder instance to each `Bind`.
+**(b)** In the body `App (App (Var (FS FZ)) (Var FZ)) k''`, what do `Var (FS FZ)` and `Var FZ` name?
 
-In contrast, `Scratch.hs` requires a hand-written `applyE` that explicitly
-dispatches on every constructor and manually calls `up` at each binder.
-With `rebound` you write `deriving Generic1` and two-line `SubstVar`/`Subst`
-instances, and the library handles everything else.
+**(c)** Why is `k` shifted by `wk .>> wk` to produce `k''`, but `r` is only shifted by a single `wk` to produce `r'`?  (Hint: `r` maps input variables to the output scope — how many new output binders have been crossed at each point?)
+
+**(d)** The `MatchPair` case shifts `k` by `wk .>> wk .>> wk`.  Why three shifts instead of two?
 
 ---
 
-## 9. Summary
+**3. Correctness properties — what fails and why.**
 
-| Technique | Where | What it does |
-|---|---|---|
-| Delayed substitution | `Bind v c pat n` | stores `Env v m n` in the binder; applying `applyE` is O(1) |
-| Pattern field | `LocalName` in `Bind` | carries name hints for pretty-printing; `Eq` ignores them |
-| Defunctionalized `Env` | `Rebound.Env.Lazy` | substitutions are data; enables smart composition |
-| Smart composition | `comp` / `.>>` | fuses shifts, drops identities, re-associates |
-| `applyOpt` | `Rebound.Env.Lazy` | skips traversal when the environment is the identity |
-| `upN` / `up` | `Rebound.Env` | lifts an environment under `p` binders; recognises identity |
-| `Generic1` | `Rebound.Generics` | derives `applyE` over all constructors automatically |
-| `isVar` shortcut | `Subst` class | fast path: `applyE env (Var x)` → `applyEnv env x` |
+**(a)** Run `qc prop_cps_result` in GHCi.  Record the counterexample.  Explain in one sentence why CPS-converting a function value does not preserve `eval`.
 
-The combination of these techniques means that:
+**(b)** Run `qc prop_cps_result_firstorder`.  This passes, but with a high discard rate.  Why are so many test cases discarded?
 
-- **Building** a binder (`bind1`, `Lam`) is O(1).
-- **Passing** a substitution over a binder (`applyE env (Lam b)`) is O(1).
-- **Opening** a binder (`getBody`, `instantiate1`) forces the accumulated
-  substitution in a single pass over the body.
-- **Identity environments** are detected and discarded without touching the
-  term.
-- **Consecutive shifts** are fused into a single `Inc` at composition time.
+**(c)** Run `qc prop_cps_eval_simulates`.  The counterexample involves `Unit`.  Explain why `()` is the simplest failing case: what does `cps ()` reduce to, and why is that not equal to `cps (eval ())`?
 
-These are the same optimizations found in mature normalizers and type-checkers;
-the `rebound` library packages them in a reusable, type-safe interface so that
-every new language implementation gets them for free.
+**(d)** Run `qc prop_cps_eval_simulates_open`.  This passes for the pure lambda calculus.  The property uses `cpsK` instead of `cps`.  Explain: why does replacing the identity-function continuation with a fresh variable `k` fix the `Unit` counterexample?
+
+**(e)** Change the generator in `prop_cps_eval_simulates_open` from `Typed PureLC` to `Typed Full` and run it.  Record the counterexample.  Which language construct causes it to fail, and why does the pure lambda calculus not have this problem?
 
 ---
 
-## 10. Historical Notes
+**4. Meta continuations — counting administrative redexes.**
 
-**Explicit substitutions.** The idea of making substitutions first-class objects that can be stored inside terms dates to Abadi, Cardelli, Curien, and Lévy, "Explicit Substitutions" (1991), which introduced the λσ-calculus. Their calculus allows substitutions to appear anywhere in a term, enabling lazy evaluation of substitutions. Storing the pending substitution *only at binders* (as `rebound` does) is a restricted form of this idea that hides the implementation detail from users of the binder type.
+**(a)** Evaluate the following in GHCi and compare the two outputs:
 
-**The λυ and σ families.** Several explicit-substitution calculi followed λσ, addressing properties such as confluence and strong normalization: λs (Kamareddine and Ríos, 1995), λυ (Lescanne, 1994), and the suspension calculus (Nadathur and Wilson, 1998). The smart composition rules in `comp` (Section 4) correspond to the reduction rules of these calculi applied at composition time rather than during term traversal.
+```haskell
+ghci> pp (cps    (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit))
+ghci> pp (cpsOpt (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit))
+```
 
-**Defunctionalized environments.** Representing environments as *data* rather than functions so that they can be inspected and simplified is an instance of *defunctionalization* (Reynolds, "Definitional Interpreters for Higher-Order Programming Languages", 1972). Applied to de Bruijn substitutions, this idea appears in implementations of proof assistants such as Agda's kernel.
+Count the number of beta-redexes (sub-terms of the form `(λ x. body) arg`) in each.  Which version has fewer?
 
-**Shift fusion.** The observation that consecutive weakenings can be merged (`Inc k1 .>> Inc k2 = Inc (k1+k2)`) is closely related to the use of *relative* (offset-based) de Bruijn shifts in some implementations, e.g., the suspension calculus mentioned above and the environments used in the Caml Light and OCaml bytecode interpreters.
+**(b)** For `cpsExpOpt r Unit (Meta (bind1 (LocalName "x") body))`, show that `applyCont k Unit` directly substitutes `Unit` into `body`, producing `body[Unit/x]` with no `(λ x. body) ()` redex.
 
-**The `rebound` library.** The specific combination of delayed substitutions, defunctionalized environments, smart composition, and GHC's `Generic1` machinery for deriving `applyE` automatically was described and benchmarked in the `rebound` paper (Weirich et al.). The benchmark results quoted in Sections 1 and 3 are taken from that paper.
+**(c)** In the `Lam` case of `cpsExpOpt`, the continuation passed to the recursive call is `Obj (Var FZ)` — not `Meta`.  Explain why `Meta` cannot be used here.  (Hint: `Var FZ` is a *runtime* variable for the caller-supplied continuation `k'`, not a compile-time binder we control.)
+
+**(d)** Run `qc prop_cpsOpt_result_firstorder` and `qc prop_cpsOpt_eval_simulates_open`.  Do both pass?  What do they tell you about the correctness of the optimised translation?
+
+---
+
+**5. Extending `cpsExp` with `let`.**  Assume `Let :: Tm n -> Bind1 Tm Tm n -> Tm n` has been added to `Tm` (Lecture 1, Exercise 3).  The CPS rule for `let` is:
+
+```
+[[let x = e in b]] k  =  [[e]] (λx. [[b]] k)
+```
+
+**(a)** Add a case to `cpsExp`:
+
+```haskell
+cpsExp r (Let e b) k =
+    cpsExp r e (Lam (bind1 (getLocalName b)
+        (cpsExp r' (getBody1 b) k')))
+    where
+      r' = up r .>> wk
+      k' = applyE wk k
+```
+
+Explain each component:
+- Why is `r'` the right environment for the body of `b`?
+- Why is `k` shifted by `wk` to produce `k'`?
+- How does this compare to the `Lam` case?
+
+**(b)** Add the corresponding case to `cpsExpOpt`, replacing the `Lam`-built continuation with a `Meta` continuation:
+
+```haskell
+cpsExpOpt r (Let e b) k =
+    cpsExpOpt r e (Meta (bind1 (getLocalName b)
+        (cpsExpOpt r' (getBody1 b) k')))
+    where
+      r' = up r .>> wk
+      k' = applyE wk k
+```
+
+What administrative redex does the `Meta` here avoid compared to `cpsExp`?
+
+**(c)** After adding both cases, run `qc prop_cps_result_firstorder` and verify it still passes.
