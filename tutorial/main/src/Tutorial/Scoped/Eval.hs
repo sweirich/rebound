@@ -6,11 +6,9 @@ Description : Evaluation for the scoped lambda calculus
 module Tutorial.Scoped.Eval where
 
 import Tutorial.Scoped.Syntax
-import qualified Rebound.Bind.Pat as Pat
 import Tutorial.Scoped.Gen
 import Test.QuickCheck
 import Tutorial.Scoped.ScopeCheck
-import Data.Fin
 
 -------------------------------------------------------------------
 -- Evaluator
@@ -60,11 +58,11 @@ patternMatch _ _ = Nothing
 findBranch :: Tm n -> [Branch n] -> Maybe (Tm n)
 findBranch _ [] = Nothing
 findBranch e (Branch b : rest) =
-    case patternMatch (Pat.getPat b) e of
-        Just r  -> Just (Pat.instantiate b r)
+    case patternMatch (getPat b) e of
+        Just r  -> Just (instantiate b r)
         Nothing -> findBranch e rest
 
--- | is a term a value?
+-- | determine whether a term is a value?
 -- Note: values are closed under substitution by values
 isVal :: Tm n -> Bool
 isVal (Var x) = True
@@ -266,10 +264,10 @@ prop_reduceStep e =
 normalize :: Tm n -> Maybe (Tm n)
 normalize (Var x)      = return (Var x)
 normalize (Lam b)      = do
-    let nm   = getLocalName b
-        body = getBody1 b
+    let nm   = getPat b
+        body = getBody b
     body' <- normalize body
-    return (Lam (bind1 nm body'))
+    return (Lam (bind nm body'))
 normalize Unit         = return Unit
 normalize (Pair e1 e2) = do
     v1 <- normalize e1
@@ -294,14 +292,14 @@ normalize (Match e brs) = do
   where
     normBranch :: Branch n -> Maybe (Branch n)
     normBranch (Branch b) = do
-            body' <- normalize (Pat.getBody b)
-            return (Branch (Pat.bind (Pat.getPat b) body'))
+            body' <- normalize (getBody b)
+            return (Branch (bind (getPat b) body'))
 
 -- | A term is in normal form when it contains no beta redexes anywhere,
 -- including inside lambda bodies and match branches.
 isNormal :: Tm n -> Bool
 isNormal (Var _)                  = True
-isNormal (Lam b)                  = isNormal (getBody1 b)
+isNormal (Lam b)                  = isNormal (getBody b)
 isNormal Unit                     = True
 isNormal (Pair e1 e2)             = isNormal e1 && isNormal e2
 isNormal (Inj _ e)                = isNormal e
@@ -309,7 +307,7 @@ isNormal (App (Lam _) a)          | isVal a  = False   -- CBV beta redex
 isNormal (App f a)                = isNormal f && isNormal a
 isNormal (Match e brs) = case findBranch e brs of
     Just _  -> False
-    Nothing -> isNormal e && all (\(Branch b) -> isNormal (Pat.getBody b)) brs
+    Nothing -> isNormal e && all (\(Branch b) -> isNormal (getBody b)) brs
 
 -- | normalize always produces a term in full normal form.
 prop_normalize_normal :: forall n. SNatI n => Tm n -> Property
@@ -359,13 +357,13 @@ prop_normalize_reduce t =
 -- identically by both 'reduce' and 'normalize'.
 noRedexUnderBinder :: Tm n -> Bool
 noRedexUnderBinder (Var _)            = True
-noRedexUnderBinder (Lam b)            = isNormal (getBody1 b)
+noRedexUnderBinder (Lam b)            = isNormal (getBody b)
 noRedexUnderBinder Unit               = True
 noRedexUnderBinder (Pair e1 e2)       = noRedexUnderBinder e1 && noRedexUnderBinder e2
 noRedexUnderBinder (Inj _ e)          = noRedexUnderBinder e
 noRedexUnderBinder (App f a)          = noRedexUnderBinder f && noRedexUnderBinder a
 noRedexUnderBinder (Match e brs) = noRedexUnderBinder e && 
-   all (\(Branch b) -> isNormal (Pat.getBody b)) brs
+   all (\(Branch b) -> isNormal (getBody b)) brs
 
 
 -------------------------------------------------------------------

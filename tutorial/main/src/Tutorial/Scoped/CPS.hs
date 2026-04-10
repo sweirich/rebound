@@ -38,7 +38,7 @@ import Tutorial.Scoped.ScopeCheck
 
 -- | Identity function  "\x.x"
 idTm :: Tm Z
-idTm = Lam (bind1 (LocalName "x") (Var FZ))
+idTm = Lam (bind (LocalName "x") (Var FZ))
 
 
 -- | Apply the CPS translation to a closed term, using the identity
@@ -68,35 +68,35 @@ cpsExp r (Var x) k = App k (applyEnv r x)
 cpsExp r Unit k    = App k Unit
 -- [[λx. e]] k = k (λx. λk'. [[e]] k')
 cpsExp r (Lam b) k = 
-    App k (Lam (bind1 (LocalName (name (getLocalName b))) 
-            (Lam (bind1 (LocalName "k") (cpsExp r' (getBody b) k')))))
+    App k (Lam (bind (LocalName (name (getPat b))) 
+            (Lam (bind (LocalName "k") (cpsExp r' (getBody b) k')))))
        where r' :: Env Tm (S n) (S (S m))
              r' = up r .>> wk 
              k' :: Tm (S (S m))
              k' = Var FZ
 -- [[e1 e2]] k = [[e1]] (λx. [[e2]] (λy. x y k))
 cpsExp r (App e1 e2) k = 
-    cpsExp r e1 (Lam (bind1 (LocalName "x") 
-                       (cpsExp (r .>> wk) e2 (Lam (bind1 (LocalName "y")
+    cpsExp r e1 (Lam (bind (LocalName "x") 
+                       (cpsExp (r .>> wk) e2 (Lam (bind (LocalName "y")
                             (App (App (Var (FS FZ)) (Var FZ)) k'))))))
         where k' :: Tm (S (S m))
               k' = applyE (wk .>> wk) k
 
 -- [[(e1, e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 cpsExp r (Pair t1 t2) k =
-    cpsExp r t1 (Lam (bind1 (LocalName "v")
-       (cpsExp (skip r) t2 (Lam (bind1 (LocalName "w")
+    cpsExp r t1 (Lam (bind (LocalName "v")
+       (cpsExp (skip r) t2 (Lam (bind (LocalName "w")
           (App k'' (Pair (Var (FS FZ)) (Var FZ))))))))
       where 
         r'  = r .>> wk
         k'' = applyE (wk .>> wk) k
 cpsExp r (Inj i e) k =
-    cpsExp r e (Lam (bind1 (LocalName "v")
+    cpsExp r e (Lam (bind (LocalName "v")
        (App k' (Inj i (Var FZ)))))
        where k' = applyE wk k
 -- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExp r (Match e brs) k =
-    cpsExp r e (Lam (bind1 (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
+    cpsExp r e (Lam (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
         r' = r .>> wk
         k' = applyE wk k
@@ -295,8 +295,8 @@ data Cont (n :: Nat) where
   -- | An object-level continuation: a term to be applied.
   Obj   :: Tm n          -> Cont n
   -- | A meta-level continuation: a binder to be instantiated.
-  Meta  :: Bind1 Tm Tm n -> Cont n
-    deriving (Generic1)
+  Meta  :: Bind1 n -> Cont n
+    
 
 -- | Apply a continuation to a value.
 applyCont :: Cont g -> Tm g -> Tm g
@@ -313,6 +313,8 @@ reifyCont (Meta k) = Lam k
 -- | Enables 'applyE' to apply substitution environments to 'Cont' values,
 -- which is needed when weakening continuations into larger scopes.
 instance Subst Tm Cont where
+    applyE r (Obj o) = Obj (applyE r o)
+    applyE r (Meta k) = Meta (applyE r k)
 
 ------------------------------------------------------------------------
 -- * Optimized CPS translation (One-pass meta/obj continuations)
@@ -331,12 +333,12 @@ cpsExpOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
 cpsExpOpt r (Var x) k = applyCont k (applyEnv r x)
 cpsExpOpt r Unit k    = applyCont k Unit
 cpsExpOpt r (Lam b) k = applyCont k $ 
-    Lam (bind1 (getLocalName b) 
-      (Lam (bind1 (LocalName "k")
+    Lam (bind (getPat b) 
+      (Lam (bind (LocalName "k")
           (cpsExpOpt (skip (up r)) (getBody b) (Obj (Var FZ))))))
 cpsExpOpt r (Pair t1 t2) k =
-    cpsExpOpt r t1 (Meta (bind1 (LocalName "v")
-       (cpsExpOpt r' t2 (Meta (bind1 (LocalName "w")
+    cpsExpOpt r t1 (Meta (bind (LocalName "v")
+       (cpsExpOpt r' t2 (Meta (bind (LocalName "w")
           (applyCont k'' (Pair (Var (FS FZ)) (Var FZ))))))))
       where 
         r' :: Env Tm n (S m)
@@ -344,19 +346,19 @@ cpsExpOpt r (Pair t1 t2) k =
         k'' :: Cont (S (S m))
         k'' = applyE (wk .>> wk) k
 cpsExpOpt r (App t1 t2) k = 
-    cpsExpOpt r t1 (Meta (bind1 (LocalName "v")
-      (cpsExpOpt r' t2 (Meta (bind1 (LocalName "w")
+    cpsExpOpt r t1 (Meta (bind (LocalName "v")
+      (cpsExpOpt r' t2 (Meta (bind (LocalName "w")
           (App (App (Var (FS FZ)) (Var FZ)) (reifyCont k'')))))))  
        where
          r'  = r .>> wk
          k'' = applyE (wk .>> wk) k
 cpsExpOpt r (Inj i e) k =
-    cpsExpOpt r e (Meta (bind1 (LocalName "v")
+    cpsExpOpt r e (Meta (bind (LocalName "v")
        (applyCont k' (Inj i (Var FZ)))))
        where k' = applyE wk k
 -- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExpOpt r (Match e brs) k =
-    cpsExpOpt r e (Meta (bind1 (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
+    cpsExpOpt r e (Meta (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
         r' = r .>> wk
         k' = applyE wk k

@@ -1,30 +1,14 @@
 {-|
 Module      : Scoped.ScopeCheck
-Description : Conversion between the scoped (de Bruijn) and named representations
-
-This module provides two pairs of conversion functions:
-
-* 'injectTy' / 'projectTy' — convert between the simple binary type language
-  (@S.Ty@) and the n-ary named type language (@N.Ty@).
-
-* 'injectTm' / 'projectTm' — convert between well-scoped de Bruijn terms
-  (@S.Tm n@) and unscoped named terms (@N.Tm@).
-
-The named representation is used for parsing and pretty-printing; the scoped
-representation is used for evaluation and transformation.  The two directions
-serve different purposes:
-
-* __project__ (named → scoped): can fail; used after parsing.
-* __inject__ (scoped → named): always succeeds; used for pretty-printing.
+Description : Parser and Pretty Printer for scoped terms
 
 -}
 module Tutorial.Scoped.ScopeCheck (
   -- * Scope-check errors
   ScopeCheckError(..),
-  -- * Type conversions
+  -- * Conversions to named version of AST
   injectTy,
   projectTy,
-  -- * Term conversions
   injectTmWith,
   injectTm,
   projectTmWith,
@@ -57,7 +41,7 @@ import qualified Tutorial.Named.Syntax as N
 import qualified Tutorial.Named.PP as N
 import qualified Tutorial.Named.Parser as N
 import qualified Tutorial.Scoped.Syntax as S
-import qualified Rebound.Bind.Pat as Pat
+
 import Data.Type.Equality ((:~:)(Refl))
 
 import Text.Parsec ( ParseError )
@@ -304,8 +288,8 @@ inVec s vs = any (== s) vs
 -- the innermost variable; names are prepended at each binder site.
 injectTmWith :: Vec n String -> S.Tm n -> N.Tm
 injectTmWith vs (S.Var x)     = N.Var (vs ! x)
-injectTmWith vs (S.Lam t)     = N.Lam s (injectTmWith (s ::: vs) (S.getBody1 t))
-                                  where s = freshen (show (S.getLocalName t)) vs
+injectTmWith vs (S.Lam t)     = N.Lam s (injectTmWith (s ::: vs) (S.getBody t))
+                                  where s = freshen (show (S.getPat t)) vs
 injectTmWith vs (S.App e1 e2) = N.App (injectTmWith vs e1) (injectTmWith vs e2)
 injectTmWith vs (S.Unit)      = N.Pair []
 injectTmWith vs (S.Pair e1 e2)= N.Pair [injectTmWith vs e1, injectTmWith vs e2]
@@ -321,8 +305,8 @@ injectTm = injectTmWith VNil
 -- | Convert a scoped branch to a named (pattern, body) pair.
 injectBranch :: Vec n String -> S.Branch n -> (N.Tm, N.Tm)
 injectBranch vs (S.Branch b) =
-    let (npat, vs') = injectPat (Pat.getPat b) vs
-    in (npat, injectTmWith vs' (Pat.getBody b))
+    let (npat, vs') = injectPat (S.getPat b) vs
+    in (npat, injectTmWith vs' (S.getBody b))
 
 -- | Convert a scoped pattern to a named pattern, extending the name context
 -- with fresh names for each bound variable.
@@ -365,7 +349,7 @@ projectTmWith vs (N.Var v) = case findIndex (==v) vs of
 -- λ-abstraction: extend the scope with the bound name
 projectTmWith vs (N.Lam v b) = do
     b' <- projectTmWith (v ::: vs) b
-    return $ S.Lam (S.bind1 (S.LocalName v) b')
+    return $ S.Lam (S.bind (S.LocalName v) b')
 projectTmWith vs (N.App f a) = do
     f' <- projectTmWith vs f
     a' <- projectTmWith vs a
@@ -411,7 +395,7 @@ projectBranchWith vs (t1, t2) = do
     case pn of 
         PatNames pat vs' -> do
             e <- projectTmWith (vs' Vec.++ vs) t2
-            return (S.Branch (Pat.bind pat e))
+            return (S.Branch (S.bind pat e))
 
 ------------------------------------------------------------------------
 -- * Round-trip properties

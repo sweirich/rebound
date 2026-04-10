@@ -48,8 +48,8 @@ ex1_result1 = projectTm (N.Lam "x" (N.Lam "y" (N.Var "x")))
 -- The expected de Bruijn term:
 --   λ. λ. 1          (x is one binder away)
 ex1_expected1 :: S.Tm Z
-ex1_expected1 = S.Lam (S.bind1 (S.LocalName "x")
-                  (S.Lam (S.bind1 (S.LocalName "y")
+ex1_expected1 = S.Lam (S.bind (S.LocalName "x")
+                  (S.Lam (S.bind (S.LocalName "y")
                     (S.Var (FS FZ)))))
 
 -- >>> ex1_expected1
@@ -158,9 +158,9 @@ ex1_result2_open = projectTmWith ("p" ::: VNil)
 
 test_alpha_equiv :: Bool
 test_alpha_equiv =
-    S.Lam (S.bind1 (S.LocalName "x") (S.Var FZ))
+    S.Lam (S.bind (S.LocalName "x") (S.Var FZ))
       ==
-    S.Lam (S.bind1 (S.LocalName "y") (S.Var FZ))
+    S.Lam (S.bind (S.LocalName "y") (S.Var FZ))
 
 -- >>> test_alpha_equiv
 -- True
@@ -169,8 +169,8 @@ test_alpha_equiv =
 --
 -- Consider the term with two nested binders sharing the name "x":
 ex3b_term :: S.Tm Z
-ex3b_term = S.Lam (S.bind1 (S.LocalName "x")
-              (S.Lam (S.bind1 (S.LocalName "x")
+ex3b_term = S.Lam (S.bind (S.LocalName "x")
+              (S.Lam (S.bind (S.LocalName "x")
                 (S.Var FZ))))
 -- λ x. λ x. x   (inner x)
 
@@ -299,5 +299,5 @@ weaken = applyE @Tm shift1E
 
 -- | Instantiate-shift round-trip: instantiating a weakened term is identity.
 prop_instantiate_weaken :: Tm Z -> Tm Z -> Bool
-prop_instantiate_weaken t u = instantiate1 (bind1 (LocalName "x") (weaken t)) u == t
+prop_instantiate_weaken t u = instantiate1 (bind (LocalName "x") (weaken t)) u == t
 

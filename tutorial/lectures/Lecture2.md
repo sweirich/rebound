@@ -10,18 +10,18 @@
 
 ## Overview and Goals
 
-In Lecture 1 we represented terms using de Bruijn indices and implemented an
-evaluator.
+In Lecture 1 we represented terms in a simple language using de Bruijn indices
+and implemented an evaluator.
 
-But what about more sophisticated languages, which might include, say, pattern
-matching?
+But will this work at scale, for more sophisticated languages, which might
+include, say, pattern matching?
 
 And, when working on a real implementation, we want to be able to parse and
-pretty-print our AST. While we won't cover parsing and pretty-printing in
-general in this tutorial, we do need to consider how well scoped terms
-interact with these operations. In particular, if a user writes their code
-with explicit names, we need to ensure that all names are in scope. Similarly,
-to print code nicely, we want to preserve the names that the user originally
+pretty-print our AST. While full parsing and pretty-printing is out of scope
+(heh) for this tutorial, we do want to consider how well scoped terms interact
+with these operations. In particular, if a user writes their code with
+explicit names, we need to ensure that all names are in scope. Similarly, to
+print code nicely, we want to preserve the names that the user originally
 wrote.
 
 The goals of this lecture are to:
@@ -31,20 +31,26 @@ The goals of this lecture are to:
 
 - demonstrate pattern binding and sophisticated use of the `rebound` library
 
-
 ## 1. Parsing and pretty-printing scoped syntax
 
-For simplicity, we  go through a named representation for parsing 
-and printing.  In other words, to create scoped syntaxt, we divide the 
-work into parsing raw strings into a representation that uses strings
-for variable names, and a separate *projection* function that performs
-scope checking. In this process, two sorts of failures could occur: 
-perhaps the string doesn't parse, or perhaps one of the variables is 
-out of scope.  This process also resolves *shadowing*, where the name of 
-one variable hides another. 
+The module `Tutorial.Scoped.ScopeCheck` provides a parser and pretty printer
+for well-scoped abstract syntax trees defined in `Tutorial.Scoped.Syntax` (and
+are similar to the AST from Lecture 1).
+
+However, so that we can only talk about scoping, these operations are broken up 
+into two steps, through the use of a parallel named AST.
+
+In other words, to parse, we divide the work into parsing raw strings into a
+representation that uses strings for variable names, and a separate
+*projection* function that performs scope checking and produces well-scoped
+syntax trees.
 
              parse                      project
     String ------------> Named Syntax --------------> Scoped Syntax 
+
+In this process, two sorts of failures could occur: perhaps the string doesn't
+parse, or perhaps one of the variables is out of scope.  This process also
+resolves *shadowing*, where the name of one variable hides another.
 
 The inverse of parsing is pretty printing. For clarity, as above we do 
 this in two stages. First we `inject` the scoped syntax into the named 
@@ -66,20 +72,20 @@ make up names, making sure that we always use new ones. However, that can lead
 to confusion---we'd like to keep any user-supplied names if possible. 
 
 Therefore, we use a simple type, called `LocalName` to remember such names for
-printing, while making sure that they do not interfere with alpha-equivalence.
+printing.
 
-When a user writes `λx. x` and we scope-check it, we produce
+When a user writes `\x. x` and we scope-check it, we produce:
 
 ```haskell
-S.Lam (S.bind1 (S.LocalName "x") (S.Var FZ))
+S.Lam (S.bind (S.LocalName "x") (S.Var FZ))
 ```
 
-The string `"x"` is stored inside the binder as a `LocalName`.  When later printed
-the printed output reads `λ x. x`.
+This way, the string `"x"` is stored inside the binder as a `LocalName`.  When
+later printed, the output reads `\ x. x`.
 
-### The `LocalName` type
 
-A local name is just a wrapper for a string. 
+A local name is just a wrapper for a string, but we want to make sure that the
+strings do not interfere with alpha-equivalence.
 
 ```haskell
 newtype LocalName = LocalName { name :: String }
@@ -103,25 +109,24 @@ t2 = S.Lam (S.bind (S.LocalName "y") (S.Var FZ))
 -- True
 ```
 
+### The `Pat.Bind` interface
 
-### The `Local.Bind` interface
+In `Tutorial.Scoped.Syntax`, we define the single binder type `Bind1 n` as
+`Pat.Bind Tm Tm LocalName n`, using a type defined in the `rebound` library.
+For convenience, we abbreviate this type as `Bind11`.
 
-`Bind Tm Tm n` is a type defined in `Rebound.Bind.Local`.  It is a
-specific instance of *pattern binding*: the pattern is a single local name,
-stored alongside the body. The abstract type enforces that you access the body
-only through the provided smart constructors and accessors, never by
-pattern-matching on the internal representation directly.
-
-`Bind Tm Tm n` is also an *abstract* type; the library provides smart
-constructors and accessors instead of exposing the data constructor:
+This example is a specific instance of *pattern binding*: the pattern is a
+single local name, stored alongside the body of the binder. The abstract type
+enforces access to the body only through smart constructors and accessors.
 
 | Function | Type | Description |
 |---|---|---|
-| `bind1` | `LocalName -> Tm (S n) -> Bind1 Tm Tm n` | package a body under a binder |
-| `getLocalName` | `Bind1 Tm Tm n -> LocalName` | retrieve the stored name |
-| `getBody1` | `Bind1 Tm Tm n -> Tm (S n)` | apply any delayed substitution and return the body |
-| `instantiate1` | `Bind1 Tm Tm n -> Tm n -> Tm n` | open the binder by substituting a term |
-| `unbindl1` | `Bind1 Tm Tm n -> (LocalName, Tm (S n))` | retrieve name and body together |
+| `bind` | `LocalName -> Tm (S n) -> Bind1 n` | package a body under a binder |
+| `getPat` | `Bind1 n -> LocalName` | retrieve the stored name |
+| `getBody` | `Bind1 n -> Tm (S n)` | access the body of the binder |
+| `instantiate1` | `Bind1 n -> Tm n -> Tm n` | open the binder by substituting a term |
+
+However, pattern binding is a general construct and these operations are more generic than the types listed in the table above.
 
 
 ## 3. General pattern binding
@@ -132,7 +137,7 @@ like to combine these into a single `Match` expression that allows nested
 patterns. This requires a pattern datatype and a way to bind the variables
 introduced by a pattern in the branch body.
 
-### The `Pat` datatype
+### The `Pat` and `Branch` datatypes
 
 ```haskell
 data Pat (m :: Nat) where
@@ -142,7 +147,7 @@ data Pat (m :: Nat) where
     PInj  :: Int -> Pat m -> Pat m
 ```
 
-The index `m` is the number of variables *bound* by the pattern, tracked at
+In the type `Pat m` index `m` is the number of variables *bound* by the pattern, tracked at
 the type level.  `PVar` binds one variable, `PUnit` binds none, and `PPair`
 binds the sum of its sub-pattern counts.  Note the order in the type of
 `PPair`: variables from the *right* sub-pattern (`m2`) are innermost
@@ -150,34 +155,49 @@ binds the sum of its sub-pattern counts.  Note the order in the type of
 `PInj` is a tag for injection patterns and passes the binding count through
 unchanged.
 
-### The `Branch` datatype and `Pat.Bind`
-
 ```haskell
 data Branch (n :: Nat) where
     Branch :: Pat.Bind Tm Tm (Pat m) n -> Branch n
 ```
 
-`Pat.Bind Tm Tm (Pat m) n` is the pattern-binding abstraction provided by
-`Rebound.Bind.Pat`.  It pairs a pattern of type `Pat m` with a body of type
+`Bind Tm Tm (Pat m) n` is the pattern-binding abstraction provided by
+`Rebound.Bind.Pat`.  For simplicity, we use the type abbreviation 
+`BindP m n` to stand for this type.
+
+This type pairs a pattern of type `Pat m` with a body of type
 `Tm (m + n)`, where the body's first `m` free variables are the ones the
 pattern binds.  The existential over `m` is hidden inside `Branch`, so
 callers do not need to know the pattern's arity statically.
 
-The key API for `Pat.Bind`:
+As above, we can use the same operations for working with pattern binders, but this 
+type the operations have the following type:
 
 | Function | Type | Description |
 |---|---|---|
-| `Pat.bind` | `Pat m -> Tm (m + n) -> Pat.Bind Tm Tm (Pat m) n` | construct a branch |
-| `Pat.getPat` | `Pat.Bind Tm Tm (Pat m) n -> Pat m` | extract the pattern |
-| `Pat.getBody` | `Pat.Bind Tm Tm (Pat m) n -> Tm (m + n)` | extract the body |
-| `Pat.instantiate` | `Pat.Bind Tm Tm (Pat m) n -> Env Tm m n -> Tm n` | open by substituting an environment |
+| `bind` | `Pat m -> Tm (m + n) -> BindP m n` | construct a branch |
+| `getPat` | `BindP m n -> Pat m` | extract the pattern |
+| `getBody` | `BindP m n -> Tm (m + n)` | extract the body |
+| `instantiate` | `BindP m n -> Env Tm m n -> Tm n` | open by substituting an environment |
 
 ### The `Sized` instance
 
-The library needs to recover `m` at runtime (e.g. to know how many variables
-to substitute).  The `Sized` instance supplies this:
+To create the general types for these operations, `rebound` needs to know the number 
+of variables bound in any type used as a pattern. For types such as `Pat m`, this 
+is easy --- we just use `m`. However, it is less obvious that the type 
+`LocalName` binds exactly one variable.
+
+Therefore, `rebound` uses the `Sized` class to calculate this information, both in types 
+and also dynamically, using a singleton.
 
 ```haskell
+
+instance Sized LocalName where
+    type Size LocalName = N1
+    
+    size :: LocalName -> SNat (Size (LocalName))
+    size _ = s1
+
+
 instance Sized (Pat m) where
     type Size (Pat m) = m
 
@@ -188,89 +208,107 @@ instance Sized (Pat m) where
     size (PInj _ p)    = size p
 ```
 
+
+
+The type `SNat` and type class `SNatI` provide *runtime* access to 
+type-level natural numbers. Haskell is not a full-spectrum 
+dependently-typed language, so numbers that appear in types cannot 
+be pattern matched at runtime.  
+
+```
+data SNat n where
+   SZ :: SNat Z
+   SS :: SNatI n1 => SNat (S n1)
+```
+
+The `SNatI n` acts as an implicit argument, and uses Haskell's type inference
+to automatically supply runtime naturals when possible. The operations `snat`
+and `withSNat` convert between implicit and explicit arguments.
+
+```
+>>> :t snat
+snat :: SNatI n => SNat n
+
+>>> :t withSNat
+withSNat :: SNat n -> (SNatI n => r) -> r
+```
+
+There are singleton versions of various operations for 
+natural numbers.  For example, we can add them:
+
+```
+>>> :t sPlus
+sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
+```
+
+Above, in the definition of `size` for the `Pat` type, 
 `sPlus (size p2) (size p1)` mirrors the type `m2 + m1` from the `PPair`
 constructor, keeping the runtime value and the type-level index in sync.
 
-### Building a branch
 
-To construct a `Match` branch, first build a pattern and then wrap the body
-with `Pat.bind`:
+We can also test them for equality. The (overloaded) 
+`testEquality` operation has a heterogenous type and 
+produces a proof of equivalence for its *indices* when its 
+arguments are equal.
 
-```haskell
--- match a pair, binding x (index 1) and y (index 0)
-pairBranch :: Branch n
-pairBranch =
-    Branch (Pat.bind (PPair (PVar "x") (PVar "y"))
-                     (Pair (Var (FS FZ)) (Var FZ)))
 ```
-
-Inside the body, `FZ` refers to the rightmost pattern variable (`y`) and
-`FS FZ` refers to the leftmost (`x`), consistent with the `m2 + m1`
-ordering.
-
+>>> :t testEquality @SNat
+testEquality @SNat :: TestEquality SNat => SNat a -> SNat b -> Maybe (a :~: b)
+```
 
 ## 4. Alpha-equivalence for branches and patterns
 
 We cannot derive `Eq` automatically for `Pat` or `Branch` because of the
-dependent index `m`.  Comparing two patterns may reveal that they bind
-*different* numbers of variables; in that case they are definitely unequal,
-and we also cannot compare their bodies (which would have different types).
+dependent index `m`. 
 
-### `PatEq`: heterogeneous pattern equality
+When comparing branches, intuitively, we want to compare their patterns 
+and their bodies. We would like to define an instance declaration like this:
 
-`rebound` provides a typeclass for this:
-
-```haskell
-class PatEq p1 p2 where
-    patEq :: p1 -> p2 -> Maybe (Size p1 :~: Size p2)
+```
+-- Two branches are equal when their patterns are equal and their 
+-- bodies are equal
+instance Eq (Branch n) where
+  Branch b1 == Branch b2 = 
+      getPat b1 == getPat b2 && getBody b1 == getBody b2
 ```
 
-`patEq p1 p2` returns `Just Refl` if the patterns have the same structure
-(and therefore bind the same number of variables), or `Nothing` otherwise.
-The `Refl` proof lets the caller unify the two `m` indices and proceed with
-body comparison.
+However, this instance does not type check. The patterns in the two branches may 
+bind different numbers of variables. Therefore, they have different types. So we need 
+a heterogenous equality operation.
 
-The instance for our `Pat` type recurses structurally:
+### `testEquality`: heterogeneous pattern equality
+
+Instead, we can create an instance of the `TestEquality` class. This instance
+compares the patterns for equality and also returns a *proof* that they bind
+the same number of variables.
 
 ```haskell
-instance PatEq (Pat m1) (Pat m2) where
-  patEq (PPair p1 p2) (PPair p1' p2') = do
-    Refl <- patEq p1 p1'
-    Refl <- patEq p2 p2'
+instance TestEquality Pat where
+  testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
+  testEquality (PVar x) (PVar y) = return Refl
+  testEquality PUnit PUnit = return Refl
+  testEquality (PInj i p) (PInj j p') | i == j = testEquality p p'
+  testEquality (PPair p1 p2) (PPair p1' p2') = do
+    Refl <- testEquality p1 p1'
+    Refl <- testEquality p2 p2'
     return Refl
-  patEq (PVar x)  (PVar y)            = return Refl
-  patEq PUnit     PUnit               = return Refl
-  patEq (PInj i p) (PInj j p') | i == j = patEq p p'
-  patEq _ _                           = Nothing
+  testEquality _ _ = Nothing
 ```
-
+  
 Notice that `PVar` patterns are always considered equal regardless of the
 stored name—consistent with `LocalName`'s trivial `Eq` instance.
 
-### `Eq` for `Pat` and `Branch`
-
-With `patEq` in hand, the `Eq (Pat m)` instance is a one-liner:
-
-```haskell
-instance Eq (Pat m) where
-  p1 == p2 = Maybe.isJust (patEq p1 p2)
-```
-
-For `Branch`, the `m` index is existentially hidden, so we must recover it
-at runtime using `size` and then call `testEquality` on the resulting
-`SNat` values before we can compare bodies:
+The returned proof is exactly what we need to be able to compare the bodies 
+of the pattern with the usual `Eq` type cleass.
 
 ```haskell
 instance Eq (Branch n) where
-  Branch b1 == Branch b2 =
-    case testEquality (size (Pat.getPat b1)) (size (Pat.getPat b2)) of
-        Just Refl -> b1 == b2
-        Nothing   -> False
+  (==) :: Branch n -> Branch n -> Bool
+  Branch b1 == Branch b2 = 
+      case testEquality (getPat b1) (getPat b2) of
+        Just Refl -> getBody b1 == getBody b2
+        Nothing -> False
 ```
-
-If the sizes differ the branches are unequal; if they agree, `Refl` unifies
-the `m` indices and the library's derived `Eq` instance for `Pat.Bind` does
-the rest.
 
 
 ## 5. Evaluating pattern matching
@@ -296,46 +334,25 @@ eval (Match e brs) = do
     eval br
 ```
 
-### Pattern matching: `patternMatch` and `findBranch`
-
-```haskell
-patternMatch :: Pat m -> Tm n -> Maybe (Env Tm m n)
-```
-
-`patternMatch` compares a pattern against a value and, on success, returns an
-*environment* `Env Tm m n` — a mapping from the `m` pattern variables to
-`Tm n` values.
-
-| Case | Result |
-|---|---|
-| `PVar _` against any value `v` | `Just (oneE v)` — a single-entry environment |
-| `PUnit` against `Unit` | `Just zeroE` — the empty environment |
-| `PPair p1 p2` against `Pair v1 v2` | environments concatenated with `.++` |
-| `PInj i p` against `Inj j v` when `i == j` | recurse on `p` and `v` |
-| anything else | `Nothing` |
-
-The pair case concatenates the two sub-environments, placing `p2`'s
-variables innermost (lower indices), matching the `m2 + m1` convention from
-the `PPair` type:
-
-```haskell
-patternMatch (PPair p1 p2) (Pair v1 v2) = do
-    env1 <- patternMatch p1 v1
-    env2 <- patternMatch p2 v2    -- p2's vars are innermost
-    withSNat (size p2) $ return (env2 .++ env1)
-```
-
-`findBranch` iterates through the branch list and, for the first matching
-branch, uses `Pat.instantiate` to substitute the environment into the body:
+In particular, in the case of a `Match` expression, `findBranch` iterates
+through the list of branches and comparing the value using the `patternMatch`
+operation with each pattern. If this comparison is successful, it returns an
+*environment* mapping each variable bound in the patter with a subterm of the 
+matched value.
 
 ```haskell
 findBranch :: Tm n -> [Branch n] -> Maybe (Tm n)
 findBranch _ [] = Nothing
 findBranch e (Branch b : rest) =
-    case patternMatch (Pat.getPat b) e of
-        Just r  -> Just (Pat.instantiate b r)
+    case patternMatch (getPat b) e of
+        Just r  -> Just (instantiate b r)
         Nothing -> findBranch e rest
 ```
+
+More generally `patternMatch` compares a pattern against a value and, on
+success, returns an *environment* `Env Tm m n` — a mapping from the `m`
+pattern variables to `Tm n` values.
+
 
 ## 6. Historical Notes
 
@@ -388,9 +405,9 @@ instance Eq LocalName where
 Evaluate the following in GHCi and explain the result:
 
 ```haskell
-S.Lam (S.bind1 (S.LocalName "x") (S.Var FZ))
+S.Lam (S.bind (S.LocalName "x") (S.Var FZ))
   ==
-S.Lam (S.bind1 (S.LocalName "y") (S.Var FZ))
+S.Lam (S.bind (S.LocalName "y") (S.Var FZ))
 ```
 
 

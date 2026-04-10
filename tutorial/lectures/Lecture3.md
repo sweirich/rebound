@@ -1,15 +1,19 @@
-# Lecture 3: Property-Based Testing
+# Lecture 3: Property-Based Testing (PBT) with well-scoped and well-typed terms
 
-- [Tutorial.Scoped.Gen](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Gen.hs)
+## Modules referenced in this lecture
 
 - [Tutorial.Scoped.Eval](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Eval.hs)
 
+- [Tutorial.Scoped.Gen](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Gen.hs)
+
+
 ## Overview and Goals
 
-How do we know that our evaluator is correct? We use property-based testing,
-with Haskell's Quickcheck library (QC). With this approach, we state
-properties of our definitions, and then test those properties extensively,
-using randomly generated values.
+How do we know that our evaluator is correct? We could write a bunch of unit
+tests, but it is more fun to use property-based testing, with Haskell's
+Quickcheck library (QC). With this approach, we define *properties* of our
+definitions, and then use Quickcheck test those properties extensively with
+randomly generated values.
 
 However, to use Quickcheck we need to generate *well-scoped*
 terms.

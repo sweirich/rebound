@@ -2,20 +2,12 @@
 Module      : Tutorial.Scoped.Gen
 Description : QuickCheck generators for well-scoped & well-typed lambda calculus terms
 
-Provides 'QC.Arbitrary' instances for 'Ty' and @'Tm' n@ (requiring
-'SNatI' for the term instance), plus the underlying generators and
-shrinkers.
-
-The key function is 'genTm', which takes an explicit 'SNat' @n@ for the
-number of free variables in scope and a size parameter bounding term
-depth.  The 'SNatI' constraint on the 'Arbitrary' instance is satisfied
-automatically when using @arbitrary :: Gen (Tm n)@ at a concrete @n@.
 -}
 module Tutorial.Scoped.Gen where
 
 import Tutorial.Scoped.Syntax
 import qualified Tutorial.Scoped.ScopeCheck as SC
-import qualified Rebound.Bind.Pat as Pat
+
 
 import Test.QuickCheck (Gen(..),Arbitrary(..),Testable,Property)
 import qualified Test.QuickCheck as QC
@@ -40,7 +32,6 @@ instance QC.Arbitrary Ty  where
 --
 --
 -- >>> QC.sample' (arbitrary :: Gen Ty)
--- [One,One :+ One,One,(One :+ One) :+ (One :* One),((One :* One) :* (One :* One)) :* ((One :* One) :+ (One :* One)),(One :+ One) :* ((One :-> One) :-> (One :+ One)),((One :* One) :-> (One :* One)) :-> ((One :* One) :+ (One :* One)),One :-> One,(((One :+ One) :+ One) :-> ((One :+ One) :* One)) :* (One :+ ((One :-> One) :-> One)),One :-> (((One :* One) :+ (One :* One)) :* One),(((One :-> One) :-> (One :* One)) :+ One) :+ One]
 
 
 -- The size argument ensures termination. In the base case,
@@ -85,7 +76,7 @@ genLocalName = QC.elements (map LocalName [ "x", "y", "z", "w", "v", "u", "t", "
 
 -- | Identity function, the smallest closed term
 tmId :: Tm n
-tmId = Lam (bind1 (LocalName "x") (Var FZ))
+tmId = Lam (bind (LocalName "x") (Var FZ))
 
 
 -- For variables we need to know the number of variables in scope to 
@@ -125,7 +116,7 @@ genScopedPureLC = QC.sized go
         go sz = 
             let
               -- binders generate a random name and increment the number of free variables
-              gen1 = bind1 @Tm <$> genLocalName <*> go (sz - 1)
+              gen1 = bind <$> genLocalName <*> go (sz - 1)
 
               -- recursive calls for App divide size by two
               gen  = go (sz `div` 2)
@@ -194,27 +185,27 @@ genScopedTm :: forall n. Language -> SNat n -> Int -> QC.Gen (Tm n)
 genScopedTm l n sz =
     let
         gen  = genScopedTm l n (sz `div` 2)
-        gen1 = bind1 @Tm <$> genLocalName <*> genScopedTm l (next n) (sz `div` 2)
+        gen1 = bind <$> genLocalName <*> genScopedTm l (next n) (sz `div` 2)
             
 
         genMatchUnit = do
             e  <- gen
             e' <- gen
-            return (Match e [Branch (Pat.bind PUnit e')])
+            return (Match e [Branch (bind PUnit e')])
         genMatchPair = do
             e    <- gen
             ln1  <- genLocalName
             ln2  <- genLocalName
             body <- genScopedTm l (next (next n)) (sz `div` 2)
-            return (Match e [Branch (Pat.bind (PPair (PVar ln1) (PVar ln2)) body)])
+            return (Match e [Branch (bind (PPair (PVar ln1) (PVar ln2)) body)])
         genMatchSum = do
             e   <- gen
             ln1 <- genLocalName
             ln2 <- genLocalName
             b1  <- genScopedTm l (next n) (sz `div` 2)
             b2  <- genScopedTm l (next n) (sz `div` 2)
-            return (Match e [ Branch (Pat.bind (PInj 0 (PVar ln1)) b1)
-                            , Branch (Pat.bind (PInj 1 (PVar ln2)) b2) ])
+            return (Match e [ Branch (bind (PInj 0 (PVar ln1)) b1)
+                            , Branch (bind (PInj 1 (PVar ln2)) b2) ])
 
         gens = case l of
           PureLC ->
@@ -253,7 +244,7 @@ genScopedTm l n sz =
 -- | Shrink a well-scoped term, keeping it in the same scope @n@.
 shrinkScoped :: SNatI n => Tm n -> [Tm n]
 shrinkScoped (Lam t)  = 
-    [ Lam (bind1 (getLocalName t) t') | t' <- shrinkScoped (getBody1 t) ]
+    [ Lam (bind (getPat t) t') | t' <- shrinkScoped (getBody t) ]
 shrinkScoped (App a b)  = [a,b] ++ [App a' b  | a' <- shrinkScoped a] 
                                 ++ [ App a b'  | b' <- shrinkScoped b]
 shrinkScoped (Pair a b) = [a,b] ++ [Pair a' b | a' <- shrinkScoped a] 
@@ -339,7 +330,7 @@ genTypedTm l n ctx ty sz =
         genVal n ctx ty = case ty of 
             One -> pure Unit
             (a :-> b) ->
-                Lam <$> (bind1 @Tm <$> genLocalName
+                Lam <$> (bind <$> genLocalName
                                    <*> genVal (next n) (a ::: ctx) b)
             (a :* b)  -> 
                 Pair <$> genVal n ctx a <*> genVal n ctx b
@@ -350,7 +341,7 @@ genTypedTm l n ctx ty sz =
         introGens = case ty of
             One       -> [ pure Unit ]
             (a :-> b) ->
-                [ Lam <$> (bind1 @Tm <$> genLocalName
+                [ Lam <$> (bind <$> genLocalName
                       <*> genTypedTm l (next n) (a ::: ctx) b (sz `div` 2)) ]
             (a :* b)  -> case l of
                 PureLC -> []
@@ -369,7 +360,7 @@ genTypedTm l n ctx ty sz =
 
                     genBranch ty (SomePat p ctx2) = do
                         e <- genTypedTm l (sPlus (size p) n) (ctx2 Vec.++ ctx) ty (sz `div` 2)
-                        return (Branch (Pat.bind @_ @_ @_ @n p e))
+                        return (Branch (bind @_ @_ @_ @n p e))
 
                     genMatch = do
                         a <- genTy (sz `div` 2) 
@@ -385,7 +376,7 @@ genTypedTm l n ctx ty sz =
                         , genMatch
                         ]
         varGens = if null matchingVars then [] else [ QC.elements matchingVars ]
-        
+
         allGens = introGens ++ elimGens ++ varGens
     in
     if null allGens
@@ -401,7 +392,7 @@ shrinkTyped :: SNatI n => Tm n -> [Tm n]
 shrinkTyped = shrink 
   where
     shrink :: SNatI n => Tm n -> [Tm n]
-    shrink (Lam t)    = [Lam (bind1 (getLocalName t) t') | t' <- shrink (getBody1 t)]
+    shrink (Lam t)    = [Lam (bind (getPat t) t') | t' <- shrink (getBody t)]
     shrink (App a b)  = [a,b] 
     shrink (Pair a b) = [a,b] ++ shrinkTwo Pair a b 
     shrink (Inj i a)  = [a] ++ [Inj i a' | a' <- shrink a]

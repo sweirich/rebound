@@ -9,7 +9,7 @@ import Tutorial.Scoped.Gen
 import Tutorial.Scoped.ScopeCheck
 import Tutorial.Scoped.Eval
 import Test.QuickCheck as QC
-import Data.Vec hiding ((++))
+import Data.Vec hiding ((++),bind)
 
 
 ------------------------------------------------------------------------
@@ -55,7 +55,7 @@ ex1a = cpsExp idE Unit idTm
 -- which pretty-prints as: (\ x. x) (\ x. \ k. k x)
 
 ex1b :: Tm Z
-ex1b = cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm
+ex1b = cpsExp idE (Lam (bind (LocalName "x") (Var FZ))) idTm
 
 -- >>> pp ex1b
 -- "(\ x. x) (\ x. \ k. k x)"
@@ -80,7 +80,7 @@ ex1b = cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm
 --   (\ v. (\ w. v w (\ x. x)) ()) (\ x. \ k. k x)
 
 ex1c :: Tm Z
-ex1c = cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm
+ex1c = cpsExp idE (App (Lam (bind (LocalName "x") (Var FZ))) Unit) idTm
 
 -- >>> pp ex1c
 -- "(\ v. (\ w. v w (\ x. x)) ()) (\ x. \ k. k x)"
@@ -243,10 +243,10 @@ prop_cps_eval_simulates_full = forAll0 Typed Full $ \e ->
 -- (λ x. body) arg redexes appear.  Total: 0 administrative redexes.
 
 ex4a_naive :: Tm Z
-ex4a_naive = cps (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit)
+ex4a_naive = cps (App (Lam (bind (LocalName "x") (Var FZ))) Unit)
 
 ex4a_opt :: Tm Z
-ex4a_opt = cpsOpt (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit)
+ex4a_opt = cpsOpt (App (Lam (bind (LocalName "x") (Var FZ))) Unit)
 
 -- >>> pp ex4a_naive
 -- "(\ v. (\ w. v w (\ x. x)) ()) (\ x. \ k. k x)"
