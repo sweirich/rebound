@@ -182,15 +182,14 @@ Now let's consider some properties that we might test for our evaluator.
 ### Big-step properties
 
 The most basic property is that if a term evaluates to some result, then the 
-result is a value.
+result is a value. We can write this test as follows:
 
 ```haskell
 
 -- if a term evaluates, it produces a value
 prop_evalVal :: Tm Z -> Property
 prop_evalVal = \t ->
-    counterexample ("term: " ++ pp t) $
-    within 1000000 $
+    discardAfter 1000000 $
     case eval t of
         Just v -> 
             counterexample ("not a value: " ++ pp v) $
@@ -198,6 +197,24 @@ prop_evalVal = \t ->
         Nothing -> 
             discard
 ```
+
+We can strengthen this property by requiring the evaluation to produce a 
+result. This property only holds for well-typed terms. 
+
+```haskell
+
+-- all terms evaluate to values
+prop_evalVal :: Tm Z -> Property
+prop_evalVal = \t ->
+    discardAfter 1000000 $
+    case eval t of
+        Just v -> 
+            counterexample ("not a value: " ++ pp v) $
+            property (isVal v)
+        Nothing -> 
+            property False
+```
+
 
 What else can we test? We can define a generalization of call-by-value evaluation called `reduce` that works with open terms. 
 

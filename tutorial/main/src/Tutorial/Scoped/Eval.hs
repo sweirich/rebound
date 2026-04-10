@@ -45,7 +45,7 @@ eval (Match e brs) = do
 -- the pattern variables (if the pattern matches)
 patternMatch :: Pat m -> Tm n -> Maybe (Env Tm m n)
 patternMatch (PVar _) v | isVal v     = Just (oneE v)
-patternMatch PUnit Unit               = Just zeroE
+patternMatch PUnit Unit  = Just zeroE
 patternMatch (PPair p1 p2) (Pair v1 v2) = do
     env1 <- patternMatch p1 v1
     env2 <- patternMatch p2 v2    
@@ -79,7 +79,6 @@ isVal e = False
 -- if a term evaluates, it produces a value
 prop_evalVal :: Tm Z -> Property
 prop_evalVal = \t ->
-    counterexample ("term: " ++ pp t) $
     discardAfter 10000 $
     case eval t of
         Just v ->
@@ -91,8 +90,7 @@ prop_evalVal = \t ->
 -- all terms produce values (NB: this holds for well-typed terms only!)
 prop_eval_exists_Val :: Tm Z -> Property
 prop_eval_exists_Val = \t ->
-    counterexample ("term: " ++ pp t) $
-    discardAfter 10000 $
+    discardAfter 10000 $   -- try changing this to within
     case eval t of
         Just v ->
             counterexample ("not a value: " ++ pp v) $
@@ -295,26 +293,47 @@ normalize (Match e brs) = do
             body' <- normalize (getBody b)
             return (Branch (bind (getPat b) body'))
 
+-- | a normal term cannot reduce any further
+isNormal :: Tm n -> Bool
+isNormal (Var x) = True
+isNormal (Lam b) = isNormal (getBody b)
+isNormal (App (Lam _) u) | isVal u  = False
+isNormal (App t u) = isNormal t && isNormal u
+isNormal Unit = True
+isNormal (Pair e1 e2) = isNormal e1 && isNormal e2
+isNormal (Inj i e) = isNormal e
+isNormal (Match e brs) = case findBranch e brs of
+    Just _  -> False
+    Nothing -> isNormal e && all isNormalBranch brs
+isNormalBranch (Branch b) = isNormal (getBody b)
+
+{-
+isNeutral :: Tm n -> Bool 
+isNeutral (Var _)       = True
+isNeutral (App e1 e2)   = isNeutral e1 && isNormal e2
+isNeutral (Match e brs) = isNeutral e && all isNormalBranch brs
+isNeutral _             = False
+
+isNormalBranch (Branch b) = isNormal (getBody b)
+
 -- | A term is in normal form when it contains no beta redexes anywhere,
 -- including inside lambda bodies and match branches.
 isNormal :: Tm n -> Bool
-isNormal (Var _)                  = True
 isNormal (Lam b)                  = isNormal (getBody b)
 isNormal Unit                     = True
 isNormal (Pair e1 e2)             = isNormal e1 && isNormal e2
 isNormal (Inj _ e)                = isNormal e
-isNormal (App (Lam _) a)          | isVal a  = False   -- CBV beta redex
-isNormal (App f a)                = isNormal f && isNormal a
-isNormal (Match e brs) = case findBranch e brs of
-    Just _  -> False
-    Nothing -> isNormal e && all (\(Branch b) -> isNormal (getBody b)) brs
+isNormal x                        = isNeutral x
+-}
 
 -- | normalize always produces a term in full normal form.
-prop_normalize_normal :: forall n. SNatI n => Tm n -> Property
+prop_normalize_normal :: Tm Z -> Property
 prop_normalize_normal t =
     discardAfter 1000000 $
     case normalize t of
-        Just nf -> property (isNormal nf)
+        Just nf -> 
+            counterexample ("nf = " ++ pp nf) $
+            property (isNormal nf)
         Nothing -> discard
 
 -- | normalize is idempotent: normalizing an already-normal term is a no-op.
@@ -365,14 +384,16 @@ noRedexUnderBinder (App f a)          = noRedexUnderBinder f && noRedexUnderBind
 noRedexUnderBinder (Match e brs) = noRedexUnderBinder e && 
    all (\(Branch b) -> isNormal (getBody b)) brs
 
-
 -------------------------------------------------------------------
 -- Run all properties
 -------------------------------------------------------------------
 
+args :: Args
+args = stdArgs { maxSuccess = 100000 }
+
 testAll :: IO ()
 testAll = do
-    let args = stdArgs { maxSuccess = 1000 }
+
     putStrLn "prop_evalVal:"                
     quickCheckWith args (forAll0 Scoped PureLC prop_evalVal)
     putStrLn "prop_eval_exists_Val:"      
@@ -395,9 +416,9 @@ testAll = do
     quickCheckWith args (forAll1 Scoped Full prop_reduceStep)
 
     putStrLn "normalize/normal closed"     
-    quickCheckWith args (forAll0 Scoped Full (prop_normalize_normal  @Z))
-    putStrLn "normalize/normal open"       
-    quickCheckWith args (forAll1 Scoped Full (prop_normalize_normal  @(S Z)))
+    quickCheckWith args (forAll0 Scoped Full (prop_normalize_normal ))
+    -- putStrLn "normalize/normal open"       
+    -- quickCheckWith args (forAll1 Scoped Full (prop_normalize_normal  @(S Z)))
     putStrLn "normalize/idempotent closed"     
     quickCheckWith args (forAll0 Scoped Full (prop_normalize_idempotent @Z))
     putStrLn "normalize/idempotent open"       

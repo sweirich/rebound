@@ -7,13 +7,19 @@
 
 ## Overview and Goals
 
-Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed some of the practical
-issues that occur when working with them in an implementation. In this lecture, we start to see 
-some of the payoff for working with this sort of representation: we can work with and reason about 
-open code. 
+Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed
+some of the practical issues that occur when working with them in an
+implementation. In this lecture, we start to see some of the payoff for
+working with this sort of representation: we can work with and reason about
+open code.
 
-As an extended example, we will use a nontrivial *term-to-term transformation*: called the
-continuation-passing style (CPS) conversion. CPS is an important tool for programming language research: from a theoretical side, it explains evaluation order and bridges between classical and constructive logics. On the practical side, it has been used as a compiler intermediate language and for the implementation of cooperative multithreading. If you haven't seen it before, you should learn more about it.
+As an extended example, we will use a nontrivial *term-to-term
+transformation*: called the continuation-passing style (CPS) conversion. CPS
+is an important tool for programming language research: from a theoretical
+side, it explains evaluation order and bridges between classical and
+constructive logics. On the practical side, it has been used as a compiler
+intermediate language and for the implementation of cooperative
+multithreading. If you haven't seen it before, you should learn more about it.
 
 For our purposes, CPS is a good case study because it changes the binding
 structure of its input — each function gains an extra argument.  Therefore,
@@ -45,9 +51,7 @@ continuation `k`". An informal definition of this operation is below:
 [[()]]         k = k ()
 [[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 [[inj i e]]    k = [[e]] (λx. k (inj i x))
-[[case e of () -> b]]      k = [[e]] (λz. case z of () -> [[b]] k)
-[[case e of (x,y) → b]]    k = [[e]] (λz. case z of (x,y) → [[b]] k)
-[[case e of inj i → b_i]]  k = [[e]] (λz. case z of inj i → [[b_i]] k)
+[[case e of p_i -> b_i]]  k = [[e]] (λz. case z of p_i → [[b_i]] k)
 ```
 
 The top-level call typically uses the identity continuation: `cps e = [[e]] (λx. x)`.
@@ -59,17 +63,22 @@ should occur in the same order as the call-by-value evaluation.
 
 ## 2. Implementation using `rebound` (pure lambda calculus)
 
-Let's look at how we could translate the definition above to executable Haskell code. 
-The difficult part of this translation is right there near the top: when we translate a function, we need to introduce a new argument `k'` to pass in the "continuation" of the function.
+Let's look at how we could translate the definition above to executable
+Haskell code.  The difficult part of this translation is right there near the
+top: when we translate a function, we need to introduce a new argument `k'` to
+pass in the "continuation" of the function.
 
 ```
 [[ \x.e ]] k = k (λx. λk'. [[e]] k')
 ```
 
-That means that when we call the translation recursively, `e` might be in some scope `S n`, because 
-it is inside the body of a lambda expression. However, the result is going to be in some larger scope
-that binds not just `x` but also `k'`. What that means is that the *variable* case is also challenging. Even though with names above we say `[[x]]k` produces `k x`, the scope of the first `x`
-may be different from the scope of the second `x`, so they may be different indices.
+That means that when we call the translation recursively, `e` might be in some
+scope `S n`, because it is inside the body of a lambda expression. However,
+the result is going to be in some larger scope that binds not just `x` but
+also `k'`. What that means is that the *variable* case is also
+challenging. Even though with names above we say `[[x]]k` produces `k x`, the
+scope of the first `x` may be different from the scope of the second `x`, so
+they may be different indices.
 
 Therefore, we will parameterize our cps conversion function with an additional
 argument---a substitution that talks about the scope change. If the input term
@@ -139,18 +148,21 @@ Note that this function is structurally recursive on the input.
 
 ## 3. What does it mean for CPS conversion to be correct?
 
-If we implement the cps conversion algorithm, we want to know that we did so correctly. Intuitively, this means that when we apply this transformation to some code, the output should produce the same result when we run it.
+If we implement the cps conversion algorithm, we want to know that we did so
+correctly. Intuitively, this means that when we apply this transformation to
+some code, the output should produce the same result when we run it.
 
-But what does that mean formally?  We can start with this simple statement, which asserts
-that we get the same result from evaluation for any term and its cps conversion:
+But what does that mean formally?  We can start with this simple statement,
+which asserts that we get the same result from reducing any term and its
+cps conversion:
 
 ```
-prop_same_result e = eval e == eval (cps e)
+prop_cps_result e = reduce e == reduce (cps e)
 ```
 
 But already we have a problem. This property is not true.
 ```
-ghci> qc prop_cps_result
+ghci> quickCheck prop_cps_result
 *** Failed! Falsified (after 1 test):  
 Lam (bind1 (Var 0))
 e          = (λ x. x)
@@ -169,45 +181,42 @@ ghci> qc prop_cps_result_firstorder
 +++ OK, passed 1000 tests; 1373 discarded.
 ```
 
-### Simulation properties (big-step)
+### Simulation properties
 
-We can do better by thinking about simulation properties.
+Perhaps we can restate correctness using a simulation property.
+if the source language reduces a term to some result, then the CPS-converted version
+evaluates the converted term to an equivalent result. 
 
-Another way to state the correctness of CPS conversion is through a simulation relation:
-if the source language evaluates a term to a result, then the CPS-converted language
-evaluates the converted term to an equivalent result. We might draw a picture like this:
+We might draw a picture like this:
 
 ```
-           e  =>  v 
-           |      |
-        cps e => cps v
+  if         e  =>  v 
+                 
+  then      cps e => cps v
 ```
 
 In other words, we want to show that if `e` evaluates to `v`, then `cps e` evaluates to `cps v`.
 ```
-prop_cps_eval_simulates :: Property
-prop_cps_eval_simulates = forAll0 Typed Full $ \e ->
+prop_cps_simulates :: Property
+prop_cps_simulates = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        eval (cps e) == (cps <$> eval e)
 ```
 
-Note that this property is not true. 
+But, this property is not true!
 
 ```
-ghci> qc prop_cps_eval_simulates
+ghci> qc prop_cps_simulates
 *** Failed! Falsified (after 1 test):  
 Unit
 e          = ()
 cps_e      = (λ x. x) ()
 ```
-In this counterexample, we have a value that translates to a non-value.
-
-We can (partially) repair it by keeping our "top-level" continuation abstract. Instead of 
-using the identity function, if we use a distinguished variable, then that solves the 
-problem for `()`.
-
-However, this solution will not scale to the full language.
+In this counterexample, we have a value that translates to a non-value. But 
+reduction always produces inert terms.
+The problem is that CPS translation has inserted an "administrative reduction" 
+into the term.
 
 ---
 
@@ -260,10 +269,9 @@ the library can apply environments to it:
 
 ```haskell
 instance Subst Tm Cont where
+  applyE r (Obj o)  = Obj (applyE r o)
+  applyE r (Meta b) = Meta (applyE r b)
 ```
-
-The instance body is empty because the library's default generic machinery 
-handles it.
 
 ### Updating the translation to use Meta continuations
 
@@ -282,7 +290,36 @@ a `Cont m` as a `Tm m`.  Whenever we construct a continuation using
 the `Lam` to `Meta` .... but using the `Meta` continuation is more 
 efficient.
 
----
+At the top level, we have a new way to start the transformation. We 
+can either start with the identity function, as before, or we can 
+start with a meta-level identity function.
+
+```
+-- | entry point with identity function
+cpsOpt :: Tm Z -> Tm Z
+cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
+
+-- | entry point with meta-identity function
+cpsOptM :: Tm Z -> Tm Z
+cpsOptM e = cpsExpOpt zeroE e (Meta (bind (LocalName "x") (Var FZ)))
+```
+
+Now let's try our simulation property with these two: 
+
+```
+ghci> qc prop_cpsOpt_simulates
+*** Failed! Falsified (after 1 test):  
+()
+e          = ()
+eval_e     = ()
+cps_e      = (\ x. x) ()
+cps_eval_e = (\ x. x) ()
+eval_cps_e = ()
+ghci> qc prop_cpsOptM_simulates
++++ OK, passed 100000 tests.
+ghci> 
+```
+
 
 ## 5. Historical Notes
 
@@ -336,8 +373,6 @@ Answer the following:
 
 **(c)** Why is `k` shifted by `wk .>> wk` to produce `k''`, but `r` is only shifted by a single `wk` to produce `r'`?  (Hint: `r` maps input variables to the output scope — how many new output binders have been crossed at each point?)
 
-**(d)** The `MatchPair` case shifts `k` by `wk .>> wk .>> wk`.  Why three shifts instead of two?
-
 ---
 
 **3. Correctness properties — what fails and why.**
@@ -369,7 +404,7 @@ Count the number of beta-redexes (sub-terms of the form `(λ x. body) arg`) in e
 
 **(c)** In the `Lam` case of `cpsExpOpt`, the continuation passed to the recursive call is `Obj (Var FZ)` — not `Meta`.  Explain why `Meta` cannot be used here.  (Hint: `Var FZ` is a *runtime* variable for the caller-supplied continuation `k'`, not a compile-time binder we control.)
 
-**(d)** Run `qc prop_cpsOpt_result_firstorder` and `qc prop_cpsOpt_eval_simulates_open`.  Do both pass?  What do they tell you about the correctness of the optimised translation?
+**(d)** Run `qc prop_cpsOpt_result_firstorder` and `qc prop_cpsOpt_simulates`.  Do both pass?  What do they tell you about the correctness of the optimised translation?
 
 ---
 

@@ -296,7 +296,9 @@ genVal ctx ty = QC.oneof (gen : genVars ctx ty)
 -- | Generate either a variable in scope of the correct type, or 
 -- a minimal value of the correct type
 genBase :: forall n. Vec n Ty -> Ty -> Gen (Tm n)
-genBase ctx ty = QC.oneof (genVal ctx ty : genVars ctx ty)
+genBase ctx ty = 
+    let vars = genVars ctx ty in
+    if null vars then genVal ctx ty else QC.oneof vars
 
 -- >>> QC.sample' (genBase (One ::: One ::: VNil) One)
 -- [Var 1,Var 0,Unit,Var 0,Var 0,Var 1,Var 0,Var 0,Unit,Var 0,Var 0]
@@ -373,7 +375,7 @@ genTyPureLC sz
   | otherwise = QC.oneof [ return One, genArr ] 
      where   
        sz' = sz `div` 2
-       genArr = (:->) <$> genTy sz' <*> genTy sz'
+       genArr = (:->) <$> genTyPureLC sz' <*> genTyPureLC sz'
 
 
 -- | generate a term in the pure lambda calculus
@@ -399,7 +401,7 @@ genTypedPureLC sz = do
               One       -> [ pure Unit ]
               (a :-> b) -> [ Lam <$> (bind <$> genLocalName
                                        <*> go (a ::: ctx) b (sz - 1)) ]
-              _  -> error "Not a PureLC type"
+              _  -> error $ "Not a PureLC type: " ++ show ty
 
             -- elimination forms, generate a random type for application
             elimGens = 

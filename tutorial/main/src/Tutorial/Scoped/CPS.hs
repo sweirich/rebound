@@ -26,6 +26,7 @@ import Test.QuickCheck
 import Tutorial.Scoped.Syntax
 import qualified Rebound.Bind.Pat as Pat
 import Data.Vec ( (!) )
+import Data.Maybe as Maybe
 import Tutorial.Scoped.Gen
 import Tutorial.Scoped.Eval
 import Tutorial.Scoped.ScopeCheck
@@ -46,10 +47,6 @@ idTm = Lam (bind (LocalName "x") (Var FZ))
 cps :: Tm Z -> Tm Z
 cps e = cpsExp zeroE e idTm
 
--- | Apply the CPS translation to a closed term, using a variable
--- as the continuation so that the result has one free variable.
-cpsK :: Tm Z -> Tm (S Z)
-cpsK e = cpsExp zeroE e (Var FZ) 
 
 ------------------------------------------------------------------------
 -- * CBV CPS translation 
@@ -118,10 +115,10 @@ cpsExp r (Match e brs) k =
 --  i.e.       e =>  v1     and   [[e]]_id => v2  and   v1 == v2
 --         
 -- 
--- NB: this is not true, what is a counter example?
+-- NB: this property is not true, what is a counter example?
 prop_cps_result :: Property
 prop_cps_result = forAll0 Typed Full $ \ e ->
-      let cps_e      = cps e
+      let cps_e        = cps e
           eval_e     = eval e 
           eval_cps_e = eval (cps_e)
        in
@@ -131,24 +128,22 @@ prop_cps_result = forAll0 Typed Full $ \ e ->
 
 -- | CPS preserves big-step evaluation for *firstorder* values
 --
--- If @v = eval(e)@ and v is firstorder then @v == eval(cps(e))@ 
+-- @eval(e) == eval(cps(e))@ for firstorder values
 -- 
 prop_cps_result_firstorder :: Property
 prop_cps_result_firstorder = forAll0 Typed Full $ \e ->
     let
        cps_e = cps e
-       eval_e = case eval e of
-                 Nothing -> discard
-                 Just v -> if isFirstOrder v then v else discard 
-       eval_cps_e = case eval cps_e of
-                    Nothing -> discard
-                    Just v -> v 
+       eval_e = fromMaybe discard $ eval e 
+       eval_cps_e = fromMaybe discard $ eval cps_e 
     in
-      counterexample ("e          = " ++ pp e)          $
+      counterexample ("e            = " ++ pp e)            $
       counterexample ("eval_e     = " ++ pp eval_e)     $
-      counterexample ("cps_e      = " ++ pp cps_e)      $
+      counterexample ("cps_e        = " ++ pp cps_e)        $
       counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
-      eval_e == eval_cps_e
+      isFirstOrder eval_e ==>
+           eval_e == eval_cps_e
+      
 
 -- | a first-order value does not contain any functions
 isFirstOrder :: Tm n -> Bool
@@ -158,71 +153,49 @@ isFirstOrder (Pair v1 v2) = isFirstOrder v1 && isFirstOrder v2
 isFirstOrder (Inj i v) = isFirstOrder v
 isFirstOrder _ = False
 
-
-
 ------------------------------------------------------------------------------
 -- Can we do better for results that include functions? Here is another 
--- property that cps converts the value
+-- property that we might want to hold
 -- 
---           e  =>  v 
---           |      |
---        cps e => cps v
+--     if      e  =>  v 
+--                 
+--     then    cps e => cps v
 --
 --   we can write this property succinctly as:
 --      eval (cps e) = cps (eval e) 
 --
--- NB: this is not true because the cps conversion of a value is not 
--- a value, it is id applied to the translated value
-prop_cps_eval_cps :: Property
-prop_cps_eval_cps = forAll0 Typed Full $ \e ->
+-- NB: this property fails
+prop_cps_simulates :: Property
+prop_cps_simulates = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
        eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
 
--- alternative: we use a "fresh variable" instead of the id function
--- this property is true for pure lambda calculus terms. But we need to 
--- use reduction instead of evaluation. 
--- NB: this fails for terms that use pattern matching
-prop_cps_reduce_cps :: Property
-prop_cps_reduce_cps = forAll0 Typed PureLC $ \e ->
-   let 
-      cps_e = cpsK e 
-      eval_e = case reduce e of
-                 Nothing -> discard -- should be impossible for well-typed terms
-                 Just v -> v 
-      cps_eval_e = cpsK eval_e 
-      eval_cps_e = case reduce cps_e of
-                    Nothing -> discard
-                    Just v -> v
-      pp' = ppWith ("k" ::: VNil) -- name for index zero
-    in
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("eval_e     = " ++ pp eval_e)     $
-       counterexample ("cps_e      = " ++ pp' cps_e)      $
-       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
-       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
-       eval_cps_e == cps_eval_e
 
--- OK: let's just test the property for pure lambda calculus terms
-prop_cps_reduce_cps_pure :: Property
-prop_cps_reduce_cps_pure = forAll0 Typed PureLC $ \e ->
-   let 
-      cps_e = cpsK e 
-      eval_e = case reduce e of
-                 Nothing -> discard -- should be impossible for well-typed terms
-                 Just v -> v 
-      cps_eval_e = cpsK eval_e 
-      eval_cps_e = case reduce cps_e of
-                    Nothing -> discard
-                    Just v -> v
-      pp' = ppWith ("k" ::: VNil)
-    in
+-- NB: this also doesn't hold
+prop_cps_simulates_normalize :: Property
+prop_cps_simulates_normalize = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
-       counterexample ("eval_e     = " ++ pp eval_e)     $
-       counterexample ("cps_e      = " ++ pp' cps_e)      $
-       counterexample ("cps_eval_e = " ++ pp' cps_eval_e) $
-       counterexample ("eval_cps_e = " ++ pp' eval_cps_e) $
-       eval_cps_e == cps_eval_e
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       normalize (cps e) == (cps <$> normalize e)   -- lift cps over Maybe type
+
+
+
+
+prop_no_admin_cpsOptM = forAll0 Typed PureLC $ \e -> 
+    let 
+       cps_e = cpsOptM e 
+    in
+       counterexample ("cpsOptM_e =\n" ++ pp cps_e)  $ 
+       countLam e + 2 * countApp e >= countApp cps_e
+
+
+prop_no_admin_cps = forAll0 Typed PureLC $ \e -> 
+    let 
+       cps_e = cps e 
+    in
+       counterexample ("cps_e =\n" ++ pp cps_e)  $ 
+       countLam e + 2 * countApp e >= countApp cps_e
 
 ------------------------------------------------------------------------------
 -- what about small-step evaluation?
@@ -232,7 +205,7 @@ prop_cps_reduce_cps_pure = forAll0 Typed PureLC $ \e ->
 --     if    e -> e'
 --     then  cps e -> cps e'
 --                   
--- NB: not true, due to administrative redexes     
+-- NB: also not true, due to administrative redexes     
 prop_cps_step :: Tm Z -> Property
 prop_cps_step e =
      counterexample ("e      = " ++ pp e) $
@@ -246,28 +219,6 @@ prop_cps_step e =
             Nothing -> discard -- if e does not step, ignore this test
             Just v -> v
      cps_e' = cps e'
-
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cps e ->* cps e'
---      
--- NB: not true, not even for PureLC                  
-prop_cps_steps :: Tm Z -> Property
-prop_cps_steps e =
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp' cps_e) $
-     counterexample ("cps_e' = " ++ pp' cps_e') $
-     step_star vv cps_e cps_e'
-  where
-     e' = case step e of
-            Nothing -> discard -- if e does not step, ignore this test
-            Just v -> v
-     cps_e  = cpsK e
-     cps_e' = cpsK e'
-     vv  = ("k" ::: VNil)
-     pp' = ppWith ("k" ::: VNil)
 
      
 -- | does e ->* e' hold?     
@@ -324,9 +275,9 @@ instance Subst Tm Cont where
 cpsOpt :: Tm Z -> Tm Z
 cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
 
--- | entry point with free variable "k"
-cpsOptK :: Tm Z -> Tm (S Z)
-cpsOptK e = cpsExpOpt zeroE e (Obj (Var FZ))
+-- | entry point with meta-identity function
+cpsOptM :: Tm Z -> Tm Z
+cpsOptM e = cpsExpOpt zeroE e (Meta (bind (LocalName "x") (Var FZ)))
 
 
 cpsExpOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
@@ -356,7 +307,6 @@ cpsExpOpt r (Inj i e) k =
     cpsExpOpt r e (Meta (bind (LocalName "v")
        (applyCont k' (Inj i (Var FZ)))))
        where k' = applyE wk k
--- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExpOpt r (Match e brs) k =
     cpsExpOpt r e (Meta (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
@@ -373,8 +323,6 @@ cpsExpOpt r (Match e brs) k =
 -- * Properties of Optimized CPS translation
 ------------------------------------------------------------------------
   
-
-
 -- | __Correctness__: CPS opt preserves big-step evaluation
 --
 -- @eval(e) == eval(cps(e))@ for firstorder values
@@ -382,27 +330,51 @@ prop_cpsOpt_result_firstorder :: Property
 prop_cpsOpt_result_firstorder = forAll0 Typed Full $ \e ->
     let
        cps_e = cpsOpt e
-       eval_e = case eval e of
-                 Nothing -> discard
-                 Just v -> if isFirstOrder v then v else discard 
-       eval_cps_e = case eval cps_e of
-                    Nothing -> discard
-                    Just v -> v 
+       eval_e = fromMaybe discard $ eval e 
+       eval_cps_e = fromMaybe discard $ eval cps_e 
     in
       counterexample ("e          = " ++ pp e)          $
       counterexample ("eval_e     = " ++ pp eval_e)     $
       counterexample ("cps_e      = " ++ pp cps_e)      $
       counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
-      eval_e == eval_cps_e
+      isFirstOrder eval_e ==> 
+          eval_e == eval_cps_e
+
+
+prop_cpsOpt_simulates :: Property
+prop_cpsOpt_simulates = forAll0 Typed Full $ \e ->
+   let 
+       cps_e = cpsOpt e 
+       eval_e = fromMaybe discard $ eval e 
+       cps_eval_e = cpsOpt eval_e 
+       eval_cps_e = fromMaybe discard $ eval cps_e 
+    in
+       counterexample ("e            = " ++ pp e)             $
+       counterexample ("eval_e     = " ++ pp eval_e)      $
+       counterexample ("cps_e        = " ++ pp cps_e)        $
+       counterexample ("cps_eval_e = " ++ pp cps_eval_e) $
+       counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+       eval_cps_e == cps_eval_e
 
 -- | __Correctness__: CPS opt preserves big-step evaluation
---
+--     
+--     e => v    iff    cps e => cps v    
+-- 
 -- @eval(e) == eval(cps(e))@ with continuation parameter
-prop_cpsOpt_eval_simulates_open :: Property
-prop_cpsOpt_eval_simulates_open = forAll0 Typed Full $ \e ->
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("cps_e      = " ++ pp (cps e))    $
-       reduce (cpsOptK e) == (cpsOptK <$> reduce e)   -- lift cps over Maybe type
+prop_cpsOptM_simulates :: Property
+prop_cpsOptM_simulates = forAll0 Typed Full $ \e ->
+    let 
+       cps_e = cpsOptM e 
+       eval_e = fromMaybe discard $ eval e 
+       cps_eval_e = cpsOptM eval_e 
+       eval_cps_e = fromMaybe discard $ eval cps_e 
+    in
+       counterexample ("cps_e        = \n" ++ pp (cps e))       $
+       counterexample ("cps_eval_e = \n" ++ pp cps_eval_e) $
+       counterexample ("eval_cps_e = \n" ++ pp eval_cps_e) $
+       eval_cps_e == cps_eval_e  
+
+
 
 -- | __Simulation__ : CPS preserves small-step evaluation
 --
@@ -411,31 +383,52 @@ prop_cpsOpt_eval_simulates_open = forAll0 Typed Full $ \e ->
 --      
 -- NB: not true for full language             
 prop_cpsOpt_steps :: Property
-prop_cpsOpt_steps = forAll0 Typed PureLC $ \ e ->
+prop_cpsOpt_steps = forAll0 Typed Full $ \ e ->
   let 
      e' = case step e of
             Nothing -> discard -- if e does not step, ignore this test
             Just v -> v
-     cps_e  = cpsOptK e
-     cps_e' = cpsOptK e'
+     cps_e  = cpsOptM e
+     cps_e' = cpsOptM e'
+   in
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     step_star VNil cps_e cps_e'
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cpsOpt e ->* cpsOpt e'
+--      
+-- NB: not true for full language             
+prop_cpsOpt_steps_pure :: Property
+prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
+  let 
+     e' = case step e of
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
+     cps_e  = cpsOptM e
+     cps_e' = cpsOptM e'
      vv  = ("k" ::: VNil)
      pp' = ppWith ("k" ::: VNil)
    in
      counterexample ("e      = " ++ pp e) $
      counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp' cps_e) $
-     counterexample ("cps_e' = " ++ pp' cps_e') $
-     step_star vv cps_e cps_e'
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     step_star VNil cps_e cps_e'
 
 ------------------------------------------------------------------------
 -- * Run all properties
 ------------------------------------------------------------------------
 
+
 -- | Run all QuickCheck properties in this module.
 -- Properties marked NB are known to be false and are expected to fail.
 testAll :: IO ()
 testAll = do
-    let args = stdArgs { maxSuccess = 1000 }
     -- Naive CPS
     putStrLn "=== Naive CPS ==="
     putStrLn "prop_cps_result (NB: expected to fail):"
@@ -443,20 +436,42 @@ testAll = do
     putStrLn "prop_cps_result_firstorder:"
     quickCheckWith args prop_cps_result_firstorder
     putStrLn "prop_cps_eval_cps (NB: expected to fail):"
-    quickCheckWith args prop_cps_eval_cps
-    putStrLn "prop_cps_reduce_cps (NB: expected to fail for pattern matching):"
-    quickCheckWith args prop_cps_reduce_cps
-    putStrLn "prop_cps_reduce_cps_pure:"
-    quickCheckWith args prop_cps_reduce_cps_pure
+    quickCheckWith args prop_cps_simulates
     putStrLn "prop_cps_step (NB: expected to fail):"
     quickCheckWith args prop_cps_step
-    putStrLn "prop_cps_steps (NB: expected to fail):"
-    quickCheckWith args prop_cps_steps
     -- Optimized CPS
     putStrLn "=== Optimized CPS ==="
     putStrLn "prop_cpsOpt_result_firstorder:"
     quickCheckWith args prop_cpsOpt_result_firstorder
-    putStrLn "prop_cpsOpt_eval_simulates_open:"
-    quickCheckWith args prop_cpsOpt_eval_simulates_open
     putStrLn "prop_cpsOpt_steps:"
     quickCheckWith args prop_cpsOpt_steps
+
+
+
+-- pretty printer for terms with a single free variable
+pp' :: Tm (S Z) -> String
+pp' = ppWith ("k" ::: VNil) -- name for index zero
+
+
+countApp :: Tm n -> Int
+countApp (Var _)        = 0
+countApp (Lam b)        = countApp (getBody b)
+countApp Unit           = 0
+countApp (Pair e1 e2)   = countApp e1 + countApp e2
+countApp (Inj _ e)      = countApp e
+countApp (App e1 e2)    = 1 + countApp e1 + countApp e2
+countApp (Match e brs)  = countApp e + sum (map countAppBranch brs)
+  where
+    countAppBranch (Branch b) = countApp (getBody b)
+
+countLam :: Tm n -> Int
+countLam (Var _)        = 0
+countLam (Lam b)        = 1 + countLam (getBody b)
+countLam Unit           = 0
+countLam (Pair e1 e2)   = countLam e1 + countLam e2
+countLam (Inj _ e)      = countLam e
+countLam (App e1 e2)    = countLam e1 + countLam e2
+countLam (Match e brs)  = countLam e + sum (map countLamBranch brs)
+  where
+    countLamBranch (Branch b) = countLam (getBody b)
+
