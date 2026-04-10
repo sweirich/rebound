@@ -405,7 +405,7 @@ of smaller terms that satisfy the same constraint. For `shrinkScoped`, the const
 ## Exercises
 
 
-**4. Extending `genTm`.** After adding `Let` to the language (Exercise 3 in Lecture 1 and Exercise 2 above), extend `genTm` in `Tutorial.Scoped.Gen` to also generate `let`-expressions.
+**1. Extending `genTm`.** After adding `Let` to the language (Exercise 3 in Lecture 1 and Exercise 2 above), extend `genTm` in `Tutorial.Scoped.Gen` to also generate `let`-expressions.
 
 ```haskell
 -- In the Full branch of gens inside genTm:
@@ -420,7 +420,7 @@ where `gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) sz'`.
 
 ---
 
-**5. An open-term round trip.** `projectTmWith` and `injectTmWith` work on open terms too.  Write a QuickCheck property analogous to `prop_project_round_trip` for terms with one free variable (`Tm (S Z)`), and test it:
+**2. An open-term round trip.** `projectTmWith` and `injectTmWith` work on open terms too.  Write a QuickCheck property analogous to `prop_project_round_trip` for terms with one free variable (`Tm (S Z)`), and test it:
 
 ```haskell
 prop_project_round_trip_open :: S.Tm (S Z) -> Bool
@@ -435,7 +435,7 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 - What initial `[(String, Fin (S Z))]` do you pass to `projectTmWith`?
 - Does the choice of name matter?  Why or why not?
 
-**6. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
+**3. Substitution laws.** State and test the following equational laws as QuickCheck properties on `Tm Z`:
 
 - *Identity*: `applyE idE t == t`
 - *Composition*: `applyE f (applyE g t) == applyE (compE f g) t`
@@ -443,13 +443,8 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 
 For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`, or build simple environments with `(.:)`. Can you find a counterexample to any of these properties if you get the implementation of `lift` wrong?
 
-**7. More efficient scope checking** Instead of using the type `[(String, Var n)]` to map variable names to indices, design a more efficient data structure. This data structure should allow logarithmic lookup of names and constant time insertion of a new binding (while incrementing the indices of previous bindings).
 
-If you would like a hint: check out the "Skewed Substitutions" described in this [blog post](https://mathisbd.github.io/blog/esubstitutions.html).
-
----
-
-**8. Full reduction (normalization).** The `reduce` function in `Tutorial.Scoped.Eval` is a *weak* reducer: the `Lam` case returns the lambda unchanged without looking inside the body. Implement *full* reduction (also called *normalization*), which reduces everywhere — including under binders:
+**4. Full reduction (normalization).** The `reduce` function in `Tutorial.Scoped.Eval` is a *weak* reducer: the `Lam` case returns the lambda unchanged without looking inside the body. Implement *full* reduction (also called *normalization*), which reduces everywhere — including under binders:
 
 ```haskell
 normalize :: Tm n -> Maybe (Tm n)

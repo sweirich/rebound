@@ -34,19 +34,19 @@ lecture1.html: $(LECTURES)/Lecture1.md $(TEMPLATE) $(CSS)
 
 lecture2.html: $(LECTURES)/Lecture2.md $(TEMPLATE) $(CSS)
 	$(PANDOC) $(PANDOC_FLAGS) \
-	  --metadata title="Lecture 2: Where Do Well-Scoped Terms Come From?" \
+	  --metadata title="Lecture 2: Pattern binding" \
 	  --metadata lecture2-active=true \
 	  -o $@ $<
 
 lecture3.html: $(LECTURES)/Lecture3.md $(TEMPLATE) $(CSS)
 	$(PANDOC) $(PANDOC_FLAGS) \
-	  --metadata title="Lecture 3: CPS — A Scope-Preserving Translation" \
+	  --metadata title="Lecture 3: PBT with well-scoped and well-typed terms" \
 	  --metadata lecture3-active=true \
 	  -o $@ $<
 
 lecture4.html: $(LECTURES)/Lecture4.md $(TEMPLATE) $(CSS)
 	$(PANDOC) $(PANDOC_FLAGS) \
-	  --metadata title="Lecture 4: Efficient Implementation" \
+	  --metadata title="Lecture 4: CPS — A Scope-Preserving Translation" \
 	  --metadata lecture4-active=true \
 	  -o $@ $<
 

@@ -1,4 +1,4 @@
-# Lecture 3: CPS Conversion
+# Lecture 4: CPS Conversion
 
 ## Modules referenced in this lecture
 
@@ -7,9 +7,9 @@
 
 ## Overview and Goals
 
-Lectures 1 and 2 built a well-scoped de Bruijn representation and discussed
+The first three lectures built a well-scoped de Bruijn representation and discussed
 some of the practical issues that occur when working with them in an
-implementation. In this lecture, we start to see some of the payoff for
+implementation. In this lecture, we see some of the payoff for
 working with this sort of representation: we can work with and reason about
 open code.
 

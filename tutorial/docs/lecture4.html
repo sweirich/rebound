@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lecture 4: Efficient
-Implementation — Implement your POPL paper</title>
+<title>Lecture 4: CPS — A Scope-Preserving
+Translation — Implement your POPL paper</title>
 <link rel="stylesheet" href="style.css">
 <style>
 html { -webkit-text-size-adjust: 100%; }
@@ -97,656 +97,425 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </nav>
 
 <main>
-<h1
-id="lecture-4-efficient-implementation-delayed-and-defunctionalized-substitutions">Lecture
-4: Efficient Implementation — Delayed and Defunctionalized
-Substitutions</h1>
-<p>Lectures 1–3 built a correct implementation of well-scoped de Bruijn
-terms, showed how to convert between named and scoped representations,
-and used the machinery to implement CPS conversion. All of this worked
-using the <code>rebound</code> library, but so far we have treated it as
-a black box. This lecture opens the box.</p>
-<p>The focus is efficiency. We will see:</p>
-<ol type="1">
-<li><strong>Why naive traversal is expensive</strong> — every
-<code>applyE</code> call traverses the entire term.</li>
-<li><strong>Delayed substitutions at binders</strong> — store a pending
-substitution <em>inside</em> the <code>Bind</code> wrapper instead of
-applying it immediately.</li>
-<li><strong>Defunctionalized environments</strong> — represent
-substitutions as data rather than functions so that compositions can be
-simplified by smart constructor rules.</li>
-<li><strong>The <code>applyOpt</code> shortcut</strong> — detect the
-identity environment and bail out before touching the term.</li>
-<li><strong>How it all fits together</strong> — what
-<code>getBody</code>, <code>instantiate1</code>, and <code>applyE</code>
-actually do in the library.</li>
-</ol>
+<h1 id="lecture-4-cps-conversion">Lecture 4: CPS Conversion</h1>
+<h2 id="modules-referenced-in-this-lecture">Modules referenced in this
+lecture</h2>
+<ul>
+<li><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/CPS.hs">Tutorial.Scoped.CPS</a></li>
+</ul>
+<h2 id="overview-and-goals">Overview and Goals</h2>
+<p>The first three lectures built a well-scoped de Bruijn representation
+and discussed some of the practical issues that occur when working with
+them in an implementation. In this lecture, we see some of the payoff
+for working with this sort of representation: we can work with and
+reason about open code.</p>
+<p>As an extended example, we will use a nontrivial <em>term-to-term
+transformation</em>: called the continuation-passing style (CPS)
+conversion. CPS is an important tool for programming language research:
+from a theoretical side, it explains evaluation order and bridges
+between classical and constructive logics. On the practical side, it has
+been used as a compiler intermediate language and for the implementation
+of cooperative multithreading. If you haven’t seen it before, you should
+learn more about it.</p>
+<p>For our purposes, CPS is a good case study because it changes the
+binding structure of its input — each function gains an extra argument.
+Therefore, when implementing this operation, we need to work in a
+changing scope – the scope of the input term is not necessarily the same
+as the scope of the output. Because we are working with de Bruijn
+indices, we need to be careful what scope we are in, and the types help
+us with that. At the same time, when we go to test our implementation,
+to make sure that it has the desired properties, we don’t need to worry
+about variable names; we are naturally working with terms up to
+alpha-equivalence.</p>
 <hr />
-<h2 id="the-problem-traversal-cost-for-substitutions">1. The Problem:
-Traversal Cost for Substitutions</h2>
-<p>Recall the hand-written substitution from
-<code>Scratch.hs</code>:</p>
-<div class="sourceCode" id="cb1"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Env</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (up env) b))</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">App</span> f a)       <span class="ot">=</span> <span class="dt">App</span> (applyE env f) (applyE env a)</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- ...</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">Env</span> m n <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>up env <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">FZ</span> <span class="op">.:</span> (applyE shift <span class="op">.</span> env)</span></code></pre></div>
-<p>Every call to <code>applyE</code> traverses the entire term,
-recursing into every sub-term. Crucially, <code>up</code> is called
-<em>once per binder encountered during traversal</em>, and each
-<code>up</code> itself calls <code>applyE shift</code> on every term in
-the range of <code>env</code>.</p>
-<p>Consider a deeply-nested expression: normalizing it requires many
-rounds of substitution, and each round descends through all the binders
-above the redex. In the worst case — reducing a sequence of
-<code>n</code> beta redexes in a term of depth <code>d</code> — the
-naive strategy costs O(n × d) traversals.</p>
-<p>There is a classical solution, known since at least Abadi, Cardelli,
-Curien, and Lévy’s <em>Explicit Substitutions</em> (1991):
-<strong>delay</strong> the substitution in the term instead of applying
-it immediately.</p>
-<p>In that calculus, substitutions can be stored anywhere in the term.
-But here, we would like to hide the delayed substitution from users.
-Therefore, we will only store substitutions in the binder type.</p>
-<h3 id="measuring-the-cost">Measuring the cost</h3>
-<p>The paper accompanying the <code>rebound</code> library benchmarked
-several implementations of full normalization on a standard stress test.
-Here are representative timings:</p>
-<table>
-<thead>
-<tr>
-<th>Implementation</th>
-<th>Strategy</th>
-<th>Time (nf)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>SubstV</code></td>
-<td>Naive eager substitution (à la <code>Scratch.hs</code>)</td>
-<td>3330 ms</td>
-</tr>
-<tr>
-<td><code>BindV</code></td>
-<td>Delayed substitution inside <code>Bind</code></td>
-<td>0.767 ms</td>
-</tr>
-</tbody>
-</table>
-<p>The delayed-substitution approach (<code>BindV</code>) is
-significantly faster than the naive one. The remaining sections explain
-how the library achieves this.</p>
+<h2 id="what-is-cps">1. What is CPS?</h2>
+<p>In direct style, a function returns its result to its caller
+implicitly. In <em>continuation-passing style</em> every function
+receives an extra argument — the <em>continuation</em> — which
+represents “what to do with the result”. Instead of returning, a
+function calls its continuation.</p>
+<p>Here’s a simple version of the CPS transformation, defined
+inductively on terms. We write <code>[[e]] k</code> to mean “translate
+<code>e</code>, passing results to continuation <code>k</code>”. An
+informal definition of this operation is below:</p>
+<pre><code>[[x]]          k = k x
+[[λx. e]]      k = k (λx. λk&#39;. [[e]] k&#39;)
+[[e1 e2]]      k = [[e1]] (λx. [[e2]] (λy. x y k))
+[[()]]         k = k ()
+[[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
+[[inj i e]]    k = [[e]] (λx. k (inj i x))
+[[case e of p_i -&gt; b_i]]  k = [[e]] (λz. case z of p_i → [[b_i]] k)</code></pre>
+<p>The top-level call typically uses the identity continuation:
+<code>cps e = [[e]] (λx. x)</code>.</p>
+<p>Note that this is a call-by-value translation: the evaluation of the
+result of the translation should occur in the same order as the
+call-by-value evaluation.</p>
 <hr />
-<h2 id="from-naive-to-delayed-the-bind-type">2. From Naive to Delayed:
-The <code>Bind</code> Type</h2>
-<p>In <code>Scratch.hs</code>, <code>Bind1</code> is a transparent
-wrapper around the body:</p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bind1</span> n <span class="ot">=</span> <span class="dt">Bind1</span> (<span class="dt">Tm</span> (<span class="dt">S</span> n))</span></code></pre></div>
-<p>There is nowhere to store a pending substitution. When we cross a
-binder with <code>applyE</code>, we must call <code>up env</code> and
-descend into the body immediately.</p>
-<p>The library’s <code>Bind</code> type adds a slot for the name hint
-<em>and</em> a slot for the pending substitution. The tutorial’s
-<code>Bind1 Tm Tm n</code> (from <code>Rebound.Bind.Local</code>) is a
-synonym for:</p>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Bind1</span> v c n <span class="ot">=</span> <span class="dt">Pat.Bind</span> v c <span class="dt">LocalName</span> n</span></code></pre></div>
-<p>The general <code>Bind</code> type (from
-<code>Rebound.Bind.Pat</code>) is:</p>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bind</span> v c (<span class="ot">pat ::</span> <span class="dt">Type</span>) (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Bind</span><span class="ot"> ::</span> pat <span class="ot">-&gt;</span> <span class="dt">Env</span> v m n <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> m) <span class="ot">-&gt;</span> <span class="dt">Bind</span> v c pat n</span></code></pre></div>
-<p>There are three fields:</p>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th>Field</th>
-<th>Type</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>pat</code></td>
-<td><code>pat</code></td>
-<td>pattern metadata (e.g. <code>LocalName</code>,
-<code>Vec N2 LocalName</code>)</td>
-</tr>
-<tr>
-<td><code>Env v m n</code></td>
-<td>pending substitution</td>
-<td>maps old scope <code>m</code> to current scope <code>n</code></td>
-</tr>
-<tr>
-<td><code>c (Size pat + m)</code></td>
-<td>body</td>
-<td>term under the binder, still in old scope <code>m</code></td>
-</tr>
-</tbody>
-</table>
-<h3 id="why-does-bind-carry-a-pattern">Why does <code>Bind</code> carry
-a pattern?</h3>
-<p>The body of a binder lives in a larger scope than the surrounding
-term: the scope grows by <code>Size pat</code> — the number of variables
-the pattern introduces. For a simple lambda,
-<code>pat = LocalName</code> and <code>Size LocalName = 1</code>, so the
-body lives in scope <code>S m</code>. For a pair match,
-<code>pat = Vec N2 LocalName</code> and
-<code>Size (Vec N2 LocalName) = 2</code>, so the body lives in scope
-<code>S (S m)</code>.</p>
-<p>Beyond the scope bookkeeping, the pattern carries <em>metadata</em>.
-For the tutorial’s <code>LocalName</code> pattern, that metadata is the
-user-visible name hint used for pretty-printing:</p>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lam stores the name &quot;x&quot; alongside the body</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ot">ex_id ::</span> <span class="dt">Tm</span> <span class="dt">Z</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>ex_id <span class="ot">=</span> <span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- retrieve the name hint later</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="ot">getLocalName ::</span> <span class="dt">Bind1</span> v c n <span class="ot">-&gt;</span> <span class="dt">LocalName</span></span></code></pre></div>
-<p>The <code>Eq</code> instance for <code>LocalName</code> ignores the
-name (<code>x == y = True</code>), so two binders with different names
-but identical bodies are considered equal. The de Bruijn indices do the
-real comparison; <code>LocalName</code> is only for display.</p>
-<h3 id="constructing-a-binder">Constructing a binder</h3>
-<p>In <code>Rebound.Bind.Local</code>, <code>bind1</code> takes the name
-as an explicit argument:</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">bind1 ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> c (<span class="dt">S</span> n) <span class="ot">-&gt;</span> <span class="dt">Bind1</span> v c n</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>bind1 name body <span class="ot">=</span> Pat.bind name body    <span class="co">-- stores: Bind name idE body</span></span></code></pre></div>
-<p>The internal <code>Pat.bind</code> sets the pending environment to
-<code>idE</code>:</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">bind ::</span> <span class="dt">Sized</span> pat <span class="ot">=&gt;</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> pat <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> n) <span class="ot">-&gt;</span> <span class="dt">Bind</span> v c pat n</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>bind pat <span class="ot">=</span> <span class="dt">Bind</span> pat idE</span></code></pre></div>
-<p>No traversal. The body is stored as-is with a zero-cost identity
-substitution.</p>
-<h3 id="applying-a-substitution-to-a-binder-o1">Applying a substitution
-to a binder — O(1)</h3>
-<p>Here is the key insight. The <code>Subst</code> instance for
-<code>Bind</code> is:</p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Subst</span> v (<span class="dt">Bind</span> v c p) <span class="kw">where</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    applyE env1 (<span class="dt">Bind</span> p env2 body) <span class="ot">=</span> <span class="dt">Bind</span> p (env2 <span class="op">.&gt;&gt;</span> env1) body</span></code></pre></div>
-<p>Applying environment <code>env1</code> to a binder does
-<strong>not</strong> touch the body at all. It simply <em>composes</em>
-the new environment with the existing one. The body is untouched.</p>
-<p>Compare this to the naive version:</p>
-<div class="sourceCode" id="cb9"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Scratch.hs (naive)</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> (<span class="dt">Bind1</span> b)) <span class="ot">=</span> <span class="dt">Lam</span> (<span class="dt">Bind1</span> (applyE (up env) b))</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        ^^^^^^^^^^^^^^^^^^^^</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">--                                        traverses the entire body eagerly</span></span></code></pre></div>
-<p>With the library:</p>
-<div class="sourceCode" id="cb10"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- rebound (delayed)</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>applyE env (<span class="dt">Lam</span> bnd) <span class="ot">=</span> <span class="dt">Lam</span> (applyE env bnd)</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="co">--                        = Lam (Bind p (old_env .&gt;&gt; env) body)</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co">--                                       ^^^^^^^^^^^^^^^^</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="co">--                                       just a composition — no traversal</span></span></code></pre></div>
-<p>Every time a substitution passes over a binder, the cost is O(1). The
-traversal of the body is <em>deferred</em> until the body is actually
-needed.</p>
-<h3 id="forcing-the-body-getbody">Forcing the body —
-<code>getBody</code></h3>
-<p>The suspended substitution is applied on demand by
-<code>getBody</code>:</p>
-<div class="sourceCode" id="cb11"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">getBody ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> <span class="dt">Bind</span> v c pat n <span class="ot">-&gt;</span> c (<span class="dt">Size</span> pat <span class="op">+</span> n)</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>getBody (<span class="dt">Bind</span> (<span class="ot">pat ::</span> pat) (<span class="ot">env ::</span> <span class="dt">Env</span> v m n) body) <span class="ot">=</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    applyOpt applyE (upN (size pat) env) body</span></code></pre></div>
-<p><code>upN k env</code> lifts <code>env</code> under <code>k</code>
-binders: the <code>k</code> locally-bound variables map to themselves,
-and all outer variables are shifted appropriately. <code>applyOpt</code>
-is described in §5.</p>
+<h2 id="implementation-using-rebound-pure-lambda-calculus">2.
+Implementation using <code>rebound</code> (pure lambda calculus)</h2>
+<p>Let’s look at how we could translate the definition above to
+executable Haskell code. The difficult part of this translation is right
+there near the top: when we translate a function, we need to introduce a
+new argument <code>k'</code> to pass in the “continuation” of the
+function.</p>
+<pre><code>[[ \x.e ]] k = k (λx. λk&#39;. [[e]] k&#39;)</code></pre>
+<p>That means that when we call the translation recursively,
+<code>e</code> might be in some scope <code>S n</code>, because it is
+inside the body of a lambda expression. However, the result is going to
+be in some larger scope that binds not just <code>x</code> but also
+<code>k'</code>. What that means is that the <em>variable</em> case is
+also challenging. Even though with names above we say
+<code>[[x]]k</code> produces <code>k x</code>, the scope of the first
+<code>x</code> may be different from the scope of the second
+<code>x</code>, so they may be different indices.</p>
+<p>Therefore, we will parameterize our cps conversion function with an
+additional argument—a substitution that talks about the scope change. If
+the input term is in some scope <code>n</code> and the output scope is
+<code>m</code>, then we need an argument of type <code>Env Tm n m</code>
+to go between the two. Furthermore, the continuation argument should be
+in the <em>output</em> scope (<code>m</code>) because it needs to be
+applied to the result.</p>
+<p>For the variable case, we apply this renaming to the variable, to get
+its version in the output scope. We can then use it to construct the
+application of the continuation to this new variable.</p>
+<pre><code>cpsExp :: Env Tm n m -&gt; Tm n -&gt; Tm m -&gt; Tm m
+cpsExp r (Var x) k = App k (applyEnv r x)</code></pre>
+<p>For the lambda case, we will also apply the continuation
+<code>k</code> to a value. But this value is the function of two
+parameters. The first parameter is the same one as the original
+function, the second is a new parameter. We then call the cps conversion
+function recursively on the body of the lambda expression, using this
+new parameter (variable 0 in the output scope) as the continuation.</p>
+<pre><code>cpsExp r (Lam b) k = App k 
+    (Lam (bind1 (getLocalName b) 
+      (Lam (bind1 (LocalName &quot;k&quot;)
+          (cpsExp r&#39; (getBody b) (Var FZ))))))
+    where 
+        r&#39; = up r .&gt;&gt; wk</code></pre>
+<p>What is the renaming for this recursive call? We need to translate
+this renaming to be used under the body of the lambda expression, with
+<code>up r</code>, but then we also need to account for the second
+binder for the continuation. This binder only affects the output scope,
+as opposed to the first that is part of both. Therefore, we need to
+shift the variables in the output, which we do by post-composing the
+substitution with <code>wk</code>.</p>
+<p>For applications, our original definition is</p>
+<pre><code>[[e1 e2]]k = [[e1]] (λv. [[e2]] (λw. v w k))</code></pre>
+<p>Note that in this case, our output scope introduces two binders:
+<code>v</code> and <code>w</code>, naming the values of <code>e1</code>
+and <code>e2</code>. Because <code>v</code> is a function, we can apply
+it to both its argument <code>w</code> and the current continuation
+<code>k</code>.</p>
+<p>With CPS translation, we need to create the two lambda bindings, for
+<code>v</code> and <code>w</code> above, and use them for the
+continuations as we translate <code>t1</code> and <code>t2</code>. In
+the body of the second continuation <code>v w k</code>, <code>v</code>
+is at index 1, <code>w</code> is at index 0, and k needs to be shifted
+two steps.</p>
+<pre><code>cpsExp r (App t1 t2) k = 
+    cpsExp r t1 (Lam (bind1 (LocalName &quot;v&quot;)
+      (cpsExp r&#39; t2 (Lam (bind1 (LocalName &quot;w&quot;)
+          (App (App (Var (FS FZ)) (Var FZ)) k&#39;&#39;))))))  
+       where
+         r&#39;  = r .&gt;&gt; wk
+         k&#39;&#39; = applyE (wk .&gt;&gt; wk) k</code></pre>
+<p>Note that this function is structurally recursive on the input.</p>
 <hr />
-<h2 id="defunctionalized-environments">3. Defunctionalized
-Environments</h2>
-<p>In <code>Scratch.hs</code> we used a function type:</p>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Env</span> m n <span class="ot">=</span> <span class="dt">Fin</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span></code></pre></div>
-<p>Shifting a substitution over a binder is O(1), but only if
-environment <em>composition</em> — the <code>.&gt;&gt;</code> operator —
-is itself cheap. With a plain function, we can compose:</p>
+<h2 id="what-does-it-mean-for-cps-conversion-to-be-correct">3. What does
+it mean for CPS conversion to be correct?</h2>
+<p>If we implement the cps conversion algorithm, we want to know that we
+did so correctly. Intuitively, this means that when we apply this
+transformation to some code, the output should produce the same result
+when we run it.</p>
+<p>But what does that mean formally? We can start with this simple
+statement, which asserts that we get the same result from reducing any
+term and its cps conversion:</p>
+<pre><code>prop_cps_result e = reduce e == reduce (cps e)</code></pre>
+<p>But already we have a problem. This property is not true.</p>
+<pre><code>ghci&gt; quickCheck prop_cps_result
+*** Failed! Falsified (after 1 test):  
+Lam (bind1 (Var 0))
+e          = (λ x. x)
+cps_e      = (λ x. x) (λ x k. k x)</code></pre>
+<p>The result of evaluation after CPS translating the identity function
+is <code>(λ x k. k x)</code>. And this is not the same as
+<code>(λ x. x)</code>. We can fix this by only looking at the cases
+where the result of evaluation is “first-order”, i.e. a value that does
+not contain a function.</p>
+<p>This solves the issue, but we need to throw away a lot of cases.</p>
+<pre><code>ghci&gt; qc prop_cps_result_firstorder
++++ OK, passed 1000 tests; 1373 discarded.</code></pre>
+<h3 id="simulation-properties">Simulation properties</h3>
+<p>Perhaps we can restate correctness using a simulation property. if
+the source language reduces a term to some result, then the
+CPS-converted version evaluates the converted term to an equivalent
+result.</p>
+<p>We might draw a picture like this:</p>
+<pre><code>  if         e  =&gt;  v 
+                 
+  then      cps e =&gt; cps v</code></pre>
+<p>In other words, we want to show that if <code>e</code> evaluates to
+<code>v</code>, then <code>cps e</code> evaluates to
+<code>cps v</code>.</p>
+<pre><code>prop_cps_simulates :: Property
+prop_cps_simulates = forAll0 Typed Full $ \e -&gt;
+       counterexample (&quot;e          = &quot; ++ pp e)          $
+       counterexample (&quot;cps_e      = &quot; ++ pp (cps e))    $
+       eval (cps e) == (cps &lt;$&gt; eval e)</code></pre>
+<p>But, this property is not true!</p>
+<pre><code>ghci&gt; qc prop_cps_simulates
+*** Failed! Falsified (after 1 test):  
+Unit
+e          = ()
+cps_e      = (λ x. x) ()</code></pre>
+<p>In this counterexample, we have a value that translates to a
+non-value. But reduction always produces inert terms. The problem is
+that CPS translation has inserted an “administrative reduction” into the
+term.</p>
+<hr />
+<h2 id="optimized-cps-conversion">4. Optimized CPS conversion</h2>
+<p>A naive implementation would represent every continuation
+<code>k</code> as a <code>Tm g</code> (an object-level lambda) and apply
+it with <code>App k v</code>. But this introduces <em>administrative
+redexes</em> — beta redexes of the form <code>(λx. body) v</code> that
+were not present in the source and must be reduced away.</p>
+<h3 id="introducing-meta-continuations">Introducing Meta
+continuations</h3>
+<p>To avoid this we distinguish two cases:</p>
 <div class="sourceCode" id="cb13"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>compE f g x <span class="ot">=</span> applyE f (g x)   <span class="co">-- O(1) to build, but no simplification possible</span></span></code></pre></div>
-<p>But there is no way to inspect a function to detect special cases
-like the identity or consecutive shifts. In particular, we cannot detect
-that <code>shift .&gt;&gt; shift</code> should simplify to a single
-shift-by-two.</p>
-<p>The <code>rebound</code> library uses a
-<strong>defunctionalized</strong> representation — substitutions are
-<em>data</em>, not functions, so they can be inspected, simplified, and
-fused:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Cont</span> (<span class="ot">g ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Obj</span><span class="ot">  ::</span> <span class="dt">Tm</span> g          <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- object-level term (usual)</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Meta</span><span class="ot"> ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- meta-level binder (new!)</span></span></code></pre></div>
+<ul>
+<li><p><strong><code>Obj t</code></strong> — the continuation is an
+existing object-level term <code>t</code>. To apply it we emit a genuine
+<code>App</code>: <code>applyCont (Obj t) v = App t v</code>.</p></li>
+<li><p><strong><code>Meta k</code></strong> — the continuation is
+represented as a Haskell-level binder. To apply it we substitute
+directly, <em>without</em> introducing a lambda in the output:
+<code>applyCont (Meta k) v = instantiate1 k v</code>.</p></li>
+</ul>
 <div class="sourceCode" id="cb14"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Env</span> (<span class="ot">a ::</span> <span class="dt">Nat</span> <span class="ot">-&gt;</span> <span class="dt">Type</span>) (<span class="ot">n ::</span> <span class="dt">Nat</span>) (<span class="ot">m ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Zero</span><span class="ot">  ::</span> <span class="dt">Env</span> a <span class="dt">Z</span> n                            <span class="co">-- empty domain (scope Z)</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Inc</span><span class="ot">   ::</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Env</span> a n (m <span class="op">+</span> n)            <span class="co">-- shift every index up by m</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Cons</span><span class="ot">  ::</span> a m <span class="ot">-&gt;</span> <span class="dt">Env</span> a n m <span class="ot">-&gt;</span> <span class="dt">Env</span> a (<span class="dt">S</span> n) m    <span class="co">-- FZ ↦ head, rest to tail</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ot">    (:&lt;&gt;) ::</span> <span class="dt">Env</span> a m n <span class="ot">-&gt;</span> <span class="dt">Env</span> a n p <span class="ot">-&gt;</span> <span class="dt">Env</span> a m p  <span class="co">-- sequential composition</span></span></code></pre></div>
-<p>Each constructor represents a specific, commonly-occurring
-substitution:</p>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th>Constructor</th>
-<th>Naive function equivalent</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Zero</code></td>
-<td><code>\x -&gt; case x of {}</code></td>
-<td>empty domain (scope 0)</td>
-</tr>
-<tr>
-<td><code>Inc m</code></td>
-<td><code>\x -&gt; Var (shiftN m x)</code></td>
-<td>shift every variable up by <code>m</code></td>
-</tr>
-<tr>
-<td><code>Cons t r</code></td>
-<td><code>\case FZ -&gt; t; FS x -&gt; r x</code></td>
-<td>extend: <code>FZ ↦ t</code>, rest via <code>r</code></td>
-</tr>
-<tr>
-<td><code>e1 :&lt;&gt; e2</code></td>
-<td><code>\x -&gt; applyE e2 (applyEnv e1 x)</code></td>
-<td>sequential composition</td>
-</tr>
-</tbody>
-</table>
-<h3 id="fin.shiftn-adding-to-an-index"><code>Fin.shiftN</code> — adding
-to an index</h3>
-<p><code>Fin.shiftN m x</code> adds the natural number <code>m</code> to
-the de Bruijn index <code>x</code>, producing a larger index in
-<code>Fin (m + n)</code>:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Obj</span>  o) v <span class="ot">=</span> <span class="dt">App</span> o v</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Meta</span> k) v <span class="ot">=</span> instantiate1 k v</span></code></pre></div>
+<p>When a <code>Meta</code> continuation must appear as an object-level
+term (e.g. as the extra argument passed to a CPS’d function), we reify
+it:</p>
 <div class="sourceCode" id="cb15"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>Fin.shiftN<span class="ot"> ::</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> <span class="dt">Fin</span> (m <span class="op">+</span> n)</span></code></pre></div>
-<p>For example, <code>shiftN s2 FZ = FS (FS FZ)</code> — index 0 becomes
-index 2. The <code>Inc m</code> constructor uses this:
-<code>applyEnv (Inc m) x = var (shiftN m x)</code>.</p>
-<h3 id="shiftne-building-an-inc-environment"><code>shiftNE</code> —
-building an <code>Inc</code> environment</h3>
-<p><code>shiftNE m</code> is the smart constructor that wraps
-<code>m</code> in <code>Inc</code>:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reifyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Obj</span>  o) <span class="ot">=</span> o</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Meta</span> k) <span class="ot">=</span> <span class="dt">Lam</span> k</span></code></pre></div>
+<p><code>Meta</code> continuations are used for all the intermediate
+continuations built <em>inside</em> <code>cpsExp</code>; the top-level
+call uses <code>Meta (bind1 "x" (Var FZ))</code> (the identity function
+<code>λx. x</code> as a meta-continuation).</p>
+<p>Since <code>Cont g</code> contains <code>Tm g</code> values, it needs
+a <code>Subst</code> instance so that the library can apply environments
+to it:</p>
 <div class="sourceCode" id="cb16"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">shiftNE ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">SNat</span> m <span class="ot">-&gt;</span> <span class="dt">Env</span> v n (m <span class="op">+</span> n)</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>shiftNE <span class="ot">=</span> <span class="dt">Inc</span></span></code></pre></div>
-<p>Two standard aliases are built on top:</p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">idE     ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v n n</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>idE     <span class="ot">=</span> shiftNE s0        <span class="co">-- Inc SZ  (shift by zero = identity)</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="ot">shift1E ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v n (<span class="dt">S</span> n)</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>shift1E <span class="ot">=</span> shiftNE s1        <span class="co">-- Inc s1  (shift by one)</span></span></code></pre></div>
-<p>Because <code>idE = Inc SZ</code> is <em>data</em>,
-<code>applyOpt</code> (§5 below) can inspect it without calling into
-<code>applyE</code>.</p>
-<h3 id="interpreting-the-environment">Interpreting the environment</h3>
-<p>The application function <code>applyEnv</code> interprets these
-constructors:</p>
-<div class="sourceCode" id="cb18"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyEnv ::</span> <span class="dt">SubstVar</span> a <span class="ot">=&gt;</span> <span class="dt">Env</span> a n m <span class="ot">-&gt;</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> a m</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>applyEnv <span class="dt">Zero</span>        x      <span class="ot">=</span> Fin.absurd x</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Inc</span> m)     x      <span class="ot">=</span> var (Fin.shiftN m x)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Cons</span> t _)  <span class="dt">FZ</span>     <span class="ot">=</span> t</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>applyEnv (<span class="dt">Cons</span> _ r)  (<span class="dt">FS</span> x) <span class="ot">=</span> applyEnv r x</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>applyEnv (s1 <span class="op">:&lt;&gt;</span> s2) x      <span class="ot">=</span> applyE s2 (applyEnv s1 x)</span></code></pre></div>
-<h3 id="why-not-a-plain-function">Why not a plain function?</h3>
-<p>The naive function-based environment
-(<code>type Env m n = Fin m -&gt; Tm n</code>) is perfectly correct, but
-cannot be inspected. You cannot tell whether a function is the identity,
-and you cannot fuse two consecutive shifts. The paper measures this
-directly:</p>
-<table>
-<thead>
-<tr>
-<th>Environment</th>
-<th>Time (nf)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Functional</code> (plain function)</td>
-<td>126 ms</td>
-</tr>
-<tr>
-<td><code>Lazy</code> (defunctionalized + smart composition)</td>
-<td>0.84 ms</td>
-</tr>
-</tbody>
-</table>
-<p>The defunctionalized representation is significantly faster for full
-normalization — almost entirely because it enables the smart composition
-rules described next.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Cont</span> <span class="kw">where</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  applyE r (<span class="dt">Obj</span> o)  <span class="ot">=</span> <span class="dt">Obj</span> (applyE r o)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  applyE r (<span class="dt">Meta</span> b) <span class="ot">=</span> <span class="dt">Meta</span> (applyE r b)</span></code></pre></div>
+<h3 id="updating-the-translation-to-use-meta-continuations">Updating the
+translation to use Meta continuations</h3>
+<p>To update the translation, we change the type of the continuation
+argument to be a <code>Cont m</code> instead of a raw term.</p>
+<pre><code>cpsOpt :: forall n m. Env Tm n m -&gt; Tm n -&gt; Cont m -&gt; Tm m</code></pre>
+<p>The Haskell typechecker then points out all of the places where we
+need to change uses of <code>App</code> to <code>applyCont</code>, and
+insert a use of <code>reifyCont</code> when we use a <code>Cont m</code>
+as a <code>Tm m</code>. Whenever we construct a continuation using
+<code>Lam</code>, we have a choice: we can either wrap it with
+<code>Obj</code> or change the <code>Lam</code> to <code>Meta</code> ….
+but using the <code>Meta</code> continuation is more efficient.</p>
+<p>At the top level, we have a new way to start the transformation. We
+can either start with the identity function, as before, or we can start
+with a meta-level identity function.</p>
+<pre><code>-- | entry point with identity function
+cpsOpt :: Tm Z -&gt; Tm Z
+cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
+
+-- | entry point with meta-identity function
+cpsOptM :: Tm Z -&gt; Tm Z
+cpsOptM e = cpsExpOpt zeroE e (Meta (bind (LocalName &quot;x&quot;) (Var FZ)))</code></pre>
+<p>Now let’s try our simulation property with these two:</p>
+<pre><code>ghci&gt; qc prop_cpsOpt_simulates
+*** Failed! Falsified (after 1 test):  
+()
+e          = ()
+eval_e     = ()
+cps_e      = (\ x. x) ()
+cps_eval_e = (\ x. x) ()
+eval_cps_e = ()
+ghci&gt; qc prop_cpsOptM_simulates
++++ OK, passed 100000 tests.
+ghci&gt; </code></pre>
+<h2 id="historical-notes">5. Historical Notes</h2>
+<p><strong>The CPS transformation.</strong> The idea of compiling
+programs into continuation-passing style has two early origins. Fischer
+(“Lambda Calculus Schemata”, 1972; published in revised form 1993) and
+Plotkin (“Call-by-Name, Call-by-Value and the Lambda-Calculus”, 1975)
+independently described the CPS translation as a way to explain
+evaluation order. Plotkin’s paper is particularly influential: it proved
+that call-by-value and call-by-name evaluation correspond to two
+different CPS translations, and it coined the term <em>administrative
+redex</em> for the spurious beta-redexes introduced by a naive
+translation.</p>
+<p><strong>CPS as a compiler intermediate language.</strong> Steele’s
+“Rabbit: A Compiler for Scheme” (1978) first used CPS as a compiler
+intermediate representation, making continuations explicit so that tail
+calls, closures, and control effects could all be handled uniformly.
+This idea was further developed in the SML/NJ compiler (Appel,
+“Compiling with Continuations”, 1992) and influenced many subsequent
+compiler designs.</p>
+<p><strong>One-pass CPS and administrative redexes.</strong> A naive CPS
+translation produces many administrative redexes. Eliminating them
+requires a separate reduction pass. Danvy and Filinski (“Representing
+Control: A Study of the CPS Transformation”, 1992) showed how to produce
+administrative-redex-free output in a single pass by distinguishing
+<em>meta-level</em> continuations (Haskell functions) from
+<em>object-level</em> continuations (lambda terms in the target). The
+<code>Cont</code> datatype with <code>Meta</code> and <code>Obj</code>
+constructors in Section 4 directly implements this idea.</p>
+<p><strong>CPS and classical logic.</strong> Griffin (“A
+Formulae-as-Types Notion of Control”, 1990) observed that continuations
+correspond to classical logic under the Curry–Howard correspondence: the
+call/cc operator corresponds to the law of excluded middle. This
+connection was further developed by Parigot (λμ-calculus, 1992) and many
+others, giving a logical foundation for the computational behavior of
+control operators.</p>
 <hr />
-<h2 id="smart-composition-comp-and-.">4. Smart Composition —
-<code>comp</code> and <code>.&gt;&gt;</code></h2>
-<p>The function <code>comp</code> (exposed as <code>.&gt;&gt;</code>)
-builds a composed environment, but applies a battery of algebraic
-simplifications before resorting to <code>(:&lt;&gt;)</code>:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ot">(.&gt;&gt;) ::</span> <span class="dt">Subst</span> v v <span class="ot">=&gt;</span> <span class="dt">Env</span> v p n <span class="ot">-&gt;</span> <span class="dt">Env</span> v n m <span class="ot">-&gt;</span> <span class="dt">Env</span> v p m</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>(<span class="op">.&gt;&gt;</span>) <span class="ot">=</span> comp</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="ot">comp ::</span> <span class="dt">SubstVar</span> a <span class="ot">=&gt;</span> <span class="dt">Env</span> a m n <span class="ot">-&gt;</span> <span class="dt">Env</span> a n p <span class="ot">-&gt;</span> <span class="dt">Env</span> a m p</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>comp <span class="dt">Zero</span>       _               <span class="ot">=</span> <span class="dt">Zero</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> k1)   (<span class="dt">Inc</span> k2)        <span class="ot">=</span> <span class="dt">Inc</span> (k1 <span class="op">+</span> k2)       <span class="co">-- merge two shifts</span></span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> <span class="dt">SZ</span>)   s               <span class="ot">=</span> s                    <span class="co">-- shift by 0 = identity</span></span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>comp s          (<span class="dt">Inc</span> <span class="dt">SZ</span>)        <span class="ot">=</span> s</span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Inc</span> (<span class="dt">SS</span> p)) (<span class="dt">Cons</span> _ r)    <span class="ot">=</span> comp (<span class="dt">Inc</span> p) r      <span class="co">-- skip the Cons head</span></span>
-<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>comp (s1 <span class="op">:&lt;&gt;</span> s2) s3             <span class="ot">=</span> comp s1 (comp s2 s3) <span class="co">-- re-associate right</span></span>
-<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>comp (<span class="dt">Cons</span> t s1) s2             <span class="ot">=</span> <span class="dt">Cons</span> (applyE s2 t) (comp s1 s2)</span>
-<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>comp s1          s2             <span class="ot">=</span> s1 <span class="op">:&lt;&gt;</span> s2            <span class="co">-- fallback</span></span></code></pre></div>
-<p>Key cases:</p>
-<ul>
-<li><strong>Shift fusion</strong>:
-<code>Inc k1 .&gt;&gt; Inc k2 = Inc (k1+k2)</code> — two consecutive
-shifts merge into one <code>Inc</code> without any traversal.</li>
-<li><strong>Identity elimination</strong>:
-<code>Inc SZ .&gt;&gt; s = s</code> and
-<code>s .&gt;&gt; Inc SZ = s</code> — shifting by zero is the identity;
-discard it.</li>
-<li><strong><code>Inc</code> and <code>Cons</code></strong>:
-<code>Inc (S p) .&gt;&gt; Cons _ r = Inc p .&gt;&gt; r</code> — a shift
-past the head of a <code>Cons</code> consumes the head and continues
-into the tail.</li>
-</ul>
-<p>These rules mean that common patterns like repeatedly weakening a
-term never accumulate deep <code>(:&lt;&gt;)</code> chains; they
-collapse to a single <code>Inc</code> at composition time.</p>
-<h3 id="how-much-does-smart-composition-contribute">How much does smart
-composition contribute?</h3>
-<p>The paper isolates each optimization with ablation benchmarks:</p>
-<table>
-<thead>
-<tr>
-<th>Variant</th>
-<th>What is missing</th>
-<th>Time (nf)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Lazy</code> (full)</td>
-<td>—</td>
-<td>0.84 ms</td>
-</tr>
-<tr>
-<td><code>LazyA</code></td>
-<td>no <code>applyOpt</code> identity shortcut</td>
-<td>0.844 ms</td>
-</tr>
-<tr>
-<td><code>LazyB</code></td>
-<td>no smart composition</td>
-<td>2.36 ms</td>
-</tr>
-</tbody>
-</table>
-<p>Removing smart composition (<code>LazyB</code>) gives a <strong>~2.8×
-slowdown</strong> on full normalization. Removing just the identity
-shortcut (<code>LazyA</code>) is almost negligible — smart composition
-already handles most identity eliminations at construction time. The
-paper concludes: <em>“much of the speed up comes from ‘smart
-composition’.”</em></p>
+<h2 id="exercises">6. Exercises</h2>
+<p><strong>1. Tracing <code>cpsExp</code> by hand.</strong> Work through
+the following calls step by step, writing down the output term produced
+at each recursive call. Verify your answers in GHCi using
+<code>pp (cps e)</code>.</p>
+<p><strong>(a)</strong> Trace <code>cpsExp idE Unit idTm</code>. - What
+rule applies? - What is the output term?</p>
+<p><strong>(b)</strong> Trace
+<code>cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm</code>: -
+When the rule for <code>Lam</code> calls
+<code>cpsExp r' (Var FZ) (Var FZ)</code> recursively, what is the
+environment <code>r'</code>? -
+<code>r' = up idE .&gt;&gt; wk :: Env Tm (S Z) (S (S Z))</code> - What
+does <code>r'</code> map <code>FZ</code> to? (Hint: <code>up idE</code>
+is the identity on <code>Tm (S Z)</code>, then <code>.&gt;&gt; wk</code>
+shifts.) - What is the full output term? Use <code>pp</code> to check
+your answer looks like <code>(λ x. x) (λ x. λ k. k x)</code>.</p>
+<p><strong>(c)</strong> Trace
+<code>cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm</code>.
+The <code>App</code> case introduces two intermediate continuations.
+Write down the complete output term and verify it matches
+<code>pp (cps (App (Lam ...) Unit))</code>.</p>
 <hr />
-<h2 id="the-identity-shortcut-applyopt">5. The Identity Shortcut —
-<code>applyOpt</code></h2>
-<p>Even with smart composition, we still need to call
-<code>applyE</code> when forcing a binder. But a very common case is
-that the environment <em>is already the identity</em> — we are just
-retrieving a freshly-constructed body with no pending substitution.
-<code>applyOpt</code> detects this before touching the term:</p>
+<p><strong>2. Scope arithmetic in the <code>App</code> case.</strong>
+The <code>App</code> case of <code>cpsExp</code> is:</p>
 <div class="sourceCode" id="cb20"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyOpt ::</span> (<span class="dt">Env</span> v n m <span class="ot">-&gt;</span> c n <span class="ot">-&gt;</span> c m) <span class="ot">-&gt;</span> (<span class="dt">Env</span> v n m <span class="ot">-&gt;</span> c n <span class="ot">-&gt;</span> c m)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>applyOpt f (<span class="dt">Inc</span> <span class="dt">SZ</span>) x <span class="ot">=</span> x</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>applyOpt f r        x <span class="ot">=</span> f r x</span></code></pre></div>
-<p>When the environment is <code>Inc SZ</code> (= <code>idE</code>,
-shift by zero), the term is returned untouched. This short-circuit fires
-routinely: every <code>bind1 name body</code> stores <code>idE</code> as
-the initial environment, so if no substitution has been composed in
-since construction, <code>getBody</code> returns the body with zero
-traversal.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">App</span> t1 t2) k <span class="ot">=</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r t1 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;v&quot;</span>)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>      (cpsExp r&#39; t2 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;w&quot;</span>)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>          (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> (<span class="dt">FS</span> <span class="dt">FZ</span>)) (<span class="dt">Var</span> <span class="dt">FZ</span>)) k&#39;&#39;))))))</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>      r&#39;  <span class="ot">=</span> r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>      k&#39;&#39; <span class="ot">=</span> applyE (wk <span class="op">.&gt;&gt;</span> wk) k</span></code></pre></div>
+<p>Answer the following:</p>
+<p><strong>(a)</strong> If the input scope is <code>n</code> and output
+scope is <code>m</code>, what is the output scope when translating
+<code>t2</code>? The continuation for <code>t2</code> is a lambda we are
+<em>building</em>, so we are one binder deeper.</p>
+<p><strong>(b)</strong> In the body
+<code>App (App (Var (FS FZ)) (Var FZ)) k''</code>, what do
+<code>Var (FS FZ)</code> and <code>Var FZ</code> name?</p>
+<p><strong>(c)</strong> Why is <code>k</code> shifted by
+<code>wk .&gt;&gt; wk</code> to produce <code>k''</code>, but
+<code>r</code> is only shifted by a single <code>wk</code> to produce
+<code>r'</code>? (Hint: <code>r</code> maps input variables to the
+output scope — how many new output binders have been crossed at each
+point?)</p>
 <hr />
-<h2 id="the-up-and-upn-operations">6. The <code>up</code> and
-<code>upN</code> Operations</h2>
-<p>When a substitution must be applied <em>under</em> binders — as
-happens inside <code>getBody</code> — we need to <em>lift</em> it past
-the bound variables. The <code>up</code> function corresponds to
-<code>up</code> from <code>Scratch.hs</code>:</p>
+<p><strong>3. Correctness properties — what fails and why.</strong></p>
+<p><strong>(a)</strong> Run <code>qc prop_cps_result</code> in GHCi.
+Record the counterexample. Explain in one sentence why CPS-converting a
+function value does not preserve <code>eval</code>.</p>
+<p><strong>(b)</strong> Run <code>qc prop_cps_result_firstorder</code>.
+This passes, but with a high discard rate. Why are so many test cases
+discarded?</p>
+<p><strong>(c)</strong> Run <code>qc prop_cps_eval_simulates</code>. The
+counterexample involves <code>Unit</code>. Explain why <code>()</code>
+is the simplest failing case: what does <code>cps ()</code> reduce to,
+and why is that not equal to <code>cps (eval ())</code>?</p>
+<p><strong>(d)</strong> Run
+<code>qc prop_cps_eval_simulates_open</code>. This passes for the pure
+lambda calculus. The property uses <code>cpsK</code> instead of
+<code>cps</code>. Explain: why does replacing the identity-function
+continuation with a fresh variable <code>k</code> fix the
+<code>Unit</code> counterexample?</p>
+<p><strong>(e)</strong> Change the generator in
+<code>prop_cps_eval_simulates_open</code> from <code>Typed PureLC</code>
+to <code>Typed Full</code> and run it. Record the counterexample. Which
+language construct causes it to fail, and why does the pure lambda
+calculus not have this problem?</p>
+<hr />
+<p><strong>4. Meta continuations — counting administrative
+redexes.</strong></p>
+<p><strong>(a)</strong> Evaluate the following in GHCi and compare the
+two outputs:</p>
 <div class="sourceCode" id="cb21"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">up ::</span> <span class="dt">SubstVar</span> v <span class="ot">=&gt;</span> <span class="dt">Env</span> v m n <span class="ot">-&gt;</span> <span class="dt">Env</span> v (<span class="dt">S</span> m) (<span class="dt">S</span> n)</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>up (<span class="dt">Inc</span> <span class="dt">SZ</span>) <span class="ot">=</span> <span class="dt">Inc</span> <span class="dt">SZ</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>up e        <span class="ot">=</span> var Fin.f0 <span class="op">.:</span> comp e (<span class="dt">Inc</span> s1)</span></code></pre></div>
-<p>The special case recognises the identity and returns it immediately —
-lifting the identity is still the identity. The general case is the
-familiar <code>up</code>:</p>
-<ul>
-<li><code>FZ</code> maps to <code>Var FZ</code> (the newly-bound
-variable stays at index 0).</li>
-<li>Every other variable <code>x</code> maps to <code>env x</code>, then
-shifted up by one (<code>Inc s1</code>) to make room for the new
-binder.</li>
-</ul>
-<p><code>upN p env</code> lifts <code>env</code> under <code>p</code>
-binders by iterating this operation, producing an environment of type
-<code>Env v (p + m) (p + n)</code>. <code>getBody</code> calls
-<code>upN (size pat) env</code> to bring <code>env</code> into scope
-before applying it to the body.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cps    (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cpsOpt (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span></code></pre></div>
+<p>Count the number of beta-redexes (sub-terms of the form
+<code>(λ x. body) arg</code>) in each. Which version has fewer?</p>
+<p><strong>(b)</strong> For
+<code>cpsExpOpt r Unit (Meta (bind1 (LocalName "x") body))</code>, show
+that <code>applyCont k Unit</code> directly substitutes
+<code>Unit</code> into <code>body</code>, producing
+<code>body[Unit/x]</code> with no <code>(λ x. body) ()</code> redex.</p>
+<p><strong>(c)</strong> In the <code>Lam</code> case of
+<code>cpsExpOpt</code>, the continuation passed to the recursive call is
+<code>Obj (Var FZ)</code> — not <code>Meta</code>. Explain why
+<code>Meta</code> cannot be used here. (Hint: <code>Var FZ</code> is a
+<em>runtime</em> variable for the caller-supplied continuation
+<code>k'</code>, not a compile-time binder we control.)</p>
+<p><strong>(d)</strong> Run
+<code>qc prop_cpsOpt_result_firstorder</code> and
+<code>qc prop_cpsOpt_simulates</code>. Do both pass? What do they tell
+you about the correctness of the optimised translation?</p>
 <hr />
-<h2 id="putting-it-all-together">7. Putting It All Together</h2>
-<p>Let us trace what happens when the evaluator opens a lambda
-binder:</p>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">App</span> m n) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    mv <span class="ot">&lt;-</span> eval m</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    nv <span class="ot">&lt;-</span> eval n</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b nv)</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span></code></pre></div>
-<p><code>instantiate1 b nv</code> expands to:</p>
+<p><strong>5. Extending <code>cpsExp</code> with
+<code>let</code>.</strong> Assume
+<code>Let :: Tm n -&gt; Bind1 Tm Tm n -&gt; Tm n</code> has been added
+to <code>Tm</code> (Lecture 1, Exercise 3). The CPS rule for
+<code>let</code> is:</p>
+<pre><code>[[let x = e in b]] k  =  [[e]] (λx. [[b]] k)</code></pre>
+<p><strong>(a)</strong> Add a case to <code>cpsExp</code>:</p>
 <div class="sourceCode" id="cb23"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>instantiate1 b v1 <span class="ot">=</span> Pat.instantiate b (v1 <span class="op">.:</span> zeroE)</span></code></pre></div>
-<p>which calls:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r e (<span class="dt">Lam</span> (bind1 (getLocalName b)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>        (cpsExp r&#39; (getBody1 b) k&#39;)))</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
+<p>Explain each component: - Why is <code>r'</code> the right
+environment for the body of <code>b</code>? - Why is <code>k</code>
+shifted by <code>wk</code> to produce <code>k'</code>? - How does this
+compare to the <code>Lam</code> case?</p>
+<p><strong>(b)</strong> Add the corresponding case to
+<code>cpsExpOpt</code>, replacing the <code>Lam</code>-built
+continuation with a <code>Meta</code> continuation:</p>
 <div class="sourceCode" id="cb24"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>instantiate b e <span class="ot">=</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    unbindWith b</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>        (\p r body <span class="ot">-&gt;</span> applyOpt applyE (withSNat (size p) <span class="op">$</span> e <span class="op">.++</span> r) body)</span></code></pre></div>
-<p>Breaking this down step by step:</p>
-<ol type="1">
-<li><p><strong><code>unbindWith</code></strong> extracts the stored
-environment <code>r :: Env v m n</code> and the body
-<code>body :: Tm (1 + m)</code> <em>without forcing the
-body</em>.</p></li>
-<li><p><strong><code>e .++ r</code></strong> appends the instantiation
-environment <code>e = (nv .: zeroE)</code> to the stored environment
-<code>r</code>, giving an environment of type
-<code>Env v (1 + m) n</code> that maps:</p>
-<ul>
-<li><code>FZ</code> → <code>nv</code> (the argument value)</li>
-<li><code>FS x</code> → <code>applyEnv r x</code> (outer variables via
-the stored <code>r</code>)</li>
-</ul></li>
-<li><p><strong><code>applyOpt applyE env body</code></strong> applies
-the combined environment to the body. If <code>r</code> was
-<code>idE</code> (common when <code>b</code> was freshly created with
-<code>bind1</code>), the combined environment simplifies to
-<code>nv .: idE</code>, and the full traversal proceeds once.</p></li>
-</ol>
-<p>The important observation: <em>building the binder</em>
-(<code>Lam b</code>) was O(1), and <em>every substitution that passed
-over this binder</em> while evaluating the outer context was O(1). The
-single traversal happens once, precisely when the binder is opened.</p>
-<hr />
-<h2 id="what-you-get-for-free-generic1">8. What You Get for Free —
-<code>Generic1</code></h2>
-<p>In <code>Tutorial.Scoped.Syntax</code>, the term type derives
-<code>Generic1</code>:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Tm</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Var</span><span class="ot">   ::</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Lam</span><span class="ot">   ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- ...</span></span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>      <span class="kw">deriving</span> (<span class="dt">Generic1</span>, <span class="dt">Eq</span>, <span class="dt">Show</span>)</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SubstVar</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    var <span class="ot">=</span> <span class="dt">Var</span></span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>    isVar (<span class="dt">Var</span> x) <span class="ot">=</span> <span class="dt">Just</span> (<span class="dt">Refl</span>, x)</span>
-<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    isVar _       <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
-<p>The <code>Subst Tm Tm</code> instance has a default method body:</p>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Env</span> <span class="dt">Tm</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>applyE <span class="ot">=</span> gapplyE   <span class="co">-- dispatches through Generic1</span></span></code></pre></div>
-<p><code>gapplyE</code> first calls <code>isVar</code>: if the term is a
-variable, it looks it up in the environment directly via
-<code>applyEnv env x</code> — the fast path. Otherwise it calls the
-generic machinery to recurse over all fields, applying
-<code>applyE</code> recursively to each sub-term and the O(1) binder
-instance to each <code>Bind</code>.</p>
-<p>In contrast, <code>Scratch.hs</code> requires a hand-written
-<code>applyE</code> that explicitly dispatches on every constructor and
-manually calls <code>up</code> at each binder. With <code>rebound</code>
-you write <code>deriving Generic1</code> and two-line
-<code>SubstVar</code>/<code>Subst</code> instances, and the library
-handles everything else.</p>
-<hr />
-<h2 id="summary">9. Summary</h2>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th>Technique</th>
-<th>Where</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Delayed substitution</td>
-<td><code>Bind v c pat n</code></td>
-<td>stores <code>Env v m n</code> in the binder; applying
-<code>applyE</code> is O(1)</td>
-</tr>
-<tr>
-<td>Pattern field</td>
-<td><code>LocalName</code> in <code>Bind</code></td>
-<td>carries name hints for pretty-printing; <code>Eq</code> ignores
-them</td>
-</tr>
-<tr>
-<td>Defunctionalized <code>Env</code></td>
-<td><code>Rebound.Env.Lazy</code></td>
-<td>substitutions are data; enables smart composition</td>
-</tr>
-<tr>
-<td>Smart composition</td>
-<td><code>comp</code> / <code>.&gt;&gt;</code></td>
-<td>fuses shifts, drops identities, re-associates</td>
-</tr>
-<tr>
-<td><code>applyOpt</code></td>
-<td><code>Rebound.Env.Lazy</code></td>
-<td>skips traversal when the environment is the identity</td>
-</tr>
-<tr>
-<td><code>upN</code> / <code>up</code></td>
-<td><code>Rebound.Env</code></td>
-<td>lifts an environment under <code>p</code> binders; recognises
-identity</td>
-</tr>
-<tr>
-<td><code>Generic1</code></td>
-<td><code>Rebound.Generics</code></td>
-<td>derives <code>applyE</code> over all constructors automatically</td>
-</tr>
-<tr>
-<td><code>isVar</code> shortcut</td>
-<td><code>Subst</code> class</td>
-<td>fast path: <code>applyE env (Var x)</code> →
-<code>applyEnv env x</code></td>
-</tr>
-</tbody>
-</table>
-<p>The combination of these techniques means that:</p>
-<ul>
-<li><strong>Building</strong> a binder (<code>bind1</code>,
-<code>Lam</code>) is O(1).</li>
-<li><strong>Passing</strong> a substitution over a binder
-(<code>applyE env (Lam b)</code>) is O(1).</li>
-<li><strong>Opening</strong> a binder (<code>getBody</code>,
-<code>instantiate1</code>) forces the accumulated substitution in a
-single pass over the body.</li>
-<li><strong>Identity environments</strong> are detected and discarded
-without touching the term.</li>
-<li><strong>Consecutive shifts</strong> are fused into a single
-<code>Inc</code> at composition time.</li>
-</ul>
-<p>These are the same optimizations found in mature normalizers and
-type-checkers; the <code>rebound</code> library packages them in a
-reusable, type-safe interface so that every new language implementation
-gets them for free.</p>
-<hr />
-<h2 id="historical-notes">10. Historical Notes</h2>
-<p><strong>Explicit substitutions.</strong> The idea of making
-substitutions first-class objects that can be stored inside terms dates
-to Abadi, Cardelli, Curien, and Lévy, “Explicit Substitutions” (1991),
-which introduced the λσ-calculus. Their calculus allows substitutions to
-appear anywhere in a term, enabling lazy evaluation of substitutions.
-Storing the pending substitution <em>only at binders</em> (as
-<code>rebound</code> does) is a restricted form of this idea that hides
-the implementation detail from users of the binder type.</p>
-<p><strong>The λυ and σ families.</strong> Several explicit-substitution
-calculi followed λσ, addressing properties such as confluence and strong
-normalization: λs (Kamareddine and Ríos, 1995), λυ (Lescanne, 1994), and
-the suspension calculus (Nadathur and Wilson, 1998). The smart
-composition rules in <code>comp</code> (Section 4) correspond to the
-reduction rules of these calculi applied at composition time rather than
-during term traversal.</p>
-<p><strong>Defunctionalized environments.</strong> Representing
-environments as <em>data</em> rather than functions so that they can be
-inspected and simplified is an instance of <em>defunctionalization</em>
-(Reynolds, “Definitional Interpreters for Higher-Order Programming
-Languages”, 1972). Applied to de Bruijn substitutions, this idea appears
-in implementations of proof assistants such as Agda’s kernel.</p>
-<p><strong>Shift fusion.</strong> The observation that consecutive
-weakenings can be merged
-(<code>Inc k1 .&gt;&gt; Inc k2 = Inc (k1+k2)</code>) is closely related
-to the use of <em>relative</em> (offset-based) de Bruijn shifts in some
-implementations, e.g., the suspension calculus mentioned above and the
-environments used in the Caml Light and OCaml bytecode interpreters.</p>
-<p><strong>The <code>rebound</code> library.</strong> The specific
-combination of delayed substitutions, defunctionalized environments,
-smart composition, and GHC’s <code>Generic1</code> machinery for
-deriving <code>applyE</code> automatically was described and benchmarked
-in the <code>rebound</code> paper (Weirich et al.). The benchmark
-results quoted in Sections 1 and 3 are taken from that paper.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>cpsExpOpt r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    cpsExpOpt r e (<span class="dt">Meta</span> (bind1 (getLocalName b)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>        (cpsExpOpt r&#39; (getBody1 b) k&#39;)))</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
+<p>What administrative redex does the <code>Meta</code> here avoid
+compared to <code>cpsExp</code>?</p>
+<p><strong>(c)</strong> After adding both cases, run
+<code>qc prop_cps_result_firstorder</code> and verify it still
+passes.</p>
 </main>
 
 <footer>

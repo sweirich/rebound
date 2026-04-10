@@ -391,24 +391,9 @@ Which variable maps to `FZ` inside the body — `x` or `y`?  Why?
 
 - How does the treatment of `let` compare to `lam` in each direction?
 
-- Does `prop_project_round_trip` still pass after this change?  Why or why not?
+- Does `prop_project_round_trip` still hold after this change?  Why or why not?
 
----
 
-**3. `LocalName` and α-equivalence.** The `Eq` instance for `LocalName` makes every two `LocalName` values equal:
-
-```haskell
-instance Eq LocalName where
-    x1 == x2 = True
-```
-
-Evaluate the following in GHCi and explain the result:
-
-```haskell
-S.Lam (S.bind (S.LocalName "x") (S.Var FZ))
-  ==
-S.Lam (S.bind (S.LocalName "y") (S.Var FZ))
-```
 
 
 

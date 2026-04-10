@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lecture 3: CPS — A Scope-Preserving
-Translation — Implement your POPL paper</title>
+<title>Lecture 3: PBT with well-scoped and well-typed
+terms — Implement your POPL paper</title>
 <link rel="stylesheet" href="style.css">
 <style>
 html { -webkit-text-size-adjust: 100%; }
@@ -97,413 +97,487 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </nav>
 
 <main>
-<h1 id="lecture-3-cps-conversion">Lecture 3: CPS Conversion</h1>
+<h1
+id="lecture-3-property-based-testing-pbt-with-well-scoped-and-well-typed-terms">Lecture
+3: Property-Based Testing (PBT) with well-scoped and well-typed
+terms</h1>
 <h2 id="modules-referenced-in-this-lecture">Modules referenced in this
 lecture</h2>
 <ul>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/CPS.hs">Tutorial.Scoped.CPS</a></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Eval.hs">Tutorial.Scoped.Eval</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Gen.hs">Tutorial.Scoped.Gen</a></p></li>
 </ul>
 <h2 id="overview-and-goals">Overview and Goals</h2>
-<p>Lectures 1 and 2 built a well-scoped de Bruijn representation and
-discussed some of the practical issues that occur when working with them
-in an implementation. In this lecture, we start to see some of the
-payoff for working with this sort of representation: we can work with
-and reason about open code.</p>
-<p>As an extended example, we will use a nontrivial <em>term-to-term
-transformation</em>: called the continuation-passing style (CPS)
-conversion. CPS is an important tool for programming language research:
-from a theoretical side, it explains evaluation order and bridges
-between classical and constructive logics. On the practical side, it has
-been used as a compiler intermediate language and for the implementation
-of cooperative multithreading. If you haven’t seen it before, you should
-learn more about it.</p>
-<p>For our purposes, CPS is a good case study because it changes the
-binding structure of its input — each function gains an extra argument.
-Therefore, when implementing this operation, we need to work in a
-changing scope – the scope of the input term is not necessarily the same
-as the scope of the output. Because we are working with de Bruijn
-indices, we need to be careful what scope we are in, and the types help
-us with that. At the same time, when we go to test our implementation,
-to make sure that it has the desired properties, we don’t need to worry
-about variable names; we are naturally working with terms up to
-alpha-equivalence.</p>
-<hr />
-<h2 id="what-is-cps">1. What is CPS?</h2>
-<p>In direct style, a function returns its result to its caller
-implicitly. In <em>continuation-passing style</em> every function
-receives an extra argument — the <em>continuation</em> — which
-represents “what to do with the result”. Instead of returning, a
-function calls its continuation.</p>
-<p>Here’s a simple version of the CPS transformation, defined
-inductively on terms. We write <code>[[e]] k</code> to mean “translate
-<code>e</code>, passing results to continuation <code>k</code>”. An
-informal definition of this operation is below:</p>
-<pre><code>[[x]]          k = k x
-[[λx. e]]      k = k (λx. λk&#39;. [[e]] k&#39;)
-[[e1 e2]]      k = [[e1]] (λx. [[e2]] (λy. x y k))
-[[()]]         k = k ()
-[[(e1, e2)]]   k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
-[[inj i e]]    k = [[e]] (λx. k (inj i x))
-[[case e of () -&gt; b]]      k = [[e]] (λz. case z of () -&gt; [[b]] k)
-[[case e of (x,y) → b]]    k = [[e]] (λz. case z of (x,y) → [[b]] k)
-[[case e of inj i → b_i]]  k = [[e]] (λz. case z of inj i → [[b_i]] k)</code></pre>
-<p>The top-level call typically uses the identity continuation:
-<code>cps e = [[e]] (λx. x)</code>.</p>
-<p>Note that this is a call-by-value translation: the evaluation of the
-result of the translation should occur in the same order as the
-call-by-value evaluation.</p>
-<hr />
-<h2 id="implementation-using-rebound-pure-lambda-calculus">2.
-Implementation using <code>rebound</code> (pure lambda calculus)</h2>
-<p>Let’s look at how we could translate the definition above to
-executable Haskell code. The difficult part of this translation is right
-there near the top: when we translate a function, we need to introduce a
-new argument <code>k'</code> to pass in the “continuation” of the
-function.</p>
-<pre><code>[[ \x.e ]] k = k (λx. λk&#39;. [[e]] k&#39;)</code></pre>
-<p>That means that when we call the translation recursively,
-<code>e</code> might be in some scope <code>S n</code>, because it is
-inside the body of a lambda expression. However, the result is going to
-be in some larger scope that binds not just <code>x</code> but also
-<code>k'</code>. What that means is that the <em>variable</em> case is
-also challenging. Even though with names above we say
-<code>[[x]]k</code> produces <code>k x</code>, the scope of the first
-<code>x</code> may be different from the scope of the second
-<code>x</code>, so they may be different indices.</p>
-<p>Therefore, we will parameterize our cps conversion function with an
-additional argument—a substitution that talks about the scope change. If
-the input term is in some scope <code>n</code> and the output scope is
-<code>m</code>, then we need an argument of type <code>Env Tm n m</code>
-to go between the two. Furthermore, the continuation argument should be
-in the <em>output</em> scope (<code>m</code>) because it needs to be
-applied to the result.</p>
-<p>For the variable case, we apply this renaming to the variable, to get
-its version in the output scope. We can then use it to construct the
-application of the continuation to this new variable.</p>
-<pre><code>cpsExp :: Env Tm n m -&gt; Tm n -&gt; Tm m -&gt; Tm m
-cpsExp r (Var x) k = App k (applyEnv r x)</code></pre>
-<p>For the lambda case, we will also apply the continuation
-<code>k</code> to a value. But this value is the function of two
-parameters. The first parameter is the same one as the original
-function, the second is a new parameter. We then call the cps conversion
-function recursively on the body of the lambda expression, using this
-new parameter (variable 0 in the output scope) as the continuation.</p>
-<pre><code>cpsExp r (Lam b) k = App k 
-    (Lam (bind1 (getLocalName b) 
-      (Lam (bind1 (LocalName &quot;k&quot;)
-          (cpsExp r&#39; (getBody b) (Var FZ))))))
-    where 
-        r&#39; = up r .&gt;&gt; wk</code></pre>
-<p>What is the renaming for this recursive call? We need to translate
-this renaming to be used under the body of the lambda expression, with
-<code>up r</code>, but then we also need to account for the second
-binder for the continuation. This binder only affects the output scope,
-as opposed to the first that is part of both. Therefore, we need to
-shift the variables in the output, which we do by post-composing the
-substitution with <code>wk</code>.</p>
-<p>For applications, our original definition is</p>
-<pre><code>[[e1 e2]]k = [[e1]] (λv. [[e2]] (λw. v w k))</code></pre>
-<p>Note that in this case, our output scope introduces two binders:
-<code>v</code> and <code>w</code>, naming the values of <code>e1</code>
-and <code>e2</code>. Because <code>v</code> is a function, we can apply
-it to both its argument <code>w</code> and the current continuation
-<code>k</code>.</p>
-<p>With CPS translation, we need to create the two lambda bindings, for
-<code>v</code> and <code>w</code> above, and use them for the
-continuations as we translate <code>t1</code> and <code>t2</code>. In
-the body of the second continuation <code>v w k</code>, <code>v</code>
-is at index 1, <code>w</code> is at index 0, and k needs to be shifted
-two steps.</p>
-<pre><code>cpsExp r (App t1 t2) k = 
-    cpsExp r t1 (Lam (bind1 (LocalName &quot;v&quot;)
-      (cpsExp r&#39; t2 (Lam (bind1 (LocalName &quot;w&quot;)
-          (App (App (Var (FS FZ)) (Var FZ)) k&#39;&#39;))))))  
-       where
-         r&#39;  = r .&gt;&gt; wk
-         k&#39;&#39; = applyE (wk .&gt;&gt; wk) k</code></pre>
-<p>Note that this function is structurally recursive on the input.</p>
-<hr />
-<h2 id="what-does-it-mean-for-cps-conversion-to-be-correct">3. What does
-it mean for CPS conversion to be correct?</h2>
-<p>If we implement the cps conversion algorithm, we want to know that we
-did so correctly. Intuitively, this means that when we apply this
-transformation to some code, the output should produce the same result
-when we run it.</p>
-<p>But what does that mean formally? We can start with this simple
-statement, which asserts that we get the same result from evaluation for
-any term and its cps conversion:</p>
-<pre><code>prop_same_result e = eval e == eval (cps e)</code></pre>
-<p>But already we have a problem. This property is not true.</p>
-<pre><code>ghci&gt; qc prop_cps_result
-*** Failed! Falsified (after 1 test):  
-Lam (bind1 (Var 0))
-e          = (λ x. x)
-cps_e      = (λ x. x) (λ x k. k x)</code></pre>
-<p>The result of evaluation after CPS translating the identity function
-is <code>(λ x k. k x)</code>. And this is not the same as
-<code>(λ x. x)</code>. We can fix this by only looking at the cases
-where the result of evaluation is “first-order”, i.e. a value that does
-not contain a function.</p>
-<p>This solves the issue, but we need to throw away a lot of cases.</p>
-<pre><code>ghci&gt; qc prop_cps_result_firstorder
-+++ OK, passed 1000 tests; 1373 discarded.</code></pre>
-<h3 id="simulation-properties-big-step">Simulation properties
-(big-step)</h3>
-<p>We can do better by thinking about simulation properties.</p>
-<p>Another way to state the correctness of CPS conversion is through a
-simulation relation: if the source language evaluates a term to a
-result, then the CPS-converted language evaluates the converted term to
-an equivalent result. We might draw a picture like this:</p>
-<pre><code>           e  =&gt;  v 
-           |      |
-        cps e =&gt; cps v</code></pre>
-<p>In other words, we want to show that if <code>e</code> evaluates to
-<code>v</code>, then <code>cps e</code> evaluates to
-<code>cps v</code>.</p>
-<pre><code>prop_cps_eval_simulates :: Property
-prop_cps_eval_simulates = forAll0 Typed Full $ \e -&gt;
-       counterexample (&quot;e          = &quot; ++ pp e)          $
-       counterexample (&quot;cps_e      = &quot; ++ pp (cps e))    $
-       eval (cps e) == (cps &lt;$&gt; eval e)</code></pre>
-<p>Note that this property is not true.</p>
-<pre><code>ghci&gt; qc prop_cps_eval_simulates
-*** Failed! Falsified (after 1 test):  
-Unit
-e          = ()
-cps_e      = (λ x. x) ()</code></pre>
-<p>In this counterexample, we have a value that translates to a
-non-value.</p>
-<p>We can (partially) repair it by keeping our “top-level” continuation
-abstract. Instead of using the identity function, if we use a
-distinguished variable, then that solves the problem for
-<code>()</code>.</p>
-<p>However, this solution will not scale to the full language.</p>
-<hr />
-<h2 id="optimized-cps-conversion">4. Optimized CPS conversion</h2>
-<p>A naive implementation would represent every continuation
-<code>k</code> as a <code>Tm g</code> (an object-level lambda) and apply
-it with <code>App k v</code>. But this introduces <em>administrative
-redexes</em> — beta redexes of the form <code>(λx. body) v</code> that
-were not present in the source and must be reduced away.</p>
-<h3 id="introducing-meta-continuations">Introducing Meta
-continuations</h3>
-<p>To avoid this we distinguish two cases:</p>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Cont</span> (<span class="ot">g ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Obj</span><span class="ot">  ::</span> <span class="dt">Tm</span> g          <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- object-level term (usual)</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Meta</span><span class="ot"> ::</span> <span class="dt">Bind1</span> <span class="dt">Tm</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Cont</span> g   <span class="co">-- meta-level binder (new!)</span></span></code></pre></div>
+<p>How do we know that the code that we have written so far is correct?
+We could write a bunch of unit tests, but it is more fun to use
+property-based testing, with Haskell’s Quickcheck library (QC). With
+this approach, we define <em>properties</em> of our definitions, and
+then use Quickcheck test those properties extensively with randomly
+generated values.</p>
+<p>In this lecture, we will talk about how to generate random
+well-scoped (and well-typed) terms and use them to test the
+parser/pretty printer and evaluator that we defined in the previous
+lecture.</p>
+<h2 id="quick-check-properties-for-parsing-and-pretty-printing.">1.
+Quick check properties for parsing and pretty printing.</h2>
+<p>Re call that we can connect parsing and generation — via a chain of
+transformations:</p>
+<pre><code>
+        inject            scope-check
+Tm Z    ────────►  N.Tm   ──────────►  Either ScopeCheckError (Tm Z)
+
+
+         inject            pretty-print          parse             scope-check
+Tm Z    ────────►  N.Tm   ──────────►  String  ──────────► Either ParseError N.Tm  ──────────►  Either ScopeCheckError (Tm Z)</code></pre>
+<p>Two QuickCheck properties
+(<code>defined in Tutorial.Scoped.ScopeCheck</code>) verify that our
+transformations are correct:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- inject then project recovers the original term</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_project_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>prop_project_round_trip i <span class="ot">=</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    projectTm (injectTm i) <span class="op">==</span> <span class="dt">Right</span> i</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- pretty-print then parse recovers the named term</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Pretty-printing a term and parsing it back yields the original named term.</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_parse_round_trip ::</span> <span class="dt">S.Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>prop_parse_round_trip i <span class="ot">=</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>   parse (pp i) <span class="op">==</span> <span class="dt">Right</span> i</span></code></pre></div>
+<p>However, to run QuickCheck properties we need a way to generate
+random closed values!</p>
+<h2 id="quickcheck-crash-course">Quickcheck crash course</h2>
+<p>QuickCheck provides two central abstractions for property-based
+testing:</p>
 <ul>
-<li><p><strong><code>Obj t</code></strong> — the continuation is an
-existing object-level term <code>t</code>. To apply it we emit a genuine
-<code>App</code>: <code>applyCont (Obj t) v = App t v</code>.</p></li>
-<li><p><strong><code>Meta k</code></strong> — the continuation is
-represented as a Haskell-level binder. To apply it we substitute
-directly, <em>without</em> introducing a lambda in the output:
-<code>applyCont (Meta k) v = instantiate1 k v</code>.</p></li>
+<li><p><strong><code>Gen a</code></strong> — a type for generators of
+values of type <code>a</code>. Combinators like <code>QC.sized</code>,
+<code>QC.oneof</code>, and <code>QC.elements</code>, and the monad
+operations build generators compositionally.</p></li>
+<li><p><strong><code>Arbitrary a</code></strong> — a typeclass that
+packages a default generator (<code>arbitrary :: Gen a</code>) and a
+shrinker (<code>shrink :: a -&gt; [a]</code>):</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">Arbitrary</span> a <span class="kw">where</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ot">    arbitrary ::</span> <span class="dt">Gen</span> a</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ot">    shrink    ::</span> a <span class="ot">-&gt;</span> [a]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    shrink _  <span class="ot">=</span> []   <span class="co">-- default: no shrinking</span></span></code></pre></div></li>
 </ul>
+<p>QuickCheck uses <code>arbitrary</code> to generate test inputs and
+<code>shrink</code> to reduce a failing case to a smaller one.</p>
+<h2 id="a-well-scoped-generator-for-pure-lambda-calculus-terms">2. A
+well-scoped generator for pure lambda calculus terms</h2>
+<p>Let’s start with a simple well-scoped generator that targets only
+pure lambda calculus terms (<code>Lam</code>, <code>App</code>,
+<code>Var</code>). It is a good warm-up before tackling the full
+language.</p>
+<p>Therefore we want to implement <code>Gen (S.Tm n)</code> — a
+generator that only ever produces well-scoped de Bruijn terms, so that
+every randomly generated term is a legitimate input to our
+properties.</p>
+<p>The key idea is to carry the <em>scope</em> — the number of variables
+currently in scope — as an implicit runtime parameter for the generator.
+When the generator recurses under a binder it increments the scope,
+making the newly bound variable available.</p>
+<p>The <code>Fin.universe</code> operation enumerates all indices from
+<code>0</code> to <code>n-1</code>. Then the <code>QC.elements</code>
+operation picks a random one. However, this only makese sense if there
+is at least one free variable in scope. If <code>n</code> is zero, then
+we don’t have any variables to pick from. Therefore, we just return the
+smallest closed term.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- At small size generate either a variable or &quot;\x.x&quot; depending on scope</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ot">genBase ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNat</span> n <span class="ot">-&gt;</span> <span class="dt">Gen</span> (<span class="dt">Tm</span> n) </span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>genBase <span class="dt">SZ</span> <span class="ot">=</span> <span class="fu">return</span> tmId</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>genBase <span class="dt">SS</span> <span class="ot">=</span> QC.elements (<span class="fu">map</span> <span class="dt">Var</span> Fin.universe)</span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">genScopedPureLC ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">QC.Gen</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>genScopedPureLC <span class="ot">=</span> QC.sized go</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ot">      go ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">QC.Gen</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>      go sz <span class="op">|</span> sz <span class="op">&lt;=</span> <span class="dv">1</span> <span class="ot">=</span> genBase snat</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>      go sz <span class="ot">=</span> </span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>         <span class="kw">let</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>           <span class="co">-- generate a random name and increment the number of free variables</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>           gen1 <span class="ot">=</span> bind <span class="op">&lt;$&gt;</span> genLocalName <span class="op">&lt;*&gt;</span> go (sz <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>           <span class="co">-- recursive calls for App divide size by two</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>           gen  <span class="ot">=</span> go (sz <span class="ot">`div`</span> <span class="dv">2</span>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>         <span class="kw">in</span> </span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>         QC.oneof [genBase snat, <span class="dt">Lam</span> <span class="op">&lt;$&gt;</span> gen1, <span class="dt">App</span> <span class="op">&lt;$&gt;</span> gen <span class="op">&lt;*&gt;</span> gen ]</span></code></pre></div>
+<p>The generator is parameterized by the number of free variables in
+scope <code>n :: Nat</code>, which is a <em>type</em>-level natural
+number. To use this number at runtime we need a <em>singleton</em>
+provided by the <code>SNatI n</code>.</p>
+<p>The <code>go</code> function does the main work of generation. The
+first argument <code>n</code> is the number of variables in scope, the
+second is <code>sz</code>, a size budget. During property-based testing
+the <code>QC.sized</code> operation passes the current size budget to
+the inner function <code>go</code> to generate progressively larger
+terms. The <code>snat</code> call converts the <code>SNatI n</code>
+constraint into an explicit <code>SNat n</code> value that
+<code>go</code> can inspect and pass to recursive calls.</p>
+<p>The local helper
+<code>go :: SNat n -&gt; Int -&gt; QC.Gen (Tm n)</code> carries both the
+scope witness and the size budget. When the size is larger than one,
+there are three choices for generation via <code>QC.oneof</code>:</p>
+<ul>
+<li><code>genBase n</code> — a variable or <code>tmId</code> (same as
+before, but available at any size)</li>
+<li><code>Lam &lt;$&gt; gen1</code> — wrap a binder; <code>gen1</code>
+generates the body in scope <code>S n</code> by calling
+<code>go (sz - 1)</code>. The budget decreases by 1 (not halved) because
+a lambda chain <code>λx.λy.λz.…</code> is a linear sequence, not a
+tree.</li>
+<li><code>App &lt;$&gt; gen &lt;*&gt; gen</code> — apply two sub-terms,
+each in the <em>same</em> scope <code>n</code> but with budget
+<code>sz ``div`` 2</code> so that both branches together stay within
+budget.</li>
+</ul>
+<p>Binders also need names for pretty-printing. QuickCheck draws them
+from a small pool:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">genLocalName ::</span> <span class="dt">QC.Gen</span> <span class="dt">LocalName</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>genLocalName <span class="ot">=</span> <span class="dt">LocalName</span> <span class="op">&lt;$&gt;</span> QC.elements [<span class="st">&quot;x&quot;</span>, <span class="st">&quot;y&quot;</span>, <span class="st">&quot;z&quot;</span>, <span class="st">&quot;w&quot;</span>, <span class="st">&quot;v&quot;</span>, <span class="st">&quot;u&quot;</span>, <span class="st">&quot;t&quot;</span>, <span class="st">&quot;s&quot;</span>]</span></code></pre></div>
+<p>This can produce name collisions (e.g. <code>"x"</code> can appear in
+nested binders). However, this is not a problem:<code>injectTm</code>
+freshens names when the same name is already in scope. Correctness is
+unaffected because <code>LocalName</code> equality ignores the stored
+string.</p>
+<h2 id="seeing-the-round-trip-in-action">3. Seeing the round trip in
+action</h2>
+<p>With this generator we can run our tests:</p>
+<pre><code>ghci&gt; import Tutorial.Scoped.ScopeCheck
+ghci&gt; import Tutorial.Scoped.Gen
+ghci&gt; import Test.QuickCheck
+ghci&gt; quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_project_round_trip)
++++ OK, passed 100 tests.
+ghci&gt; quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped pp prop_parse_round_trip)
++++ OK, passed 100 tests.</code></pre>
+<p>The <code>forAllShrinkShow</code> instructs quickcheck which scoped
+generator, scoped shrinker, and pretty printer to use when testing.</p>
+<p>The round-trip properties confirm that scope-checking the named term
+recovers exactly the original de Bruijn term.</p>
+<h2 id="testing-eval">4. Testing <code>eval</code></h2>
+<p>Now let’s consider some properties that we might test for our
+evaluator.</p>
+<h3 id="big-step-properties">Big-step properties</h3>
+<p>The most basic property is that if a term evaluates to some result,
+then the result is a value. We can write this test as follows:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- if a term evaluates, it produces a value</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>prop_evalVal <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    discardAfter <span class="dv">1000000</span> <span class="op">$</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v <span class="ot">-&gt;</span> </span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>            counterexample (<span class="st">&quot;not a value: &quot;</span> <span class="op">++</span> pp v) <span class="op">$</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>            property (isVal v)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> </span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>            discard</span></code></pre></div>
+<p>We can strengthen this property by requiring the evaluation to
+produce a result. This property only holds for well-typed terms.</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- all terms evaluate to values</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>prop_evalVal <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    discardAfter <span class="dv">1000000</span> <span class="op">$</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v <span class="ot">-&gt;</span> </span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>            counterexample (<span class="st">&quot;not a value: &quot;</span> <span class="op">++</span> pp v) <span class="op">$</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>            property (isVal v)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> </span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>            property <span class="dt">False</span></span></code></pre></div>
+<p>What else can we test? We can define a generalization of
+call-by-value evaluation called <code>reduce</code> that works with open
+terms.</p>
+<p>For closed terms it should agree with <code>eval</code>:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_eval_reduce ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>prop_eval_reduce <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> reduce t <span class="op">==</span> <span class="dt">Just</span> v</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div>
+<p>We also test that <code>reduce</code> produces an <em>inert</em> term
+(one that cannot step further). This property is checked at both the
+closed scope <code>Z</code> and the open scope <code>S Z</code> (one
+free variable):</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_reduce_inert ::</span> <span class="kw">forall</span> n<span class="op">.</span> <span class="dt">SNatI</span> n <span class="ot">=&gt;</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>prop_reduce_inert <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> reduce t <span class="kw">of</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> property (isInert v)</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div>
+<h3 id="small-step-properties">Small-step properties</h3>
+<p>Finally, we also develop a small-step version of <code>reduce</code>.
+The small-step function <code>step</code> either returns a reduct or
+<code>Nothing</code> (the term is already a value). Two properties
+connect it to <code>eval</code> and <code>reduce</code>:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- for well-typed closed terms, step always reaches a value</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_stepVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>prop_stepVal <span class="ot">=</span> </span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> loop e <span class="ot">=</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>          <span class="kw">if</span> isVal e <span class="kw">then</span> property <span class="dt">True</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>                 <span class="dt">Nothing</span> <span class="ot">-&gt;</span> counterexample (<span class="st">&quot;stuck at: &quot;</span> <span class="op">++</span> pp e) (property <span class="dt">False</span>)</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>                 <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> loop e&#39;</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> loop</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="co">-- stepping preserves the final evaluation result</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalStep ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>prop_evalStep <span class="ot">=</span> \e <span class="ot">-&gt;</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> property (isVal e)</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> eval e <span class="op">==</span> eval e&#39;</span></code></pre></div>
+<h2 id="going-further-a-well-typed-generator">5. Going further: A
+well-typed generator?</h2>
+<p>The well-scoped generator (<code>genScopedTm</code>) produces any
+structurally valid term — but “well-scoped” does not mean “well-typed”.
+In an untyped setting, terms like the ω combinator</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- (λx. x x) (λx. x x)</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ot">omega ::</span> <span class="dt">Tm</span> <span class="dt">Z</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>omega <span class="ot">=</span> <span class="kw">let</span> self <span class="ot">=</span> <span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dt">FZ</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>)))</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">in</span> <span class="dt">App</span> self self</span></code></pre></div>
+<p>are perfectly well-scoped and will be generated regularly. Running
+<code>eval omega</code> diverges: the evaluator loops forever.</p>
+<p>This means properties tested with <code>genScopedTm</code> can hang
+rather than fail, making it difficult to get useful QuickCheck output.
+This is a real problem, because our well-scoped generator can produce
+such terms in practice.</p>
 <div class="sourceCode" id="cb14"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Obj</span>  o) v <span class="ot">=</span> <span class="dt">App</span> o v</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>applyCont (<span class="dt">Meta</span> k) v <span class="ot">=</span> instantiate1 k v</span></code></pre></div>
-<p>When a <code>Meta</code> continuation must appear as an object-level
-term (e.g. as the extra argument passed to a CPS’d function), we reify
-it:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> quickCheck (forAll genScopedPureLC prop_evalVal)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="op">***</span> <span class="dt">Failed</span><span class="op">!</span> <span class="dt">Timeout</span> <span class="kw">of</span> <span class="dv">1000000</span> microseconds exceeded<span class="op">.</span> (after <span class="dv">25</span> tests)<span class="op">:</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">Var</span> <span class="dv">0</span>))) (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dv">0</span>) (<span class="dt">Var</span> <span class="dv">0</span>)))) (<span class="dt">Lam</span> (bind1 (<span class="dt">App</span> (<span class="dt">Var</span> <span class="dv">0</span>) (<span class="dt">Var</span> <span class="dv">0</span>))))) (<span class="dt">Lam</span> (bind1 (<span class="dt">Var</span> <span class="dv">0</span>))))</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>term<span class="op">:</span> (\ x<span class="op">.</span> x) ((\ u<span class="op">.</span> u u) (\ v<span class="op">.</span> v v) (\ x<span class="op">.</span> x))</span></code></pre></div>
+<p>If we add shrinking, we can even see this smallest term.</p>
 <div class="sourceCode" id="cb15"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reifyCont ::</span> <span class="dt">Cont</span> g <span class="ot">-&gt;</span> <span class="dt">Tm</span> g</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Obj</span>  o) <span class="ot">=</span> o</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>reifyCont (<span class="dt">Meta</span> k) <span class="ot">=</span> <span class="dt">Lam</span> k</span></code></pre></div>
-<p><code>Meta</code> continuations are used for all the intermediate
-continuations built <em>inside</em> <code>cpsExp</code>; the top-level
-call uses <code>Meta (bind1 "x" (Var FZ))</code> (the identity function
-<code>λx. x</code> as a meta-continuation).</p>
-<p>Since <code>Cont g</code> contains <code>Tm g</code> values, it needs
-a <code>Subst</code> instance so that the library can apply environments
-to it:</p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Cont</span> <span class="kw">where</span></span></code></pre></div>
-<p>The instance body is empty because the library’s default generic
-machinery handles it.</p>
-<h3 id="updating-the-translation-to-use-meta-continuations">Updating the
-translation to use Meta continuations</h3>
-<p>To update the translation, we change the type of the continuation
-argument to be a <code>Cont m</code> instead of a raw term.</p>
-<pre><code>cpsOpt :: forall n m. Env Tm n m -&gt; Tm n -&gt; Cont m -&gt; Tm m</code></pre>
-<p>The Haskell typechecker then points out all of the places where we
-need to change uses of <code>App</code> to <code>applyCont</code>, and
-insert a use of <code>reifyCont</code> when we use a <code>Cont m</code>
-as a <code>Tm m</code>. Whenever we construct a continuation using
-<code>Lam</code>, we have a choice: we can either wrap it with
-<code>Obj</code> or change the <code>Lam</code> to <code>Meta</code> ….
-but using the <code>Meta</code> continuation is more efficient.</p>
-<hr />
-<h2 id="historical-notes">5. Historical Notes</h2>
-<p><strong>The CPS transformation.</strong> The idea of compiling
-programs into continuation-passing style has two early origins. Fischer
-(“Lambda Calculus Schemata”, 1972; published in revised form 1993) and
-Plotkin (“Call-by-Name, Call-by-Value and the Lambda-Calculus”, 1975)
-independently described the CPS translation as a way to explain
-evaluation order. Plotkin’s paper is particularly influential: it proved
-that call-by-value and call-by-name evaluation correspond to two
-different CPS translations, and it coined the term <em>administrative
-redex</em> for the spurious beta-redexes introduced by a naive
-translation.</p>
-<p><strong>CPS as a compiler intermediate language.</strong> Steele’s
-“Rabbit: A Compiler for Scheme” (1978) first used CPS as a compiler
-intermediate representation, making continuations explicit so that tail
-calls, closures, and control effects could all be handled uniformly.
-This idea was further developed in the SML/NJ compiler (Appel,
-“Compiling with Continuations”, 1992) and influenced many subsequent
-compiler designs.</p>
-<p><strong>One-pass CPS and administrative redexes.</strong> A naive CPS
-translation produces many administrative redexes. Eliminating them
-requires a separate reduction pass. Danvy and Filinski (“Representing
-Control: A Study of the CPS Transformation”, 1992) showed how to produce
-administrative-redex-free output in a single pass by distinguishing
-<em>meta-level</em> continuations (Haskell functions) from
-<em>object-level</em> continuations (lambda terms in the target). The
-<code>Cont</code> datatype with <code>Meta</code> and <code>Obj</code>
-constructors in Section 4 directly implements this idea.</p>
-<p><strong>CPS and classical logic.</strong> Griffin (“A
-Formulae-as-Types Notion of Control”, 1990) observed that continuations
-correspond to classical logic under the Curry–Howard correspondence: the
-call/cc operator corresponds to the law of excluded middle. This
-connection was further developed by Parigot (λμ-calculus, 1992) and many
-others, giving a logical foundation for the computational behavior of
-control operators.</p>
-<hr />
-<h2 id="exercises">6. Exercises</h2>
-<p><strong>1. Tracing <code>cpsExp</code> by hand.</strong> Work through
-the following calls step by step, writing down the output term produced
-at each recursive call. Verify your answers in GHCi using
-<code>pp (cps e)</code>.</p>
-<p><strong>(a)</strong> Trace <code>cpsExp idE Unit idTm</code>. - What
-rule applies? - What is the output term?</p>
-<p><strong>(b)</strong> Trace
-<code>cpsExp idE (Lam (bind1 (LocalName "x") (Var FZ))) idTm</code>: -
-When the rule for <code>Lam</code> calls
-<code>cpsExp r' (Var FZ) (Var FZ)</code> recursively, what is the
-environment <code>r'</code>? -
-<code>r' = up idE .&gt;&gt; wk :: Env Tm (S Z) (S (S Z))</code> - What
-does <code>r'</code> map <code>FZ</code> to? (Hint: <code>up idE</code>
-is the identity on <code>Tm (S Z)</code>, then <code>.&gt;&gt; wk</code>
-shifts.) - What is the full output term? Use <code>pp</code> to check
-your answer looks like <code>(λ x. x) (λ x. λ k. k x)</code>.</p>
-<p><strong>(c)</strong> Trace
-<code>cpsExp idE (App (Lam (bind1 (LocalName "x") (Var FZ))) Unit) idTm</code>.
-The <code>App</code> case introduces two intermediate continuations.
-Write down the complete output term and verify it matches
-<code>pp (cps (App (Lam ...) Unit))</code>.</p>
-<hr />
-<p><strong>2. Scope arithmetic in the <code>App</code> case.</strong>
-The <code>App</code> case of <code>cpsExp</code> is:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> quickCheck (forAllShrinkShow genScopedPureLC shrinkScoped Tutorial.Top.pp prop_evalVal)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="op">***</span> <span class="dt">Failed</span><span class="op">!</span> <span class="dt">Timeout</span> <span class="kw">of</span> <span class="dv">1000000</span> microseconds exceeded<span class="op">.</span> (after <span class="dv">65</span> tests <span class="fu">and</span> <span class="dv">4</span> shrinks)<span class="op">:</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>(\ x<span class="op">.</span> x x) (\ s<span class="op">.</span> s s)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>term<span class="op">:</span> (\ x<span class="op">.</span> x x) (\ s<span class="op">.</span> s s)</span></code></pre></div>
+<p>The solution is to add timeouts to our properties. However, if we do
+so, we end up discarding many cases.</p>
+<pre><code>prop_evalVal:
++++ OK, passed 1000 tests; 2133 discarded.</code></pre>
+<p>Alternatively, we can restrict generation to <em>well-typed</em>
+terms. In the simply-typed lambda calculus every term is strongly
+normalizing, so <code>eval</code> is guaranteed to terminate on every
+well-typed input.</p>
+<p>This also lets us state stronger type-soundness properties. For
+example, every well-typed closed term must evaluate to a value:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_eval_exists_Val ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>prop_eval_exists_Val <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v  <span class="ot">-&gt;</span> property (isVal v)</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> property <span class="dt">False</span>   <span class="co">-- well-typed terms must not get stuck</span></span></code></pre></div>
+<p>And the <code>step</code> function <em>must</em> produces a value for
+closed terms.</p>
 <div class="sourceCode" id="cb18"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">App</span> t1 t2) k <span class="ot">=</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r t1 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;v&quot;</span>)</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>      (cpsExp r&#39; t2 (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;w&quot;</span>)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>          (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> (<span class="dt">FS</span> <span class="dt">FZ</span>)) (<span class="dt">Var</span> <span class="dt">FZ</span>)) k&#39;&#39;))))))</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>      r&#39;  <span class="ot">=</span> r <span class="op">.&gt;&gt;</span> wk</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>      k&#39;&#39; <span class="ot">=</span> applyE (wk <span class="op">.&gt;&gt;</span> wk) k</span></code></pre></div>
-<p>Answer the following:</p>
-<p><strong>(a)</strong> If the input scope is <code>n</code> and output
-scope is <code>m</code>, what is the output scope when translating
-<code>t2</code>? The continuation for <code>t2</code> is a lambda we are
-<em>building</em>, so we are one binder deeper.</p>
-<p><strong>(b)</strong> In the body
-<code>App (App (Var (FS FZ)) (Var FZ)) k''</code>, what do
-<code>Var (FS FZ)</code> and <code>Var FZ</code> name?</p>
-<p><strong>(c)</strong> Why is <code>k</code> shifted by
-<code>wk .&gt;&gt; wk</code> to produce <code>k''</code>, but
-<code>r</code> is only shifted by a single <code>wk</code> to produce
-<code>r'</code>? (Hint: <code>r</code> maps input variables to the
-output scope — how many new output binders have been crossed at each
-point?)</p>
-<p><strong>(d)</strong> The <code>MatchPair</code> case shifts
-<code>k</code> by <code>wk .&gt;&gt; wk .&gt;&gt; wk</code>. Why three
-shifts instead of two?</p>
-<hr />
-<p><strong>3. Correctness properties — what fails and why.</strong></p>
-<p><strong>(a)</strong> Run <code>qc prop_cps_result</code> in GHCi.
-Record the counterexample. Explain in one sentence why CPS-converting a
-function value does not preserve <code>eval</code>.</p>
-<p><strong>(b)</strong> Run <code>qc prop_cps_result_firstorder</code>.
-This passes, but with a high discard rate. Why are so many test cases
-discarded?</p>
-<p><strong>(c)</strong> Run <code>qc prop_cps_eval_simulates</code>. The
-counterexample involves <code>Unit</code>. Explain why <code>()</code>
-is the simplest failing case: what does <code>cps ()</code> reduce to,
-and why is that not equal to <code>cps (eval ())</code>?</p>
-<p><strong>(d)</strong> Run
-<code>qc prop_cps_eval_simulates_open</code>. This passes for the pure
-lambda calculus. The property uses <code>cpsK</code> instead of
-<code>cps</code>. Explain: why does replacing the identity-function
-continuation with a fresh variable <code>k</code> fix the
-<code>Unit</code> counterexample?</p>
-<p><strong>(e)</strong> Change the generator in
-<code>prop_cps_eval_simulates_open</code> from <code>Typed PureLC</code>
-to <code>Typed Full</code> and run it. Record the counterexample. Which
-language construct causes it to fail, and why does the pure lambda
-calculus not have this problem?</p>
-<hr />
-<p><strong>4. Meta continuations — counting administrative
-redexes.</strong></p>
-<p><strong>(a)</strong> Evaluate the following in GHCi and compare the
-two outputs:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- | the step </span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_stepVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>prop_stepVal e <span class="ot">=</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> loop e <span class="ot">=</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>          <span class="kw">if</span> isVal e <span class="kw">then</span> property <span class="dt">True</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="kw">case</span> step e <span class="kw">of</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>             <span class="dt">Nothing</span> <span class="ot">-&gt;</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>                counterexample (<span class="st">&quot;stuck at: &quot;</span> <span class="op">++</span> pp e) <span class="op">$</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>                property <span class="dt">False</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>             <span class="dt">Just</span> e&#39; <span class="ot">-&gt;</span> loop e&#39;</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">in</span> within <span class="dv">1000000</span> <span class="op">$</span> loop e</span></code></pre></div>
+<p>These properties hold by type soundness (progress + preservation) and
+would not be testable with the well-scoped generator alone.</p>
+<h2 id="two-dimensions-of-generation">6. Two dimensions of
+generation</h2>
+<p>Therefore, we can define a generator for our syntax that is
+parameterized over two orthogonal dimensions:</p>
 <div class="sourceCode" id="cb19"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cps    (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> pp (cpsOpt (<span class="dt">App</span> (<span class="dt">Lam</span> (bind1 (<span class="dt">LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">Var</span> <span class="dt">FZ</span>))) <span class="dt">Unit</span>))</span></code></pre></div>
-<p>Count the number of beta-redexes (sub-terms of the form
-<code>(λ x. body) arg</code>) in each. Which version has fewer?</p>
-<p><strong>(b)</strong> For
-<code>cpsExpOpt r Unit (Meta (bind1 (LocalName "x") body))</code>, show
-that <code>applyCont k Unit</code> directly substitutes
-<code>Unit</code> into <code>body</code>, producing
-<code>body[Unit/x]</code> with no <code>(λ x. body) ()</code> redex.</p>
-<p><strong>(c)</strong> In the <code>Lam</code> case of
-<code>cpsExpOpt</code>, the continuation passed to the recursive call is
-<code>Obj (Var FZ)</code> — not <code>Meta</code>. Explain why
-<code>Meta</code> cannot be used here. (Hint: <code>Var FZ</code> is a
-<em>runtime</em> variable for the caller-supplied continuation
-<code>k'</code>, not a compile-time binder we control.)</p>
-<p><strong>(d)</strong> Run
-<code>qc prop_cpsOpt_result_firstorder</code> and
-<code>qc prop_cpsOpt_eval_simulates_open</code>. Do both pass? What do
-they tell you about the correctness of the optimised translation?</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Constraint</span> <span class="ot">=</span> <span class="dt">Scoped</span> <span class="op">|</span> <span class="dt">Typed</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Language</span>   <span class="ot">=</span> <span class="dt">PureLC</span> <span class="op">|</span> <span class="dt">Full</span></span></code></pre></div>
+<ul>
+<li><strong><code>Scoped</code></strong> — generate any well-scoped
+term; types are ignored.</li>
+<li><strong><code>Typed</code></strong> — generate a well-typed term by
+first picking a random type and context, then generating a term of that
+type.</li>
+<li><strong><code>PureLC</code></strong> — only use <code>Lam</code>,
+<code>App</code>, and <code>Var</code> (the pure lambda calculus).</li>
+<li><strong><code>Full</code></strong> — also include <code>Unit</code>,
+<code>Pair</code>, <code>MatchPair</code>, <code>Inj</code>,
+<code>MatchUnit</code>, and <code>MatchSum</code>.</li>
+</ul>
+<p>For the <code>Typed</code> constraint, <code>genTypedTm</code> works
+by type-directed synthesis. At each recursive call it has a <em>target
+type</em> and a <em>typing context</em> (a vector mapping each de Bruijn
+index to its type), and it only produces terms that have exactly that
+type.</p>
+<p>The high-level strategy is:</p>
+<ul>
+<li><p><strong>Introduction forms</strong> are selected by the
+<em>target type</em>. If the goal is <code>a :-&gt; b</code>, generate a
+<code>Lam</code> whose body is generated at type <code>b</code> in an
+extended context. If the goal is <code>a :* b</code>, generate a
+<code>Pair</code>. And so on.</p></li>
+<li><p><strong>Elimination forms</strong> (function application, pattern
+matching) require an <em>arbitrary</em> intermediate type, generated
+fresh for that sub-call. For example, to generate an <code>App</code>
+targeting type <code>b</code>, first pick a random argument type
+<code>a</code>, then generate a function of type <code>a :-&gt; b</code>
+and an argument of type <code>a</code>.</p></li>
+<li><p><strong>Variables</strong> are filtered by type: only those
+indices whose context entry matches the target type are offered as
+candidates.</p></li>
+<li><p><strong>Fallback</strong>: when no introduction or variable
+candidate applies (e.g. at size 0 targeting a function type with no
+matching variable), the generator falls back to
+<code>Unit</code>.</p></li>
+</ul>
+<p>The top-level call also picks a random context and a random target
+type before calling <code>genTypedTm</code>, so the resulting term may
+have free variables with known types — or be closed if the context is
+empty.</p>
+<h3 id="shrinking">Shrinking</h3>
+<p>Random generation also requires shrinking. Because we have two
+different constraints for the terms that we generate, we need two
+different shrinking functions: <code>shrinkScoped</code> and
+<code>shrinkTyped</code>.</p>
+<p>Both shrinking function take a counter example (a term) and produce a
+list of smaller terms that satisfy the same constraint. For
+<code>shrinkScoped</code>, the constraint is that the smaller terms must
+have the same scope as the original term. The type system guarantees
+this constraint automatically. For <code>shrinkTyped</code> the smaller
+terms must still be well-typed, but because we are not tracking types in
+the type system, they may not have the <em>same</em> type.</p>
+<h2 id="historical-notes">6. Historical Notes</h2>
+<p><strong>QuickCheck.</strong> Koen Claessen and John Hughes introduced
+QuickCheck in “QuickCheck: A Lightweight Tool for Random Testing of
+Haskell Programs” (2000). Property-based testing is now widely used
+across languages. The technique of generating <em>well-scoped</em> (or
+well-typed) terms directly — rather than generating strings and parsing
+them — avoids a large class of trivially-failing test cases and is the
+standard approach for testing language implementations.</p>
+<p><strong>Well-scoped and well-typed term generation.</strong>
+Generating terms directly in an indexed representation — rather than
+generating strings and filtering out ill-scoped ones — was popularized
+in the property-based testing literature by Pałka et al. (“Testing an
+Optimising Compiler by Generating Random Lambda Terms”, 2011), who used
+it to find bugs in GHC. Type-directed generation (producing only
+well-typed terms) is the natural extension: it avoids both scope errors
+and divergence, and was used by Dénès et al. and others for testing
+type-preserving compilers and proof assistants.</p>
+<h2 id="exercises">Exercises</h2>
+<p><strong>1. Extending <code>genTm</code>.</strong> After adding
+<code>Let</code> to the language (Exercise 3 in Lecture 1 and Exercise 2
+above), extend <code>genTm</code> in <code>Tutorial.Scoped.Gen</code> to
+also generate <code>let</code>-expressions.</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- In the Full branch of gens inside genTm:</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>, <span class="dt">Let</span> <span class="op">&lt;$&gt;</span> gen <span class="op">&lt;*&gt;</span> gen1</span></code></pre></div>
+<p>where
+<code>gen1 = bind1 @Tm &lt;$&gt; genLocalName &lt;*&gt; genTm l (next n) sz'</code>.</p>
+<ul>
+<li>Why is <code>gen1</code> the right generator for the binder part of
+<code>Let</code>?</li>
+<li>What scope does the body of the <code>let</code> run in? How does
+this differ from <code>App</code>?</li>
+<li>Check that <code>prop_project_round_trip</code> still passes after
+this change.</li>
+</ul>
 <hr />
-<p><strong>5. Extending <code>cpsExp</code> with
-<code>let</code>.</strong> Assume
-<code>Let :: Tm n -&gt; Bind1 Tm Tm n -&gt; Tm n</code> has been added
-to <code>Tm</code> (Lecture 1, Exercise 3). The CPS rule for
-<code>let</code> is:</p>
-<pre><code>[[let x = e in b]] k  =  [[e]] (λx. [[b]] k)</code></pre>
-<p><strong>(a)</strong> Add a case to <code>cpsExp</code>:</p>
+<p><strong>2. An open-term round trip.</strong>
+<code>projectTmWith</code> and <code>injectTmWith</code> work on open
+terms too. Write a QuickCheck property analogous to
+<code>prop_project_round_trip</code> for terms with one free variable
+(<code>Tm (S Z)</code>), and test it:</p>
 <div class="sourceCode" id="cb21"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>cpsExp r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    cpsExp r e (<span class="dt">Lam</span> (bind1 (getLocalName b)</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>        (cpsExp r&#39; (getBody1 b) k&#39;)))</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
-<p>Explain each component: - Why is <code>r'</code> the right
-environment for the body of <code>b</code>? - Why is <code>k</code>
-shifted by <code>wk</code> to produce <code>k'</code>? - How does this
-compare to the <code>Lam</code> case?</p>
-<p><strong>(b)</strong> Add the corresponding case to
-<code>cpsExpOpt</code>, replacing the <code>Lam</code>-built
-continuation with a <code>Meta</code> continuation:</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_project_round_trip_open ::</span> <span class="dt">S.Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>prop_project_round_trip_open t <span class="ot">=</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- hint: use projectTmWith and injectTmWith with a suitable initial context</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">undefined</span></span></code></pre></div>
+<p>You will need to choose a name for the free variable and pass it to
+<code>injectTmWith</code>. Likewise, you will need to prime
+<code>projectTmWith</code> with an association list that maps that name
+to <code>FZ</code>.</p>
+<ul>
+<li>What initial <code>Vec (S Z) String</code> do you pass to
+<code>injectTmWith</code>?</li>
+<li>What initial <code>[(String, Fin (S Z))]</code> do you pass to
+<code>projectTmWith</code>?</li>
+<li>Does the choice of name matter? Why or why not?</li>
+</ul>
+<p><strong>3. Substitution laws.</strong> State and test the following
+equational laws as QuickCheck properties on <code>Tm Z</code>:</p>
+<ul>
+<li><em>Identity</em>: <code>applyE idE t == t</code></li>
+<li><em>Composition</em>:
+<code>applyE f (applyE g t) == applyE (compE f g) t</code></li>
+<li><em>Instantiate-shift</em>:
+<code>instantiate1 (Bind1 (weaken t)) u == t</code> for any
+<code>t u :: Tm Z</code></li>
+</ul>
+<p>For the composition law, use concrete environments,
+e.g. <code>g = idE</code> and <code>f = idE</code>, or build simple
+environments with <code>(.:)</code>. Can you find a counterexample to
+any of these properties if you get the implementation of
+<code>lift</code> wrong?</p>
+<p><strong>4. Full reduction (normalization).</strong> The
+<code>reduce</code> function in <code>Tutorial.Scoped.Eval</code> is a
+<em>weak</em> reducer: the <code>Lam</code> case returns the lambda
+unchanged without looking inside the body. Implement <em>full</em>
+reduction (also called <em>normalization</em>), which reduces everywhere
+— including under binders:</p>
 <div class="sourceCode" id="cb22"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>cpsExpOpt r (<span class="dt">Let</span> e b) k <span class="ot">=</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    cpsExpOpt r e (<span class="dt">Meta</span> (bind1 (getLocalName b)</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>        (cpsExpOpt r&#39; (getBody1 b) k&#39;)))</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>      r&#39; <span class="ot">=</span> up r <span class="op">.&gt;&gt;</span> wk</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>      k&#39; <span class="ot">=</span> applyE wk k</span></code></pre></div>
-<p>What administrative redex does the <code>Meta</code> here avoid
-compared to <code>cpsExp</code>?</p>
-<p><strong>(c)</strong> After adding both cases, run
-<code>qc prop_cps_result_firstorder</code> and verify it still
-passes.</p>
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">normalize ::</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>normalize <span class="ot">=</span> _</span></code></pre></div>
+<p>Hints:</p>
+<ul>
+<li><p>The key new case is <code>Lam b</code>. Use
+<code>unbindl1 b</code> to extract the stored local name and the body
+(of type <code>Tm (S n)</code>). Recursively normalize the body, then
+re-package it with <code>bind1</code>. Because <code>Tm (S n)</code> is
+an <em>open</em> term, the recursive call is well-typed without any
+extra constraint.</p></li>
+<li><p>For <code>App</code>, first normalize both sub-terms. If the
+function normalizes to <code>Lam b</code> and the argument to
+<code>nv</code>, perform the beta step with
+<code>instantiate1 b nv</code> and normalize the result. If the function
+is inert, return the application of the normalized sub-terms.</p></li>
+<li><p>The other cases (<code>Pair</code>, <code>Inj</code>,
+<code>MatchSum</code>, <code>MatchPair</code>, <code>MatchUnit</code>)
+follow the same pattern as in <code>reduce</code>, but calling
+<code>normalize</code> recursively instead of <code>reduce</code>, and
+also normalizing inside constructor arguments.</p></li>
+<li><p><code>normalize</code> should agree with <code>reduce</code> on
+terms that contain no redexes under binders. State and test this as a
+QuickCheck property on <code>Tm (S Z)</code>:</p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_normalize_reduce ::</span> <span class="dt">Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>prop_normalize_reduce t <span class="ot">=</span> <span class="op">...</span></span></code></pre></div>
+<p><em>Hint</em>: find a predicate
+<code>noLambdaRedex :: Tm n -&gt; Bool</code> that holds when there are
+no beta redexes inside any lambda body, and use <code>QC.classify</code>
+to report what fraction of generated terms satisfy it.</p></li>
+<li><p>Define <code>isNormal :: Tm n -&gt; Bool</code> that holds when a
+term contains no beta redexes <em>anywhere</em> (including under
+binders). Then state and test:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_normalize_normal ::</span> <span class="dt">Tm</span> (<span class="dt">S</span> <span class="dt">Z</span>) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>prop_normalize_normal t <span class="ot">=</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> normalize t <span class="kw">of</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> nf <span class="ot">-&gt;</span> property (isNormal nf)</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div></li>
+<li><p>On closed terms, does <code>normalize t</code> succeed exactly
+when <code>eval t</code> succeeds? State this as a property and test it.
+Does it hold for well-scoped terms? For well-typed terms? Explain any
+discrepancies you observe.</p></li>
+</ul>
 </main>
 
 <footer>
