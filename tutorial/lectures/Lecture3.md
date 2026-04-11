@@ -240,30 +240,6 @@ prop_reduce_inert = \t ->
         Nothing -> discard
 ```
 
-### Small-step properties
-
-Finally, we also develop a small-step version of `reduce`.
-The small-step function `step` either returns a reduct or `Nothing` (the term
-is already a value).  Two properties connect it to `eval` and `reduce`:
-
-```haskell
--- for well-typed closed terms, step always reaches a value
-prop_stepVal :: Tm Z -> Property
-prop_stepVal = 
-    let loop e =
-          if isVal e then property True
-          else case step e of
-                 Nothing -> counterexample ("stuck at: " ++ pp e) (property False)
-                 Just e' -> loop e'
-    in loop
-
--- stepping preserves the final evaluation result
-prop_evalStep :: Tm Z -> Property
-prop_evalStep = \e ->
-    case step e of
-        Nothing -> property (isVal e)
-        Just e' -> eval e == eval e'
-```
 
 ## 5. Going further: A well-typed generator?
 
@@ -443,8 +419,31 @@ You will need to choose a name for the free variable and pass it to `injectTmWit
 
 For the composition law, use concrete environments, e.g. `g = idE` and `f = idE`, or build simple environments with `(.:)`. Can you find a counterexample to any of these properties if you get the implementation of `lift` wrong?
 
+**4. Small Step** Develop a small-step version of `reduce`, called `step`.
+The small-step function `step` either returns a reduct or `Nothing` (if the term
+is inert).  Two properties connect it to `eval` and `reduce`:
 
-**4. Full reduction (normalization).** The `reduce` function in `Tutorial.Scoped.Eval` is a *weak* reducer: the `Lam` case returns the lambda unchanged without looking inside the body. Implement *full* reduction (also called *normalization*), which reduces everywhere — including under binders:
+```haskell
+-- for well-typed closed terms, step always reaches a value
+prop_stepVal :: Tm Z -> Property
+prop_stepVal = 
+    let loop e =
+          if isVal e then property True
+          else case step e of
+                 Nothing -> counterexample ("stuck at: " ++ pp e) (property False)
+                 Just e' -> loop e'
+    in loop
+
+-- stepping preserves the final evaluation result
+prop_evalStep :: Tm Z -> Property
+prop_evalStep = \e ->
+    case step e of
+        Nothing -> property (isVal e)
+        Just e' -> eval e == eval e'
+```
+
+
+**5. Full reduction (normalization).** The `reduce` function in `Tutorial.Scoped.Eval` is a *weak* reducer: the `Lam` case returns the lambda unchanged without looking inside the body. Implement *full* reduction (also called *normalization*), which reduces everywhere — including under binders:
 
 ```haskell
 normalize :: Tm n -> Maybe (Tm n)

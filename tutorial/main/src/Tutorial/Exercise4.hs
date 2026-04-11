@@ -297,17 +297,15 @@ ex4a_opt = cpsOpt (App (Lam (bind (LocalName "x") (Var FZ))) Unit)
 --     desugaring exactly.
 
 ------------------------------------------------------------------------
--- * Properties about step and normalize
+-- * Exercise 6: Properties about step and normalize
 ------------------------------------------------------------------------
-
-
 
 -- NB: this also doesn't hold
 prop_cps_simulates_normalize :: Property
 prop_cps_simulates_normalize = forAll0 Typed Full $ \e ->
        counterexample ("e          = " ++ pp e)          $
        counterexample ("cps_e      = " ++ pp (cps e))    $
-       normalize (cps e) == (cps <$> normalize e)   -- lift cps over Maybe type
+       normalize (cps e) == (cps <$> normalize e)  
 
 ------------------------------------------------------------------------------
 -- what about small-step evaluation?
@@ -347,7 +345,7 @@ step_star vv e e' =
 --     if    e -> e'
 --     then  cpsOpt e ->* cpsOpt e'
 --      
--- NB: not true for full language             
+-- NB: not true for full language but holds for pure lambda calculus        
 prop_cpsOpt_steps :: Property
 prop_cpsOpt_steps = forAll0 Typed Full $ \ e ->
   let 

@@ -46,7 +46,7 @@ import qualified Rebound.Bind.Pat as Pat
 --      de Bruijn structure, and LocalName equality ignores the freshened name.
 
 ------------------------------------------------------------------------
--- * Exercise 5: Open-term round trip
+-- * Exercise 2: Open-term round trip for injectWith/projectWith
 ------------------------------------------------------------------------
 
 -- The free variable is named "x0" to match the convention in injectTmWith
@@ -71,7 +71,7 @@ prop_project_round_trip_open t =
 
 
 ------------------------------------------------------------------------
--- * Exercise 5: Substitution laws
+-- * Exercise 3: Substitution laws
 ------------------------------------------------------------------------
 
 -- | Identity law: applying the identity substitution is a no-op.
@@ -104,7 +104,7 @@ prop_instantiate_weaken :: Tm Z -> Tm Z -> Bool
 prop_instantiate_weaken t u = instantiate1 (bind (LocalName "x") (weaken t)) u == t
 
 ------------------------------------------------------------------------
--- * Exercise: Small-step (open) reduction
+-- * Exercise 4: Small-step (open) reduction
 ------------------------------------------------------------------------
 
 
@@ -178,7 +178,7 @@ prop_reduceStep e =
                     reduce e == reduce e'
 
 ------------------------------------------------------------------------
--- * Full reduction (normalization)
+-- * Exercise 5: Full reduction (normalization)
 ------------------------------------------------------------------------
 
 -- | Full normalization: reduce everywhere, including under binders.
@@ -232,25 +232,6 @@ isNormal (Match e brs) = case findBranch' e brs of
     Left NoMatch -> False
     Right v -> False
 isNormalBranch (Branch b) = isNormal (getBody b)
-
-{-
-isNeutral :: Tm n -> Bool 
-isNeutral (Var _)       = True
-isNeutral (App e1 e2)   = isNeutral e1 && isNormal e2
-isNeutral (Match e brs) = isNeutral e && all isNormalBranch brs
-isNeutral _             = False
-
-isNormalBranch (Branch b) = isNormal (getBody b)
-
--- | A term is in normal form when it contains no beta redexes anywhere,
--- including inside lambda bodies and match branches.
-isNormal :: Tm n -> Bool
-isNormal (Lam b)                  = isNormal (getBody b)
-isNormal Unit                     = True
-isNormal (Pair e1 e2)             = isNormal e1 && isNormal e2
-isNormal (Inj _ e)                = isNormal e
-isNormal x                        = isNeutral x
--}
 
 -- | normalize always produces a term in full normal form.
 prop_normalize_normal :: Tm Z -> Property
