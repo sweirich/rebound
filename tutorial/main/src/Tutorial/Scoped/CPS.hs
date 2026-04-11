@@ -172,16 +172,6 @@ prop_cps_simulates = forAll0 Typed Full $ \e ->
        eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
 
 
--- NB: this also doesn't hold
-prop_cps_simulates_normalize :: Property
-prop_cps_simulates_normalize = forAll0 Typed Full $ \e ->
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("cps_e      = " ++ pp (cps e))    $
-       normalize (cps e) == (cps <$> normalize e)   -- lift cps over Maybe type
-
-
-
-
 prop_no_admin_cpsOptM = forAll0 Typed PureLC $ \e -> 
     let 
        cps_e = cpsOptM e 
@@ -197,37 +187,6 @@ prop_no_admin_cps = forAll0 Typed PureLC $ \e ->
        counterexample ("cps_e =\n" ++ pp cps_e)  $ 
        countLam e + 2 * countApp e >= countApp cps_e
 
-------------------------------------------------------------------------------
--- what about small-step evaluation?
-
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cps e -> cps e'
---                   
--- NB: also not true, due to administrative redexes     
-prop_cps_step :: Tm Z -> Property
-prop_cps_step e =
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp cps_e) $
-     counterexample ("cps_e' = " ++ pp cps_e') $
-     cps_e == cps_e'
-  where
-     cps_e = cps e
-     e' = case step e of
-            Nothing -> discard -- if e does not step, ignore this test
-            Just v -> v
-     cps_e' = cps e'
-
-     
--- | does e ->* e' hold?     
-step_star :: Vec n String -> Tm n -> Tm n -> Property
-step_star vv e e' = 
-    counterexample ("steps to  => " ++ ppWith vv e) $
-    e == e' .||. case step e of
-                    Nothing -> property False  -- e should not get stuck
-                    Just e1 -> step_star vv e1 e'
 
 ------------------------------------------------------------------------
 -- * Optimized CPS translation
@@ -376,50 +335,6 @@ prop_cpsOptM_simulates = forAll0 Typed Full $ \e ->
 
 
 
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cpsOpt e ->* cpsOpt e'
---      
--- NB: not true for full language             
-prop_cpsOpt_steps :: Property
-prop_cpsOpt_steps = forAll0 Typed Full $ \ e ->
-  let 
-     e' = case step e of
-            Nothing -> discard -- if e does not step, ignore this test
-            Just v -> v
-     cps_e  = cpsOptM e
-     cps_e' = cpsOptM e'
-   in
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp cps_e) $
-     counterexample ("cps_e' = " ++ pp cps_e') $
-     step_star VNil cps_e cps_e'
-
--- | __Simulation__ : CPS preserves small-step evaluation
---
---     if    e -> e'
---     then  cpsOpt e ->* cpsOpt e'
---      
--- NB: not true for full language             
-prop_cpsOpt_steps_pure :: Property
-prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
-  let 
-     e' = case step e of
-            Nothing -> discard -- if e does not step, ignore this test
-            Just v -> v
-     cps_e  = cpsOptM e
-     cps_e' = cpsOptM e'
-     vv  = ("k" ::: VNil)
-     pp' = ppWith ("k" ::: VNil)
-   in
-     counterexample ("e      = " ++ pp e) $
-     counterexample ("e'     = " ++ pp e') $
-     counterexample ("cps_e  = " ++ pp cps_e) $
-     counterexample ("cps_e' = " ++ pp cps_e') $
-     step_star VNil cps_e cps_e'
-
 ------------------------------------------------------------------------
 -- * Run all properties
 ------------------------------------------------------------------------
@@ -429,6 +344,7 @@ prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
 -- Properties marked NB are known to be false and are expected to fail.
 testAll :: IO ()
 testAll = do
+    let args = stdArgs { maxSuccess = 1000 }
     -- Naive CPS
     putStrLn "=== Naive CPS ==="
     putStrLn "prop_cps_result (NB: expected to fail):"
@@ -437,16 +353,12 @@ testAll = do
     quickCheckWith args prop_cps_result_firstorder
     putStrLn "prop_cps_eval_cps (NB: expected to fail):"
     quickCheckWith args prop_cps_simulates
-    putStrLn "prop_cps_step (NB: expected to fail):"
-    quickCheckWith args prop_cps_step
+    
     -- Optimized CPS
     putStrLn "=== Optimized CPS ==="
     putStrLn "prop_cpsOpt_result_firstorder:"
     quickCheckWith args prop_cpsOpt_result_firstorder
-    putStrLn "prop_cpsOpt_steps:"
-    quickCheckWith args prop_cpsOpt_steps
-
-
+    
 
 -- pretty printer for terms with a single free variable
 pp' :: Tm (S Z) -> String

@@ -11,6 +11,7 @@ import Tutorial.Scoped.Eval
 import Test.QuickCheck as QC
 import Data.Vec hiding ((++),bind)
 
+import Tutorial.Exercise3
 
 ------------------------------------------------------------------------
 -- * Exercise 1: Tracing cpsExp by hand
@@ -295,3 +296,98 @@ ex4a_opt = cpsOpt (App (Lam (bind (LocalName "x") (Var FZ))) Unit)
 --     because Let desugars into App / Lam, and the Let CPS rule mirrors that
 --     desugaring exactly.
 
+------------------------------------------------------------------------
+-- * Properties about step and normalize
+------------------------------------------------------------------------
+
+
+
+-- NB: this also doesn't hold
+prop_cps_simulates_normalize :: Property
+prop_cps_simulates_normalize = forAll0 Typed Full $ \e ->
+       counterexample ("e          = " ++ pp e)          $
+       counterexample ("cps_e      = " ++ pp (cps e))    $
+       normalize (cps e) == (cps <$> normalize e)   -- lift cps over Maybe type
+
+------------------------------------------------------------------------------
+-- what about small-step evaluation?
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cps e -> cps e'
+--                   
+-- NB: also not true, due to administrative redexes     
+prop_cps_step :: Tm Z -> Property
+prop_cps_step e =
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     cps_e == cps_e'
+  where
+     cps_e = cps e
+     e' = case step e of
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
+     cps_e' = cps e'
+
+     
+-- | does e ->* e' hold?     
+step_star :: Vec n String -> Tm n -> Tm n -> Property
+step_star vv e e' = 
+    counterexample ("steps to  => " ++ ppWith vv e) $
+    e == e' .||. case step e of
+                    Nothing -> property False  -- e should not get stuck
+                    Just e1 -> step_star vv e1 e'
+
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cpsOpt e ->* cpsOpt e'
+--      
+-- NB: not true for full language             
+prop_cpsOpt_steps :: Property
+prop_cpsOpt_steps = forAll0 Typed Full $ \ e ->
+  let 
+     e' = case step e of
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
+     cps_e  = cpsOptM e
+     cps_e' = cpsOptM e'
+   in
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     step_star VNil cps_e cps_e'
+
+-- | __Simulation__ : CPS preserves small-step evaluation
+--
+--     if    e -> e'
+--     then  cpsOpt e ->* cpsOpt e'
+--      
+-- NB: not true for full language             
+prop_cpsOpt_steps_pure :: Property
+prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
+  let 
+     e' = case step e of
+            Nothing -> discard -- if e does not step, ignore this test
+            Just v -> v
+     cps_e  = cpsOptM e
+     cps_e' = cpsOptM e'
+     vv  = ("k" ::: VNil)
+     pp' = ppWith ("k" ::: VNil)
+   in
+     counterexample ("e      = " ++ pp e) $
+     counterexample ("e'     = " ++ pp e') $
+     counterexample ("cps_e  = " ++ pp cps_e) $
+     counterexample ("cps_e' = " ++ pp cps_e') $
+     step_star VNil cps_e cps_e'
+
+testAll = do
+    putStrLn "prop_cps_step (NB: expected to fail):"
+    quickCheckWith args prop_cps_step
+    putStrLn "prop_cpsOpt_steps:"
+    quickCheckWith args prop_cpsOpt_steps

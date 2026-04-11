@@ -440,6 +440,14 @@ shrinkTyped = shrink
 -- * QC helpers
 ---------------------------------------------------------------------
 
+-- | run more tests
+qc :: Testable prop => prop -> IO ()
+qc = QC.quickCheckWith (QC.stdArgs { QC.maxSuccess = 1000 })
+
+-- | Run a lot more tests
+qc100k :: Testable prop => prop -> IO ()
+qc100k = QC.quickCheckWith QC.stdArgs { QC.maxSuccess = 100000 }
+
 -- | Test a property on a closed term
 forAll0 :: Testable a => Constraint -> Language -> (Tm Z -> a) -> Property
 forAll0 c l = QC.forAllShrinkShow (genTm c l) (shrinkTm c) SC.pp
@@ -451,6 +459,33 @@ forAll1 c l = QC.forAllShrinkShow (genTm c l) (shrinkTm c) (SC.ppWith ("x" ::: V
 -- | Test a property on a term with two free variables "x" and "y"
 forAll2 :: Testable a => Constraint -> Language -> (Tm (S (S Z)) -> a) -> Property
 forAll2 c l = QC.forAllShrinkShow (genTm c l) (shrinkTm c) (SC.ppWith ("x" ::: "y" ::: VNil))
+
+data SomeNat where
+    SomeNat :: SNat n -> SomeNat
+fromInt :: Int -> Maybe SomeNat
+fromInt 0 = Just (SomeNat s0)
+fromInt n | n < 0 = Nothing
+fromInt n = 
+    case fromInt (n - 1) of
+      Just (SomeNat m) -> Just (SomeNat (next m))
+      Nothing -> Nothing
+
+-- >>> :info Vec.take
+-- take :: LE n m => Vec m a -> Vec n a 	-- Defined in ‘Data.Vec.Lazy’
+
+{-
+-- | Test a property with an arbitrary number of free variables
+forAllN :: Testable a => Constraint -> Language -> (forall n. SNatI n => Tm n -> a) -> Property
+forAllN c l = do
+    n <- QC.elements [0 .. 10]
+    case fromInt n of
+        Just m -> 
+            withSNat m $ do
+            let vec = 
+            QC.forallShrinkShow (genTm c l) (shrinkTm c) (SC.pp
+    -}
+
+    
 
 ---------------------------------------------------------------------
 -- * QC invocation

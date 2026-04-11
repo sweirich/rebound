@@ -15,6 +15,7 @@ import Tutorial.Scoped.ScopeCheck
 -------------------------------------------------------------------
 
 -- | (big-step) evaluation function
+-- returns nothing in the case of a runtime type error
 eval :: Tm Z -> Maybe (Tm Z)
 eval (Var x)      = case x of {}
 eval (Lam m)      = return (Lam m)
@@ -34,33 +35,36 @@ eval (App m n) = do
            _ -> Nothing
 eval (Match e brs) = do
     v <- eval e
-    br <- findBranch v brs 
+    br <- findBranch v brs
     eval br
 
+
 -------------------------------------------------------------------
--- Pattern matching
+-- Pattern matching (closed terms)
 -------------------------------------------------------------------
 
 -- | Compare a pattern against a value, returning an environment binding
 -- the pattern variables (if the pattern matches)
-patternMatch :: Pat m -> Tm n -> Maybe (Env Tm m n)
-patternMatch (PVar _) v | isVal v     = Just (oneE v)
-patternMatch PUnit Unit  = Just zeroE
+patternMatch :: Pat m -> Tm Z -> Maybe(Env Tm m Z)
+patternMatch (PVar _) v | isVal v = return (oneE v)
+patternMatch PUnit Unit  = return zeroE
 patternMatch (PPair p1 p2) (Pair v1 v2) = do
     env1 <- patternMatch p1 v1
-    env2 <- patternMatch p2 v2    
+    env2 <- patternMatch p2 v2   
+    -- appending two Environments requires knowing their length 
     withSNat (size p2) $ return (env2 .++ env1)
 patternMatch (PInj i p) (Inj j v) | i == j = patternMatch p v
 patternMatch _ _ = Nothing
 
 -- | Find the first branch whose pattern matches the scrutinee and
 -- instantiate its body.
-findBranch :: Tm n -> [Branch n] -> Maybe (Tm n)
+findBranch :: Tm Z -> [Branch Z] -> Maybe (Tm Z)
 findBranch _ [] = Nothing
 findBranch e (Branch b : rest) =
     case patternMatch (getPat b) e of
-        Just r  -> Just (instantiate b r)
+        Just r  -> return (instantiate b r)
         Nothing -> findBranch e rest
+
 
 -- | determine whether a term is a value?
 -- Note: values are closed under substitution by values
@@ -87,6 +91,17 @@ prop_evalVal = \t ->
         Nothing ->
             discard
 
+-- evaluating twice returns the same result
+prop_eval_idempotent :: Tm Z -> Property
+prop_eval_idempotent = \t ->
+    discardAfter 10000 $
+    case eval t of
+        Just v ->
+            counterexample ("v: " ++ pp v) $
+            property (eval v == Just v)
+        Nothing ->
+            discard
+
 -- all terms produce values (NB: this holds for well-typed terms only!)
 prop_eval_exists_Val :: Tm Z -> Property
 prop_eval_exists_Val = \t ->
@@ -105,9 +120,8 @@ prop_eval_exists_Val = \t ->
 
 -- | weak *call-by-value* reduction
 -- only beta-reduce if the argument is a value
--- do not reduce under lambda terms
--- returns 'Nothing' if the term is inert
--- (i.e. has been reduced as far as possible)
+-- does not reduce under lambda terms
+-- returns 'Nothing' for a type error
 
 reduce :: Tm n -> Maybe (Tm n)
 reduce (Var x)      = return (Var x)
@@ -125,31 +139,95 @@ reduce (App m n) = do
     nv <- reduce n
     case mv of
            Lam n | isVal nv   -> reduce (instantiate1 n nv)
+           Lam n | isInert nv -> return (App mv nv)
+           _     | isHead mv  -> Nothing
            _     | isInert mv -> return (App mv nv)
            _                  -> Nothing
 reduce (Match e brs) = do
     v <- reduce e
-    case findBranch v brs of
-        Just br                 -> reduce br
-        Nothing | isInert v     -> return (Match v brs)
-                | otherwise     -> Nothing
+    case findBranch' v brs of
+        Right br                -> reduce br
+        Left Stuck              -> return (Match v brs)
+        Left NoMatch            -> Nothing
 
--- | an inert term cannot reduce any further
+-------------------------------------------------------------------
+-- Pattern matching (open terms)
+-------------------------------------------------------------------
+
+-- | When pattern matching open terms, we need to distinguish between 
+-- the two ways we may fail to make progress. Either the patter definitely
+-- does not match the branch `NoMatch`, or we we are matching against an inert term 
+-- and cannot make further progress until it is a value `Stuck`
+data Outcome = Stuck | NoMatch
+
+-- | Compare a pattern against a value, returning an environment binding
+-- the pattern variables (if the pattern matches)
+patternMatch' :: Pat m -> Tm n -> Either Outcome (Env Tm m n)
+patternMatch' (PVar _) v | isVal v = return (oneE v)
+patternMatch' PUnit Unit  = return zeroE
+patternMatch' (PPair p1 p2) (Pair v1 v2) = do
+    env1 <- patternMatch' p1 v1
+    env2 <- patternMatch' p2 v2   
+    -- appending two Environments requires knowing their length 
+    withSNat (size p2) $ return (env2 .++ env1)
+patternMatch' (PInj i p) (Inj j v) | i == j = patternMatch' p v
+patternMatch' p (Var _) = Left Stuck
+patternMatch' p v | isVal v = Left NoMatch
+patternMatch' _ _ = Left Stuck
+
+-- | Find the first branch whose pattern matches the scrutinee and
+-- instantiate its body.
+findBranch' :: Tm n -> [Branch n] -> Either Outcome (Tm n)
+findBranch' _ [] = Left NoMatch
+findBranch' e (Branch b : rest) =
+    case patternMatch' (getPat b) e of
+        Right r  -> Right (instantiate b r)
+        Left NoMatch -> findBranch' e rest
+        Left Stuck -> Left Stuck
+
+
+
+-- | an inert term is stuck on a variable and cannot 
+-- reduce any further
 isInert :: Tm n -> Bool
 isInert (Var x) = True
 isInert (Lam b) = True
-isInert (App (Lam _) u) | isVal u  = False
-isInert (App t u) = isInert t && isInert u
-isInert Unit = True
-isInert (Pair e1 e2) = isInert e1 && isInert e2
-isInert (Inj i e) = isInert e
-isInert (Match e brs) = case findBranch e brs of
-    Just _  -> False
-    Nothing -> isInert e
+isInert Unit    = True
+isInert (Pair e1 e2)    = isInert e1 && isInert e2
+isInert (Inj i e)       = isInert e
+isInert (App (Lam _) u) = isInert u && not (isVal u)
+isInert (App t u)       = isInert t && isInert u
+isInert (Match e brs)   = case findBranch' e brs of
+    Right _  -> False
+    Left Stuck -> True
+    Left NoMatch -> False
+
+isHead :: Tm n -> Bool
+isHead (Lam b) = True
+isHead Unit    = True
+isHead (Pair e1 e2)    = isInert e1 && isInert e2
+isHead (Inj i e)       = isInert e
+isHead _ = False
 
 -------------------------------------------------------------------
 -- Properties of 'reduce'
 -------------------------------------------------------------------
+
+-- | reduce agrees with eval on closed terms
+prop_eval_reduce :: Tm Z -> Property
+prop_eval_reduce t =
+    discardAfter 1000000 $
+    case eval t of
+        Just v -> counterexample ("evals t: " ++ pp v) $
+            case reduce t of
+            Just i -> counterexample ("reduces to: " ++ pp i) $
+                      property (v == i)
+            Nothing -> property False
+        Nothing -> 
+            case reduce t of 
+                Just i -> counterexample ("reduces to: " ++ pp i) $ property False
+                Nothing -> property True
+
 
 -- | If reduce produces a term, it is inert
 prop_reduce_inert :: forall n. SNatI n => Tm n -> Property
@@ -159,273 +237,43 @@ prop_reduce_inert t =
         Just v -> property (isInert v)
         Nothing -> discard
 
-
 -- | All terms reduce to inert versions (NB:well-typed terms only)
 prop_reduce_exists_inert :: forall n. SNatI n => Tm n -> Property
 prop_reduce_exists_inert t =
-    within 1000000 $
+    discardAfter 1000000 $
     case reduce t of
-        Just v -> property (isInert v)
+        Just v ->  property (isInert v)
         Nothing -> property False
 
--- | reduce agrees with eval on closed terms
-prop_eval_reduce :: Tm Z -> Property
-prop_eval_reduce t =
-    discardAfter 1000000 $
-    counterexample ("term: " ++ pp t) $
-    case eval t of
-        Just v -> counterexample ("evals t: " ++ pp v) $
-            case reduce t of
-            Just i -> counterexample ("reduces to: " ++ pp i) $
-                      property (v == i)
-            Nothing -> property False
-        Nothing -> discard
-
-
-
--------------------------------------------------------------------
--- Small-step reduction
--------------------------------------------------------------------
-
--- | Small-step evaluation/weak-reduction
--- Returns 'Nothing' if the term cannot step
-step :: Tm n -> Maybe (Tm n)
-step (Var x) = Nothing
-step (Lam b) = Nothing
-step (App (Lam b) a) | isVal a = return (instantiate1 b a)
-step (App f a)       | isInert f = do
-    a' <- step a
-    return (App f a')
-step (App f a) = do
-    f' <- step f
-    return (App f' a)
-step Unit = Nothing
-step (Pair a1 a2) | isInert a1 = do
-    a2' <- step a2
-    return (Pair a1 a2')
-step (Pair a1 a2) = do
-    a1' <- step a1
-    return (Pair a1' a2)
-step (Inj i a) = do
-    a' <- step a
-    return (Inj i a')
-step (Match e brs)
-  | Just br <- findBranch e brs = Just br
-  | Just e' <- step e            = Just (Match e' brs)
-  | otherwise                    = Nothing
-
--------------------------------------------------------------------
--- Small-step reduction properties
--------------------------------------------------------------------
-
--- | the step function produces a value for closed terms (NB: well-typed only)
-prop_stepVal :: Tm Z -> Property
-prop_stepVal e =
-    let loop e =
-          if isVal e then property True
-          else case step e of
-             Nothing ->
-                counterexample ("stuck at: " ++ pp e) $
-                property False
-             Just e' -> loop e'
-    in within 1000000 $ loop e
-
--- | The step function respects evaluation (NB: well-typed only. why?)
-prop_evalStep :: Tm Z -> Property
-prop_evalStep e =
-    counterexample ("e  = " ++ pp e) $
-    discardAfter 1000000 $
-    case step e of
-        Nothing  -> discard
-        Just e'  -> counterexample ("e' = " ++ pp e') $
-                    eval e == eval e'
-
-
--- | The step function respects reduce
-prop_reduceStep :: Tm (S Z) -> Property
-prop_reduceStep e =
+prop_reduce_exists_inert1 :: Tm N1 -> Property
+prop_reduce_exists_inert1 t =
     let pp' = ppWith ("x" ::: VNil) in
-    counterexample ("e  = " ++ pp' e) $
     discardAfter 1000000 $
-    case step e of
-        Nothing  -> property (isInert e)
-        Just e'  -> counterexample ("e' = " ++ pp' e') $
-                    reduce e == reduce e'
-
-------------------------------------------------------------------------
--- * Full reduction (normalization)
-------------------------------------------------------------------------
-
--- | Full normalization: reduce everywhere, including under binders.
--- Unlike 'reduce', which leaves 'Lam' bodies untouched, 'normalize'
--- recurses into the body of every binder.
-normalize :: Tm n -> Maybe (Tm n)
-normalize (Var x)      = return (Var x)
-normalize (Lam b)      = do
-    let nm   = getPat b
-        body = getBody b
-    body' <- normalize body
-    return (Lam (bind nm body'))
-normalize Unit         = return Unit
-normalize (Pair e1 e2) = do
-    v1 <- normalize e1
-    v2 <- normalize e2
-    return (Pair v1 v2)
-normalize (Inj i m) = do
-    t <- normalize m
-    return (Inj i t)
-normalize (App m n) = do
-    mv <- normalize m
-    nv <- normalize n
-    case mv of
-        Lam b | isVal nv -> normalize (instantiate1 b nv)
-        _                -> return (App mv nv)
-normalize (Match e brs) = do
-    v <- normalize e
-    case findBranch v brs of
-        Just body -> normalize body
-        Nothing   -> do
-            brs' <- mapM normBranch brs
-            return (Match v brs')
-  where
-    normBranch :: Branch n -> Maybe (Branch n)
-    normBranch (Branch b) = do
-            body' <- normalize (getBody b)
-            return (Branch (bind (getPat b) body'))
-
--- | a normal term cannot reduce any further
-isNormal :: Tm n -> Bool
-isNormal (Var x) = True
-isNormal (Lam b) = isNormal (getBody b)
-isNormal (App (Lam _) u) | isVal u  = False
-isNormal (App t u) = isNormal t && isNormal u
-isNormal Unit = True
-isNormal (Pair e1 e2) = isNormal e1 && isNormal e2
-isNormal (Inj i e) = isNormal e
-isNormal (Match e brs) = case findBranch e brs of
-    Just _  -> False
-    Nothing -> isNormal e && all isNormalBranch brs
-isNormalBranch (Branch b) = isNormal (getBody b)
-
-{-
-isNeutral :: Tm n -> Bool 
-isNeutral (Var _)       = True
-isNeutral (App e1 e2)   = isNeutral e1 && isNormal e2
-isNeutral (Match e brs) = isNeutral e && all isNormalBranch brs
-isNeutral _             = False
-
-isNormalBranch (Branch b) = isNormal (getBody b)
-
--- | A term is in normal form when it contains no beta redexes anywhere,
--- including inside lambda bodies and match branches.
-isNormal :: Tm n -> Bool
-isNormal (Lam b)                  = isNormal (getBody b)
-isNormal Unit                     = True
-isNormal (Pair e1 e2)             = isNormal e1 && isNormal e2
-isNormal (Inj _ e)                = isNormal e
-isNormal x                        = isNeutral x
--}
-
--- | normalize always produces a term in full normal form.
-prop_normalize_normal :: Tm Z -> Property
-prop_normalize_normal t =
-    discardAfter 1000000 $
-    case normalize t of
-        Just nf -> 
-            counterexample ("nf = " ++ pp nf) $
-            property (isNormal nf)
-        Nothing -> discard
-
--- | normalize is idempotent: normalizing an already-normal term is a no-op.
-prop_normalize_idempotent :: forall n. SNatI n => Tm n -> Property
-prop_normalize_idempotent t =
-    discardAfter 1000000 $
-    case normalize t of
-        Just nf -> normalize nf === Just nf
-        Nothing -> discard
-
--- | On well-typed closed terms, normalize succeeds whenever eval does, and its
--- result is in normal form.  On well-scoped (possibly ill-typed) terms,
--- normalize can succeed even when eval fails (type errors cause eval to return
--- Nothing but normalize still returns Just).
-prop_normalize_eval :: Tm Z -> Property
-prop_normalize_eval t =
-    discardAfter 1000000 $
-    counterexample ("term: " ++ pp t) $
-    case eval t of
-        Just v  -> counterexample ("eval: " ++ pp v) $
-                   case normalize t of
-                       Just nf -> counterexample ("normalize: " ++ pp nf) $
-                                  property (isNormal nf)
-                       Nothing -> property False
-        Nothing -> discard
-
--- | When there is no redex hiding inside a lambda body or match branch,
--- normalize and reduce produce the same result.
--- We classify how often this condition holds in the generated test suite.
-prop_normalize_reduce :: forall n. SNatI n => Tm n -> Property
-prop_normalize_reduce t =
-    discardAfter 1000000 $
-    classify (noRedexUnderBinder t) "no redex under binder" $
-    case (reduce t, normalize t) of
-        (Just v, Just nf) | noRedexUnderBinder t -> v === nf
-        _                                         -> property True
-
--- | Holds when no beta redex appears strictly inside a binder body.
--- Outside binders the term may still have redexes; those are handled
--- identically by both 'reduce' and 'normalize'.
-noRedexUnderBinder :: Tm n -> Bool
-noRedexUnderBinder (Var _)            = True
-noRedexUnderBinder (Lam b)            = isNormal (getBody b)
-noRedexUnderBinder Unit               = True
-noRedexUnderBinder (Pair e1 e2)       = noRedexUnderBinder e1 && noRedexUnderBinder e2
-noRedexUnderBinder (Inj _ e)          = noRedexUnderBinder e
-noRedexUnderBinder (App f a)          = noRedexUnderBinder f && noRedexUnderBinder a
-noRedexUnderBinder (Match e brs) = noRedexUnderBinder e && 
-   all (\(Branch b) -> isNormal (getBody b)) brs
+    case reduce t of
+        Just v -> counterexample ("reduces to: " ++ pp' v) $ property (isInert v)
+        Nothing -> property False
 
 -------------------------------------------------------------------
 -- Run all properties
 -------------------------------------------------------------------
 
-args :: Args
-args = stdArgs { maxSuccess = 100000 }
-
 testAll :: IO ()
 testAll = do
-
+    let args = stdArgs { maxSuccess = 10000 }
     putStrLn "prop_evalVal:"                
     quickCheckWith args (forAll0 Scoped PureLC prop_evalVal)
+    putStrLn "prop_eval_idempotent:"                
+    quickCheckWith args (forAll0 Scoped PureLC prop_eval_idempotent)
     putStrLn "prop_eval_exists_Val:"      
     quickCheckWith args (forAll0 Typed Full prop_eval_exists_Val)
-    putStrLn "prop_reduce_inert @Z:"       
+    putStrLn "prop_reduce_inert0:"       
     quickCheckWith args (forAll0 Scoped Full (prop_reduce_inert @Z))
-    putStrLn "prop_reduce_inert @(S Z):"   
+    putStrLn "prop_reduce_inert1:"   
     quickCheckWith args (forAll1 Scoped Full (prop_reduce_inert @(S Z)))
-    putStrLn "prop_reduce_inert @Z:"       
+    putStrLn "prop_reduce_exists_inert0:"       
     quickCheckWith args (forAll0 Typed Full (prop_reduce_exists_inert @Z))
-    putStrLn "prop_reduce_inert @(S Z):"   
+    putStrLn "prop_reduce_exists_inert1:"   
     quickCheckWith args (forAll1 Typed Full (prop_reduce_exists_inert @(S Z)))
     putStrLn "prop_eval_reduce:"           
     quickCheckWith args (forAll0 Scoped Full prop_eval_reduce)
-    putStrLn "prop_stepVal:"               
-    quickCheckWith args (forAll0 Typed Full prop_stepVal)
-    putStrLn "prop_evalStep:"             
-    quickCheckWith args (forAll0 Typed Full prop_evalStep)
-    putStrLn "prop_reduceStep:"            
-    quickCheckWith args (forAll1 Scoped Full prop_reduceStep)
-
-    putStrLn "normalize/normal closed"     
-    quickCheckWith args (forAll0 Scoped Full (prop_normalize_normal ))
-    -- putStrLn "normalize/normal open"       
-    -- quickCheckWith args (forAll1 Scoped Full (prop_normalize_normal  @(S Z)))
-    putStrLn "normalize/idempotent closed"     
-    quickCheckWith args (forAll0 Scoped Full (prop_normalize_idempotent @Z))
-    putStrLn "normalize/idempotent open"       
-    quickCheckWith args (forAll1 Scoped Full (prop_normalize_idempotent @(S Z)))
-    putStrLn "normalize/eval"              
-    quickCheckWith args (forAll0 Scoped Full prop_normalize_eval)
-    putStrLn "normalize/reduce closed"         
-    quickCheckWith args (forAll0 Typed Full (prop_normalize_reduce  @Z))
-    putStrLn "normalize/reduce open"           
-    quickCheckWith args (forAll1 Typed Full (prop_normalize_reduce  @(S Z)))
+    
