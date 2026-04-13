@@ -238,7 +238,7 @@ pp = N.pp . injectTm
 ppWith :: Vec n String -> S.Tm n -> String
 ppWith e t = N.pp (injectTmWith e t)
 
-
+-- | Pretty-print a pattern
 ppPat :: S.Pat m -> String
 ppPat p = N.pp (fst (injectPat p VNil))
 

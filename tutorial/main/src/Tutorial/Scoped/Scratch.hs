@@ -6,7 +6,7 @@
                 Stephanie Weirich
             
              University of Pennsylvania
-            (currently visiting INRIA Paris)
+           (currently visiting INRIA Paris)
 
           https://sweirich.github.io/rebound/
 
@@ -38,15 +38,16 @@ data Nat = Z | S Nat
 type N1 = S Z
 type N2 = S (S Z)
 type N3 = S (S (S Z))
+type N4 = S N3
 
--- | @Fin n@ is the type of de Bruijn indices in scope @n@:
+-- | `Fin n` is the type of de Bruijn indices in scope n:
 -- the finite set @{0, 1, ..., n-1}@.
--- @FZ@ represents @0@, and @FS x@ represents @x + 1@.
+-- `FZ` represents 0, and `FS x` represents @x + 1@.
 data Fin n where
     FZ :: Fin (S n)
     FS :: Fin n -> Fin (S n)
 
--- NOTE: Fin is a GADT because the result type of each constructor mentions
+-- NOTE: Fin is a *GADT* because the result type of each constructor mentions
 -- "S n" instead of n.
 
 
@@ -76,7 +77,7 @@ f3 = FS (FS (FS f0))
 deriving instance (Eq (Fin n))
 
 -- >>> f1 == f1
--- True
+
 
 
 -- >>> f1 == f2
@@ -103,7 +104,7 @@ instance Show (Fin n) where
 
 
 -- >>> f3
--- f3
+
 
 
 
@@ -127,7 +128,6 @@ data Tm (n :: Nat) where
     Unit  :: Tm n
     Pair  :: Tm n -> Tm n -> Tm n
     Inj   :: Int -> Tm n -> Tm n
-    -- application `e0 e1`
     App   :: Tm n -> Tm n -> Tm n
     -- simple pattern matching
     -- `case e0 of () -> e1`
@@ -138,13 +138,12 @@ data Tm (n :: Nat) where
     MatchSum  :: Tm n -> Bind1 n -> Bind1 n -> Tm n
       deriving (Eq, Show)
 
--- | A term with one bound variable: a body in scope @S n@ packaged
--- so that the binder is not visible outside.
+-- | A term with one bound variable: a body in scope `S n` 
 data Bind1 n where
     Bind1 :: Tm (S n) -> Bind1 n
       deriving (Eq, Show)
 
--- | A term with two bound variables: a body in scope @S (S n)@.
+-- | A term with two bound variables: a body in scope `S (S n)`.
 data Bind2 (n :: Nat) where
     Bind2 :: Tm (S (S n)) -> Bind2 n
       deriving (Eq, Show)
@@ -167,7 +166,9 @@ ex_comp :: Tm Z
 ex_comp = Lam (Bind1 (Lam (Bind1 (Lam (Bind1
     (App (Var f2) (App (Var f1) (Var f0))))))))
 
--- | Swap a pair: λp. case p of (x, y) → (y, x)  or  λ. case 0 of (,) -> (0,1)
+-- | Swap a pair: 
+-- λp. case p of (x, y) → (y, x)  
+-- λ. case 0 of (,) -> (0,1)
 ex_swap :: Tm Z
 ex_swap = Lam (Bind1
     (MatchPair (Var f0)
@@ -185,7 +186,7 @@ zeroE :: Env Z m
 zeroE = \f -> case f of {}
 
 -- | Extend an environment with a new term for the outermost variable.
--- @t .: env@ maps @FZ@ to @t@ and @FS x@ to @env x@.
+-- `t .: env` maps `FZ` to t and `FS x` to `env x`.
 -- Analogous to cons for a lists of terms.
 infixr 5 .:
 (.:) :: Tm n -> Env m n -> Env (S m) n
@@ -242,7 +243,7 @@ applyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
     MatchSum (applyE env a) (Bind1 (applyE (up env) b1)) (Bind1 (applyE (up env) b2))
 
 -- | Lift an environment under one binder.
--- The new outermost variable @f0@ maps to itself; all others are
+-- The new outermost variable `f0` maps to itself; all others are
 -- shifted by one so that the result is in the extended scope.
 up :: Env m n -> Env (S m) (S n)
 up env = Var f0 .: applyE shift . env
@@ -310,15 +311,19 @@ eval (MatchUnit e m) = do
 
 -- Some test cases for the evaluator
 
-
+-- (\x.\y.x) Unit (Inj0 Unit)
+test1 :: Maybe (Tm Z)
 test1 = eval (App (App ex_const Unit) (Inj 0 Unit))
 
 --- >>> test1
 
 
+-- case (Unit, Inj0 Unit) of (x,y) -> y
+test2 :: Maybe (Tm Z)
 test2 = eval (MatchPair (Pair Unit (Inj 0 Unit)) (Bind2 (Var f0)))
 
 -- >>> test2
+
 
 
 -- Question: what *properties* would we expect the evaluator to satisfy?

@@ -6,7 +6,7 @@
 - [Tutorial.Scoped.ScopeCheck](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/ScopeCheck.hs)
 - [Tutorial.Named.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Syntax.hs)
 - [Tutorial.Named.Parser](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Parser.hs)
-- [Tutorial.Named.Parser](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs)
+- [Tutorial.Named.PP](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs)
 
 ## Overview and Goals
 
@@ -170,7 +170,7 @@ pattern binds.  The existential over `m` is hidden inside `Branch`, so
 callers do not need to know the pattern's arity statically.
 
 As above, we can use the same operations for working with pattern binders, but this 
-type the operations have the following type:
+time the operations have the following type:
 
 | Function | Type | Description |
 |---|---|---|
@@ -299,7 +299,7 @@ Notice that `PVar` patterns are always considered equal regardless of the
 stored name—consistent with `LocalName`'s trivial `Eq` instance.
 
 The returned proof is exactly what we need to be able to compare the bodies 
-of the pattern with the usual `Eq` type cleass.
+of the pattern with the usual `Eq` type class.
 
 ```haskell
 instance Eq (Branch n) where
