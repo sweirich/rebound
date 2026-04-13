@@ -110,7 +110,7 @@ href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/N
 <li><a
 href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Parser.hs">Tutorial.Named.Parser</a></li>
 <li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs">Tutorial.Named.Parser</a></li>
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs">Tutorial.Named.PP</a></li>
 </ul>
 <h2 id="overview-and-goals">Overview and Goals</h2>
 <p>In Lecture 1 we represented terms in a simple language using de
@@ -276,7 +276,7 @@ variables are the ones the pattern binds. The existential over
 <code>m</code> is hidden inside <code>Branch</code>, so callers do not
 need to know the pattern’s arity statically.</p>
 <p>As above, we can use the same operations for working with pattern
-binders, but this type the operations have the following type:</p>
+binders, but this time the operations have the following type:</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -406,7 +406,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a
 regardless of the stored name—consistent with <code>LocalName</code>’s
 trivial <code>Eq</code> instance.</p>
 <p>The returned proof is exactly what we need to be able to compare the
-bodies of the pattern with the usual <code>Eq</code> type cleass.</p>
+bodies of the pattern with the usual <code>Eq</code> type class.</p>
 <div class="sourceCode" id="cb15"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> (<span class="dt">Branch</span> n) <span class="kw">where</span></span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  (==) ::</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
