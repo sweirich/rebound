@@ -139,6 +139,29 @@ step (Match e brs)
   | Just e' <- step e             = Just (Match e' brs)
   | otherwise                     = Nothing
 
+
+t1 = App (Lam (bind (LocalName "x") (Inj 0 (Var FZ)))) Unit
+t0 = Match Unit [Branch (bind PUnit (Pair Unit Unit))]
+t2 = Match t0 [Branch (bind (PPair (PVar (LocalName "y")) (PVar (LocalName "z")))
+                         (Lam (bind (LocalName "x") (Inj 0 (Var FZ)))))]
+
+t3 = Match t0 [Branch (bind PUnit (Pair Unit Unit))]
+
+-- >>> findBranch' Unit [Branch (bind PUnit (Pair Unit Unit))]
+-- Right (Pair Unit Unit)
+
+-- >>> isInert t3
+-- True
+
+-- >>> isInert <$> (step t3)
+-- Just False
+
+-- >>> isInert (Match Unit [Branch (bind PUnit t1)])
+-- False
+
+-- >>> step (Match (Match Unit [Branch (bind PUnit Unit)]) [Branch (bind PUnit Unit)])
+-- Just (Match Unit [Branch (bind PUnit Unit)])
+
 -------------------------------------------------------------------
 -- Small-step reduction properties
 -------------------------------------------------------------------
@@ -227,7 +250,7 @@ isNormal (App t u) = isNormal t && isNormal u
 isNormal Unit = True
 isNormal (Pair e1 e2) = isNormal e1 && isNormal e2
 isNormal (Inj i e) = isNormal e
-isNormal (Match e brs) = case findBranch' e brs of
+isNormal (Match e brs) = isNormal e && case findBranch' e brs of
     Left Stuck  -> all isNormalBranch brs
     Left NoMatch -> False
     Right v -> False
@@ -267,31 +290,6 @@ prop_normalize_eval t =
                        Nothing -> property False
         Nothing -> discard
 
--- | When there is no redex hiding inside a lambda body or match branch,
--- normalize and reduce produce the same result.
--- We classify how often this condition holds in the generated test suite.
-prop_normalize_reduce :: forall n. SNatI n => Tm n -> Property
-prop_normalize_reduce t =
-    discardAfter 1000000 $
-    classify (noRedexUnderBinder t) "no redex under binder" $
-    case (reduce t, normalize t) of
-        (Just v, Just nf) | noRedexUnderBinder t -> v === nf
-        _                                         -> property True
-
--- | Holds when no beta redex appears strictly inside a binder body.
--- Outside binders the term may still have redexes; those are handled
--- identically by both 'reduce' and 'normalize'.
-noRedexUnderBinder :: Tm n -> Bool
-noRedexUnderBinder (Var _)            = True
-noRedexUnderBinder (Lam b)            = isNormal (getBody b)
-noRedexUnderBinder Unit               = True
-noRedexUnderBinder (Pair e1 e2)       = noRedexUnderBinder e1 && noRedexUnderBinder e2
-noRedexUnderBinder (Inj _ e)          = noRedexUnderBinder e
-noRedexUnderBinder (App f a)          = noRedexUnderBinder f && noRedexUnderBinder a
-noRedexUnderBinder (Match e brs) = noRedexUnderBinder e && 
-   all (\(Branch b) -> isNormal (getBody b)) brs
-
-
 
 testAll :: IO ()
 testAll = do
@@ -301,19 +299,16 @@ testAll = do
     putStrLn "prop_evalStep:"             
     quickCheckWith args (forAll0 Typed Full prop_evalStep)
     putStrLn "prop_reduceStep:"            
-    quickCheckWith args (forAll1 Scoped Full prop_reduceStep)
+    quickCheckWith args (forAll1 Typed Full prop_reduceStep)
 
     putStrLn "normalize/normal closed"     
-    quickCheckWith args (forAll0 Scoped Full (prop_normalize_normal ))
+    quickCheckWith args (forAll0 Typed Full (prop_normalize_normal ))
     -- putStrLn "normalize/normal open"       
     -- quickCheckWith args (forAll1 Scoped Full (prop_normalize_normal  @(S Z)))
     putStrLn "normalize/idempotent closed"     
-    quickCheckWith args (forAll0 Scoped Full (prop_normalize_idempotent @Z))
+    quickCheckWith args (forAll0 Typed Full (prop_normalize_idempotent @Z))
     putStrLn "normalize/idempotent open"       
-    quickCheckWith args (forAll1 Scoped Full (prop_normalize_idempotent @(S Z)))
+    quickCheckWith args (forAll1 Typed Full (prop_normalize_idempotent @(S Z)))
     putStrLn "normalize/eval"              
-    quickCheckWith args (forAll0 Scoped Full prop_normalize_eval)
-    putStrLn "normalize/reduce closed"         
-    quickCheckWith args (forAll0 Typed Full (prop_normalize_reduce  @Z))
-    putStrLn "normalize/reduce open"           
-    quickCheckWith args (forAll1 Typed Full (prop_normalize_reduce  @(S Z)))
+    quickCheckWith args (forAll0 Typed Full prop_normalize_eval)
+

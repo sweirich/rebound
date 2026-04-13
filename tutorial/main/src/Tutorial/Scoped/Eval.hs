@@ -158,7 +158,7 @@ reduce (Match e brs) = do
 -- the two ways we may fail to make progress. Either the patter definitely
 -- does not match the branch `NoMatch`, or we we are matching against an inert term 
 -- and cannot make further progress until it is a value `Stuck`
-data Outcome = Stuck | NoMatch
+data Outcome = Stuck | NoMatch deriving (Show, Eq)
 
 -- | Compare a pattern against a value, returning an environment binding
 -- the pattern variables (if the pattern matches)
@@ -197,7 +197,8 @@ isInert (Pair e1 e2)    = isInert e1 && isInert e2
 isInert (Inj i e)       = isInert e
 isInert (App (Lam _) u) = isInert u && not (isVal u)
 isInert (App t u)       = isInert t && isInert u
-isInert (Match e brs)   = case findBranch' e brs of
+isInert (Match e brs)   = isInert e && 
+  case findBranch' e brs of
     Right _  -> False
     Left Stuck -> True
     Left NoMatch -> False

@@ -385,6 +385,7 @@ prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
      step_star VNil cps_e cps_e'
 
 testAll = do
+    let args = stdArgs { maxSuccess = 1000 } 
     putStrLn "prop_cps_step (NB: expected to fail):"
     quickCheckWith args prop_cps_step
     putStrLn "prop_cpsOpt_steps:"
