@@ -359,7 +359,7 @@ pattern variables to `Tm n` values.
 
 **Scope checking as a compiler pass.** The idea of converting named surface syntax to an internal nameless or index-based form is standard in compiler design. Early Lisp interpreters used association lists (`alist`) to map symbol names to values at runtime — the direct ancestor of the `[(String, Fin n)]` context used in `projectTmWith`. In modern compilers this conversion is a distinct front-end pass, often called *name resolution* or *scope analysis*, that runs after parsing and before type checking, and uses a more efficient data structure.
 
-**Singleton types and `SNatI`.** To use a type-level natural number `n :: Nat` at runtime — e.g., to enumerate `Fin n` — one needs a *singleton*: a runtime value that mirrors the type. Simulating this in Haskell was described by McBride ("Faking It: Simulating Dependent Types in Haskell", 2002) and later systematized in the `singletons` library (Eisenberg and Weirich, 2012). The `SNatI` typeclass and `SNat` type used by `genTm` follow this pattern.
+**Singleton types and `SNatI`.** To use a type-level natural number `n :: Nat` at runtime — e.g., to enumerate `Fin n` — one needs a *singleton*: a runtime value that mirrors the type. Simulating this in Haskell was described by McBride (["Faking It: Simulating Dependent Types in Haskell"](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/faking-it-simulating-dependent-types-in-haskell/A904B84CA962F2D75578445B703F199A), 2002) and later systematized in the [`singletons` library](https://hackage.haskell.org/package/singletons) ([Eisenberg and Weirich, "Dependently Typed Programming with Singletons", 2012](https://dl.acm.org/doi/10.1145/2430532.2364522)). The `SNatI` typeclass and `SNat` type used by `genTm` follow this pattern.
 
 
 ---
@@ -387,7 +387,7 @@ Which variable maps to `FZ` inside the body — `x` or `y`?  Why?
 
 ---
 
-**2. Extending the conversions with `let`.** Extend `projectTmWith` and `injectTmWith` in `Tutorial.Scoped.ScopeCheck` to handle a `let`-expression.  Assume you have already added `Let :: Tm n -> Bind1 Tm Tm n -> Tm n` to `Tutorial.Scoped.Syntax` and `N.Let :: String -> N.Tm -> N.Tm -> N.Tm` to the named syntax.
+**2. Extending the conversions with `let`.** Extend `projectTmWith` and `injectTmWith` in `Tutorial.Scoped.ScopeCheck` to handle a `let`-expression.  Assume you have already added `Let :: Tm n -> Bind1 n -> Tm n` to `Tutorial.Scoped.Syntax` and `N.Let :: String -> N.Tm -> N.Tm -> N.Tm` to the named syntax.
 
 - How does the treatment of `let` compare to `lam` in each direction?
 

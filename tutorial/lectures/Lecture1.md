@@ -209,8 +209,7 @@ exampleE = ex_id .: ex_const .: ex_comp .: zeroE
 
 ### More operations
 
-Here's another example environment: an identity substitution for terms with three free 
--- variables. We map each index to a variable with that index.
+Here's another example environment: an identity substitution for terms with three free variables. We map each index to a variable with that index.
 
 ```haskell
 id3E :: Env N3 N3
@@ -224,7 +223,7 @@ idE :: Env n n
 idE = Var
 ```
 
-Furthermore, this definition hints at how we might update *all* free variables in a term. The *shift* environemnt increments every index by one. 
+Furthermore, this definition hints at how we might update *all* free variables in a term. The *shift* environment increments every index by one. 
 
 ```haskell
 shift :: Env n (S n)
@@ -283,7 +282,7 @@ instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 
 Now let's write a function that uses our well-scoped representation!
 
-The end of the file includes a substitution-based evaluator for closed terms. This evaluator could encounter a runtime type error; for simplicty we return `Nothing` in that case.
+The end of the file includes a substitution-based evaluator for closed terms. This evaluator could encounter a runtime type error; for simplicity we return `Nothing` in that case.
 
 ```haskell
 eval :: Tm Z -> Maybe (Tm Z)
@@ -295,7 +294,7 @@ As a result, the variable case is impossible. Since `Tm Z` contains no variables
 ```haskell
 eval (Var x) = case x of {}
 ```
-In other cases, we use @instantiate1@ and @instantiate2@ to 
+In other cases, we use `instantiate1` and `instantiate2` to 
 substitute for the arguments in binders. Observe the order of 
 instantiation when working with pairs. As stated above, inside a `Bind2`,
 `FZ` is the second-bound variable and `FS FZ` is the first-bound variable.
@@ -306,8 +305,9 @@ has index 1.
 ```haskell
 eval (App m n) = do
     mv <- eval m
+    nv <- eval n
     case mv of
-        Lam b -> eval (instantiate1 b n)
+        Lam b -> eval (instantiate1 b nv)
         _     -> Nothing
 ```
 
@@ -345,8 +345,8 @@ bound variables are distinct from free variables) is a paper-level workaround;
 implementing it correctly in software is error-prone and was a recognized
 problem in early theorem provers and language implementations.
 
-**De Bruijn indices.** Introduced by Nicolaas de Bruijn in "Lambda Calculus
-Notation with Nameless Dummies" (1972) specifically to give a *canonical*
+**De Bruijn indices.** Introduced by Nicolaas de Bruijn in ["Lambda Calculus
+Notation with Nameless Dummies" (1972)](https://www.win.tue.nl/automath/archive/pdf/aut029.pdf) specifically to give a *canonical*
 representation of lambda terms in which alpha-equivalent terms are
 syntactically identical. The name "de Bruijn index" (counting binders outward
 from the use site) is the convention adopted here; de Bruijn himself used the
@@ -357,22 +357,22 @@ which count inward from the outermost binder.
 all variables simultaneously — rather than one at a time — is sometimes called
 *parallel* substitutions or *vector* substitutions. The version we present
 here is inspired by the Autosubst tool for working with de Bruijn indices in
-the Rocq proof assistant, which itself was inspired by the "Explicit
-Substitutions" of Abadi, Cardelli, Curien, and Lévy. (1991).
+the Rocq proof assistant, which itself was inspired by the ["Explicit
+Substitutions"](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/explicit-substitutions/C1B1AFAE8F34C953C1B2DF3C2D4C2125) of Abadi, Cardelli, Curien, and Lévy. (1991).
 
 **Well-scoped de Bruijn terms.** Tracking the number of free variables at the
 type level using a natural-number index appears in Altenkirch and Reus,
-"Monadic Presentations of Lambda Terms Using Generalized Inductive Types"
-(1999), and in Bird and Paterson, "De Bruijn Notation as a Nested Datatype"
-(1999). These papers inspired Kmett's "bound" library for working with well-scoped
+["Monadic Presentations of Lambda Terms Using Generalized Inductive Types"
+(1999)](https://link.springer.com/chapter/10.1007/3-540-48168-0_32), and in Bird and Paterson, ["De Bruijn Notation as a Nested Datatype"
+(1999)](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/de-bruijn-notation-as-a-nested-datatype/D8BFA383FDA7EA3DC443B4C42A168F30). These papers inspired Kmett's [`bound`](https://hackage.haskell.org/package/bound) library for working with well-scoped
 lambda calculus terms efficiently.
 
 **Renamings and the termination problem.** The mutual recursion between
 `applyE` and `up` (noted in Section 5) is a real obstacle in proof
 assistants. The standard fix — define `applyRen` on renamings first, use it to
 implement `up`, then build `applyE` on top — is described in, e.g., Benton,
-Hur, Kennedy, and McBride, "Strongly Typed Term Representations in Coq"
-(2012). Exercise 4 asks you to implement this version.
+Hur, Kennedy, and McBride, ["Strongly Typed Term Representations in Coq"
+(2012)](https://link.springer.com/article/10.1007/s10817-011-9219-0). Exercise 4 asks you to implement this version.
 
 ---
 

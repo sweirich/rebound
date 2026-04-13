@@ -79,7 +79,6 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
-      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -463,10 +462,16 @@ before type checking, and uses a more efficient data structure.</p>
 type-level natural number <code>n :: Nat</code> at runtime — e.g., to
 enumerate <code>Fin n</code> — one needs a <em>singleton</em>: a runtime
 value that mirrors the type. Simulating this in Haskell was described by
-McBride (“Faking It: Simulating Dependent Types in Haskell”, 2002) and
-later systematized in the <code>singletons</code> library (Eisenberg and
-Weirich, 2012). The <code>SNatI</code> typeclass and <code>SNat</code>
-type used by <code>genTm</code> follow this pattern.</p>
+McBride (<a
+href="https://www.cambridge.org/core/journals/journal-of-functional-programming/article/faking-it-simulating-dependent-types-in-haskell/A904B84CA962F2D75578445B703F199A">“Faking
+It: Simulating Dependent Types in Haskell”</a>, 2002) and later
+systematized in the <a
+href="https://hackage.haskell.org/package/singletons"><code>singletons</code>
+library</a> (<a
+href="https://dl.acm.org/doi/10.1145/2430532.2364522">Eisenberg and
+Weirich, “Dependently Typed Programming with Singletons”, 2012</a>). The
+<code>SNatI</code> typeclass and <code>SNat</code> type used by
+<code>genTm</code> follow this pattern.</p>
 <hr />
 <h2 id="exercises">Exercises</h2>
 <p><strong>1. Tracing <code>projectTmWith</code>.</strong> Manually
@@ -492,7 +497,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a
 Extend <code>projectTmWith</code> and <code>injectTmWith</code> in
 <code>Tutorial.Scoped.ScopeCheck</code> to handle a
 <code>let</code>-expression. Assume you have already added
-<code>Let :: Tm n -&gt; Bind1 Tm Tm n -&gt; Tm n</code> to
+<code>Let :: Tm n -&gt; Bind1 n -&gt; Tm n</code> to
 <code>Tutorial.Scoped.Syntax</code> and
 <code>N.Let :: String -&gt; N.Tm -&gt; N.Tm -&gt; N.Tm</code> to the
 named syntax.</p>

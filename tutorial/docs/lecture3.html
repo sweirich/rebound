@@ -80,7 +80,6 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
-      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -122,7 +121,7 @@ parser/pretty printer and evaluator that we defined in the previous
 lecture.</p>
 <h2 id="quick-check-properties-for-parsing-and-pretty-printing.">1.
 Quick check properties for parsing and pretty printing.</h2>
-<p>Re call that we can connect parsing and generation — via a chain of
+<p>Recall that we can connect parsing and generation — via a chain of
 transformations:</p>
 <pre><code>
         inject            scope-check
@@ -283,8 +282,8 @@ produce a result. This property only holds for well-typed terms.</p>
 <div class="sourceCode" id="cb9"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co">-- all terms evaluate to values</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_evalVal ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>prop_evalVal <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ot">prop_eval_exists_Val ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>prop_eval_exists_Val <span class="ot">=</span> \t <span class="ot">-&gt;</span></span>
 <span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    discardAfter <span class="dv">1000000</span> <span class="op">$</span></span>
 <span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> eval t <span class="kw">of</span></span>
 <span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> v <span class="ot">-&gt;</span> </span>
@@ -314,7 +313,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a
 <span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> discard</span></code></pre></div>
 <h2 id="going-further-a-well-typed-generator">5. Going further: A
 well-typed generator?</h2>
-<p>The well-scoped generator (<code>genScopedTm</code>) produces any
+<p>The well-scoped generator (<code>genScopedFull</code>) produces any
 structurally valid term — but “well-scoped” does not mean “well-typed”.
 In an untyped setting, terms like the ω combinator</p>
 <div class="sourceCode" id="cb12"><pre
@@ -435,18 +434,21 @@ terms must still be well-typed, but because we are not tracking types in
 the type system, they may not have the <em>same</em> type.</p>
 <h2 id="historical-notes">6. Historical Notes</h2>
 <p><strong>QuickCheck.</strong> Koen Claessen and John Hughes introduced
-QuickCheck in “QuickCheck: A Lightweight Tool for Random Testing of
-Haskell Programs” (2000). Property-based testing is now widely used
-across languages. The technique of generating <em>well-scoped</em> (or
-well-typed) terms directly — rather than generating strings and parsing
-them — avoids a large class of trivially-failing test cases and is the
-standard approach for testing language implementations.</p>
+QuickCheck in <a
+href="https://dl.acm.org/doi/10.1145/357766.351266">“QuickCheck: A
+Lightweight Tool for Random Testing of Haskell Programs” (2000)</a>.
+Property-based testing is now widely used across languages. The
+technique of generating <em>well-scoped</em> (or well-typed) terms
+directly — rather than generating strings and parsing them — avoids a
+large class of trivially-failing test cases and is the standard approach
+for testing language implementations.</p>
 <p><strong>Well-scoped and well-typed term generation.</strong>
 Generating terms directly in an indexed representation — rather than
 generating strings and filtering out ill-scoped ones — was popularized
-in the property-based testing literature by Pałka et al. (“Testing an
-Optimising Compiler by Generating Random Lambda Terms”, 2011), who used
-it to find bugs in GHC. Type-directed generation (producing only
+in the property-based testing literature by Pałka et al. (<a
+href="https://dl.acm.org/doi/10.1145/1982595.1982615">“Testing an
+Optimising Compiler by Generating Random Lambda Terms”</a>, 2011), who
+used it to find bugs in GHC. Type-directed generation (producing only
 well-typed terms) is the natural extension: it avoids both scope errors
 and divergence, and was used by Dénès et al. and others for testing
 type-preserving compilers and proof assistants.</p>
@@ -458,8 +460,6 @@ also generate <code>let</code>-expressions.</p>
 <div class="sourceCode" id="cb19"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- In the Full branch of gens inside genTm:</span></span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>, <span class="dt">Let</span> <span class="op">&lt;$&gt;</span> gen <span class="op">&lt;*&gt;</span> gen1</span></code></pre></div>
-<p>where
-<code>gen1 = bind1 @Tm &lt;$&gt; genLocalName &lt;*&gt; genTm l (next n) sz'</code>.</p>
 <ul>
 <li>Why is <code>gen1</code> the right generator for the binder part of
 <code>Let</code>?</li>

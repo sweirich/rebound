@@ -80,7 +80,6 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="site-title" href="index.html">Implement your POPL paper</a>
     <nav>
       <a href="index.html">Home</a>
-      <a href="haddock/index.html">API Docs</a>
       <a href="https://hackage.haskell.org/package/rebound">rebound on Hackage</a>
       <a href="https://github.com/sweirich/rebound">GitHub</a>
     </nav>
@@ -293,7 +292,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>exampleE <span class="ot">=</span> ex_id <span class="op">.:</span> ex_const <span class="op">.:</span> ex_comp <span class="op">.:</span> zeroE</span></code></pre></div>
 <h3 id="more-operations">More operations</h3>
 <p>Here’s another example environment: an identity substitution for
-terms with three free – variables. We map each index to a variable with
+terms with three free variables. We map each index to a variable with
 that index.</p>
 <div class="sourceCode" id="cb16"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">id3E ::</span> <span class="dt">Env</span> <span class="dt">N3</span> <span class="dt">N3</span></span>
@@ -304,7 +303,7 @@ substitution for every scope, with the following definition:</p>
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">idE ::</span> <span class="dt">Env</span> n n</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>idE <span class="ot">=</span> <span class="dt">Var</span></span></code></pre></div>
 <p>Furthermore, this definition hints at how we might update
-<em>all</em> free variables in a term. The <em>shift</em> environemnt
+<em>all</em> free variables in a term. The <em>shift</em> environment
 increments every index by one.</p>
 <div class="sourceCode" id="cb18"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">shift ::</span> <span class="dt">Env</span> n (<span class="dt">S</span> n)</span>
@@ -369,7 +368,7 @@ terms</h2>
 representation!</p>
 <p>The end of the file includes a substitution-based evaluator for
 closed terms. This evaluator could encounter a runtime type error; for
-simplicty we return <code>Nothing</code> in that case.</p>
+simplicity we return <code>Nothing</code> in that case.</p>
 <div class="sourceCode" id="cb22"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">eval ::</span> <span class="dt">Tm</span> <span class="dt">Z</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> <span class="dt">Z</span>)</span></code></pre></div>
 <p>The type of the evaluator also reflects that we only evaluate
@@ -379,21 +378,21 @@ Since <code>Tm Z</code> contains no variables, <code>Fin Z</code> is
 uninhabited, and the empty pattern match is vacuously exhaustive:</p>
 <div class="sourceCode" id="cb23"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">Var</span> x) <span class="ot">=</span> <span class="kw">case</span> x <span class="kw">of</span> {}</span></code></pre></div>
-<p>In other cases, we use <span class="citation"
-data-cites="instantiate1">@instantiate1</span>@ and <span
-class="citation" data-cites="instantiate2">@instantiate2</span>@ to
-substitute for the arguments in binders. Observe the order of
-instantiation when working with pairs. As stated above, inside a
-<code>Bind2</code>, <code>FZ</code> is the second-bound variable and
-<code>FS FZ</code> is the first-bound variable. So the second component
-of the pair has index 0 and the first component has index 1.</p>
+<p>In other cases, we use <code>instantiate1</code> and
+<code>instantiate2</code> to substitute for the arguments in binders.
+Observe the order of instantiation when working with pairs. As stated
+above, inside a <code>Bind2</code>, <code>FZ</code> is the second-bound
+variable and <code>FS FZ</code> is the first-bound variable. So the
+second component of the pair has index 0 and the first component has
+index 1.</p>
 <p><strong>Function application:</strong></p>
 <div class="sourceCode" id="cb24"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">App</span> m n) <span class="ot">=</span> <span class="kw">do</span></span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    mv <span class="ot">&lt;-</span> eval m</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b n)</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span></code></pre></div>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    nv <span class="ot">&lt;-</span> eval n</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b nv)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span></code></pre></div>
 <p><strong>Pair elimination:</strong></p>
 <div class="sourceCode" id="cb25"><pre
 class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">MatchPair</span> e m) <span class="ot">=</span> <span class="kw">do</span></span>
@@ -428,8 +427,10 @@ from free variables) is a paper-level workaround; implementing it
 correctly in software is error-prone and was a recognized problem in
 early theorem provers and language implementations.</p>
 <p><strong>De Bruijn indices.</strong> Introduced by Nicolaas de Bruijn
-in “Lambda Calculus Notation with Nameless Dummies” (1972) specifically
-to give a <em>canonical</em> representation of lambda terms in which
+in <a
+href="https://www.win.tue.nl/automath/archive/pdf/aut029.pdf">“Lambda
+Calculus Notation with Nameless Dummies” (1972)</a> specifically to give
+a <em>canonical</em> representation of lambda terms in which
 alpha-equivalent terms are syntactically identical. The name “de Bruijn
 index” (counting binders outward from the use site) is the convention
 adopted here; de Bruijn himself used the opposite convention in some
@@ -440,24 +441,30 @@ from the outermost binder.</p>
 rather than one at a time — is sometimes called <em>parallel</em>
 substitutions or <em>vector</em> substitutions. The version we present
 here is inspired by the Autosubst tool for working with de Bruijn
-indices in the Rocq proof assistant, which itself was inspired by the
-“Explicit Substitutions” of Abadi, Cardelli, Curien, and Lévy.
-(1991).</p>
+indices in the Rocq proof assistant, which itself was inspired by the <a
+href="https://www.cambridge.org/core/journals/journal-of-functional-programming/article/explicit-substitutions/C1B1AFAE8F34C953C1B2DF3C2D4C2125">“Explicit
+Substitutions”</a> of Abadi, Cardelli, Curien, and Lévy. (1991).</p>
 <p><strong>Well-scoped de Bruijn terms.</strong> Tracking the number of
 free variables at the type level using a natural-number index appears in
-Altenkirch and Reus, “Monadic Presentations of Lambda Terms Using
-Generalized Inductive Types” (1999), and in Bird and Paterson, “De
-Bruijn Notation as a Nested Datatype” (1999). These papers inspired
-Kmett’s “bound” library for working with well-scoped lambda calculus
-terms efficiently.</p>
+Altenkirch and Reus, <a
+href="https://link.springer.com/chapter/10.1007/3-540-48168-0_32">“Monadic
+Presentations of Lambda Terms Using Generalized Inductive Types”
+(1999)</a>, and in Bird and Paterson, <a
+href="https://www.cambridge.org/core/journals/journal-of-functional-programming/article/de-bruijn-notation-as-a-nested-datatype/D8BFA383FDA7EA3DC443B4C42A168F30">“De
+Bruijn Notation as a Nested Datatype” (1999)</a>. These papers inspired
+Kmett’s <a
+href="https://hackage.haskell.org/package/bound"><code>bound</code></a>
+library for working with well-scoped lambda calculus terms
+efficiently.</p>
 <p><strong>Renamings and the termination problem.</strong> The mutual
 recursion between <code>applyE</code> and <code>up</code> (noted in
 Section 5) is a real obstacle in proof assistants. The standard fix —
 define <code>applyRen</code> on renamings first, use it to implement
 <code>up</code>, then build <code>applyE</code> on top — is described
-in, e.g., Benton, Hur, Kennedy, and McBride, “Strongly Typed Term
-Representations in Coq” (2012). Exercise 4 asks you to implement this
-version.</p>
+in, e.g., Benton, Hur, Kennedy, and McBride, <a
+href="https://link.springer.com/article/10.1007/s10817-011-9219-0">“Strongly
+Typed Term Representations in Coq” (2012)</a>. Exercise 4 asks you to
+implement this version.</p>
 <hr />
 <h2 id="exercises">Exercises</h2>
 <p><strong>1. Writing terms.</strong> Write the following closed terms

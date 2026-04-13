@@ -21,7 +21,7 @@ that we defined in the previous lecture.
 
 ## 1. Quick check properties for parsing and pretty printing.
 
-Re call that we can connect parsing and generation — via a chain of
+Recall that we can connect parsing and generation — via a chain of
 transformations:
 
 ```
@@ -204,8 +204,8 @@ result. This property only holds for well-typed terms.
 ```haskell
 
 -- all terms evaluate to values
-prop_evalVal :: Tm Z -> Property
-prop_evalVal = \t ->
+prop_eval_exists_Val :: Tm Z -> Property
+prop_eval_exists_Val = \t ->
     discardAfter 1000000 $
     case eval t of
         Just v -> 
@@ -243,7 +243,7 @@ prop_reduce_inert = \t ->
 
 ## 5. Going further: A well-typed generator?
 
-The well-scoped generator (`genScopedTm`) produces any structurally valid
+The well-scoped generator (`genScopedFull`) produces any structurally valid
 term — but "well-scoped" does not mean "well-typed".  In an untyped
 setting, terms like the ω combinator
 
@@ -373,9 +373,9 @@ of smaller terms that satisfy the same constraint. For `shrinkScoped`, the const
 
 ## 6. Historical Notes
 
-**QuickCheck.** Koen Claessen and John Hughes introduced QuickCheck in "QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs" (2000). Property-based testing is now widely used across languages. The technique of generating *well-scoped* (or well-typed) terms directly — rather than generating strings and parsing them — avoids a large class of trivially-failing test cases and is the standard approach for testing language implementations.
+**QuickCheck.** Koen Claessen and John Hughes introduced QuickCheck in ["QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs" (2000)](https://dl.acm.org/doi/10.1145/357766.351266). Property-based testing is now widely used across languages. The technique of generating *well-scoped* (or well-typed) terms directly — rather than generating strings and parsing them — avoids a large class of trivially-failing test cases and is the standard approach for testing language implementations.
 
-**Well-scoped and well-typed term generation.** Generating terms directly in an indexed representation — rather than generating strings and filtering out ill-scoped ones — was popularized in the property-based testing literature by Pałka et al. ("Testing an Optimising Compiler by Generating Random Lambda Terms", 2011), who used it to find bugs in GHC.  Type-directed generation (producing only well-typed terms) is the natural extension: it avoids both scope errors and divergence, and was used by Dénès et al. and others for testing type-preserving compilers and proof assistants.
+**Well-scoped and well-typed term generation.** Generating terms directly in an indexed representation — rather than generating strings and filtering out ill-scoped ones — was popularized in the property-based testing literature by Pałka et al. (["Testing an Optimising Compiler by Generating Random Lambda Terms"](https://dl.acm.org/doi/10.1145/1982595.1982615), 2011), who used it to find bugs in GHC.  Type-directed generation (producing only well-typed terms) is the natural extension: it avoids both scope errors and divergence, and was used by Dénès et al. and others for testing type-preserving compilers and proof assistants.
 
 
 ## Exercises
@@ -388,7 +388,6 @@ of smaller terms that satisfy the same constraint. For `shrinkScoped`, the const
 , Let <$> gen <*> gen1
 ```
 
-where `gen1 = bind1 @Tm <$> genLocalName <*> genTm l (next n) sz'`.
 
 - Why is `gen1` the right generator for the binder part of `Let`?
 - What scope does the body of the `let` run in?  How does this differ from `App`?

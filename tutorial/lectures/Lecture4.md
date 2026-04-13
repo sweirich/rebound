@@ -104,7 +104,7 @@ this new parameter (variable 0 in the output scope) as the continuation.
 
 ```
 cpsExp r (Lam b) k = App k 
-    (Lam (bind1 (getLocalName b) 
+    (Lam (bind1 (getPat b) 
       (Lam (bind1 (LocalName "k")
           (cpsExp r' (getBody b) (Var FZ))))))
     where 
@@ -323,13 +323,13 @@ ghci>
 
 ## 5. Historical Notes
 
-**The CPS transformation.** The idea of compiling programs into continuation-passing style has two early origins. Fischer ("Lambda Calculus Schemata", 1972; published in revised form 1993) and Plotkin ("Call-by-Name, Call-by-Value and the Lambda-Calculus", 1975) independently described the CPS translation as a way to explain evaluation order. Plotkin's paper is particularly influential: it proved that call-by-value and call-by-name evaluation correspond to two different CPS translations, and it coined the term *administrative redex* for the spurious beta-redexes introduced by a naive translation.
+**The CPS transformation.** The idea of compiling programs into continuation-passing style has two early origins. Fischer (["Lambda Calculus Schemata"](https://link.springer.com/article/10.1007/BF01019461), 1972; published in revised form 1993) and Plotkin (["Call-by-Name, Call-by-Value and the Lambda-Calculus"](https://homepages.inf.ed.ac.uk/gdp/publications/cbn_cbv_lambda.pdf), 1975) independently described the CPS translation as a way to explain evaluation order. Plotkin's paper is particularly influential: it proved that call-by-value and call-by-name evaluation correspond to two different CPS translations, and it coined the term *administrative redex* for the spurious beta-redexes introduced by a naive translation.
 
-**CPS as a compiler intermediate language.** Steele's "Rabbit: A Compiler for Scheme" (1978) first used CPS as a compiler intermediate representation, making continuations explicit so that tail calls, closures, and control effects could all be handled uniformly. This idea was further developed in the SML/NJ compiler (Appel, "Compiling with Continuations", 1992) and influenced many subsequent compiler designs.
+**CPS as a compiler intermediate language.** Steele's ["Rabbit: A Compiler for Scheme" (1978)](https://dspace.mit.edu/handle/1721.1/6913) first used CPS as a compiler intermediate representation, making continuations explicit so that tail calls, closures, and control effects could all be handled uniformly. This idea was further developed in the SML/NJ compiler (Appel, ["Compiling with Continuations"](https://www.cambridge.org/core/books/compiling-with-continuations/7CA9C36DCE78AD82218E745F43A4E740), 1992) and influenced many subsequent compiler designs.
 
-**One-pass CPS and administrative redexes.** A naive CPS translation produces many administrative redexes. Eliminating them requires a separate reduction pass. Danvy and Filinski ("Representing Control: A Study of the CPS Transformation", 1992) showed how to produce administrative-redex-free output in a single pass by distinguishing *meta-level* continuations (Haskell functions) from *object-level* continuations (lambda terms in the target). The `Cont` datatype with `Meta` and `Obj` constructors in Section 4 directly implements this idea. 
+**One-pass CPS and administrative redexes.** A naive CPS translation produces many administrative redexes. Eliminating them requires a separate reduction pass. Danvy and Filinski (["Representing Control: A Study of the CPS Transformation"](https://www.cambridge.org/core/journals/mathematical-structures-in-computer-science/article/abs/representing-control-a-study-of-the-cps-transformation/37193FD94F87443338FC7F519783FF0A), 1992) showed how to produce administrative-redex-free output in a single pass by distinguishing *meta-level* continuations (Haskell functions) from *object-level* continuations (lambda terms in the target). The `Cont` datatype with `Meta` and `Obj` constructors in Section 4 directly implements this idea. 
 
-**CPS and classical logic.** Griffin ("A Formulae-as-Types Notion of Control", 1990) observed that continuations correspond to classical logic under the Curry–Howard correspondence: the call/cc operator corresponds to the law of excluded middle. This connection was further developed by Parigot (λμ-calculus, 1992) and many others, giving a logical foundation for the computational behavior of control operators.
+**CPS and classical logic.** Griffin (["A Formulae-as-Types Notion of Control"](https://www.cl.cam.ac.uk/~tgg22/publications/popl90.pdf), 1990) observed that continuations correspond to classical logic under the Curry–Howard correspondence: the call/cc operator corresponds to the law of excluded middle. This connection was further developed by Parigot ([λμ-calculus](https://link.springer.com/chapter/10.1007/BFb0013061), 1992) and many others, giving a logical foundation for the computational behavior of control operators.
 
 
 ---
