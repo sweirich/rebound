@@ -51,9 +51,9 @@ lecture4.html: $(LECTURES)/Lecture4.md $(TEMPLATE) $(CSS)
 	  -o $@ $<
 
 haddock:
-	cd .. && cabal haddock
+	cd ../main && cabal haddock
 	rm -rf $(HADDOCK_DEST)
-	cp -r $$(find ../dist-newstyle -path '*/rebound-tutorial-*/doc/html/rebound-tutorial' -type d | head -1) $(HADDOCK_DEST)
+	cp -r $$(find ../main/dist-newstyle -path '*/rebound-tutorial-*/doc/html/rebound-tutorial' -type d | head -1) $(HADDOCK_DEST)
 
 clean:
 	rm -f lecture1.html lecture2.html lecture3.html lecture4.html

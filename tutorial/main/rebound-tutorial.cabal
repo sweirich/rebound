@@ -10,12 +10,6 @@ copyright:      2026 Stephanie Weirich
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
-extra-doc-files:
-    README.md
-    lectures/Lecture1.md
-    lectures/Lecture2.md
-    lectures/Lecture3.md
-    lectures/Lecture4.md
 category:       Language
 
 common common-stanza
