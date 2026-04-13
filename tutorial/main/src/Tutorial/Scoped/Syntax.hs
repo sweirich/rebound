@@ -15,6 +15,7 @@ import Rebound.Bind.Pat as Pat
 import Data.Maybe as Maybe
 import Data.Fin
 
+
 data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
 
@@ -40,11 +41,13 @@ data Pat (m :: Nat) where
 
 
 -- type abbreviations for convenience
-type Bind1 n = Bind Tm Tm LocalName n
+type Bind1 n   = Bind Tm Tm LocalName n
 type BindP m n = Bind Tm Tm (Pat m) n
 
 -- API operations for these types are instances of the general
 -- operations in Rebound.Bind.Pat
+
+-- Named, single binders
 
 bind1 :: LocalName -> Tm (S n) -> Bind1 n
 bind1 = bind
@@ -57,6 +60,8 @@ getBody1 = getBody
 
 instantiate1 :: Bind1 n -> Tm n -> Tm n
 instantiate1 b t = instantiate b (t .: zeroE) 
+
+-- patterns
 
 bindP :: Pat m -> Tm (m + n) -> BindP m n
 bindP = bind
@@ -125,6 +130,7 @@ ex_swap = Lam (bind (LocalName "p")
 instance SubstVar Tm where
   var :: Fin n -> Tm n
   var = Var
+  
 instance Subst Tm Tm where
   applyE :: Env Tm n m -> Tm n -> Tm m
   applyE r (Var x) = applyEnv r x
@@ -134,12 +140,12 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e) = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (map (applyE r) brs)
+
 instance Subst Tm Branch where
   applyE :: Env Tm n m -> Branch n -> Branch m
   applyE r (Branch b) = Branch (applyE r b)
 
 -- >>> applyE (Unit .: zeroE) (Var FZ)
-
 
 
 -- >>> applyE (Unit .: zeroE) (Lam (bind1 (LocalName "x") (Var f1)))
@@ -240,8 +246,11 @@ instance (Eq (Pat m)) where
 
 
 --------------------------------------------------------------------
--- Show instances for Bind1 and Pat.Bind
+-- Show instances for Pat.Bind
 --------------------------------------------------------------------
+
+-- | The show instance is for viewing the AST. We will also 
+-- implement a pretty printer for a more convenient representation.
 
 instance (Show p, Sized p) => Show (Pat.Bind Tm Tm p n) where
    showsPrec p bnd = 

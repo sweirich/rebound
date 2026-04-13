@@ -62,7 +62,11 @@ Scoped Syntax -------> Named Syntax -------> String
 -}
 
 
+-- >>> N.parseTm "λ x. λ y. x"
+
+
 -- >>> N.parseTm "\\ x y. x"
+
 
 
 
@@ -166,10 +170,10 @@ t5 = case parse "λ x. λ x. x" of Right y -> y ; _ -> error "OOPS"
 -- Can also parse and print *open* terms by providing additional information
 
 -- >>> :t parseWith
--- parseWith :: [(String, Fin n)] -> String -> Either Error (Tm n)
+-- parseWith :: Vec n String -> String -> Either Error (Tm n)
 
 
--- >>> parseWith [("x", FZ)] "λ y. x"
+-- >>> parseWith ("x" ::: VNil) "λ y. x"
 -- Right (Lam (bind1 (Var 1)))
 
 
@@ -242,7 +246,7 @@ ppPat p = N.pp (fst (injectPat p VNil))
 ------------------------------------------------------------------------
 
 -- | Embed a simple binary type into the n-ary named type language.
--- Products become singleton @Prod@ lists and sums become singleton @Sum@ lists.
+-- Binary products/sums become two-element @Prod@/@Sum@ lists; @One@ becomes an empty @Prod@ list.
 injectTy :: S.Ty -> N.Ty
 injectTy = to where
     to (t1 S.:-> t2) = to t1 N.:-> to t2
@@ -343,9 +347,7 @@ findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
 
 
 -- | Convert a named term to a well-scoped term in scope @n@, given an
--- association list mapping in-scope variable names to their de Bruijn
--- indices.  Each binder prepends a new entry and shifts all existing
--- indices up by one.  Returns @Left err@ if a free variable is
+-- vector of names for free variables.  Returns @Left err@ if a free variable is
 -- encountered or if the term uses a syntactic form not supported by the
 -- simple language (e.g. n-ary patterns).
 projectTmWith :: Vec n String -> N.Tm -> Either ScopeCheckError (S.Tm n)
@@ -414,7 +416,7 @@ prop_project_round_trip :: S.Tm Z -> Bool
 prop_project_round_trip i = 
    projectTm (injectTm i) == Right i
 
--- | Pretty-printing a term and parsing it back yields the original named term.
+-- | Pretty-printing a term and parsing it back yields the original scoped term.
 prop_parse_round_trip :: S.Tm Z -> Bool
 prop_parse_round_trip i =
    parse (pp i) == Right i
@@ -442,7 +444,7 @@ freshenTests :: Test
 freshenTests = "freshen" ~: TestList
     [ "no conflict"        ~: freshen "x" VNil              ~=? "x"
     , "one conflict"       ~: freshen "x" ("x" ::: VNil)    ~=? "x0"
-    , "skip x0"           ~: freshen "x" ("x" ::: "x0" ::: VNil) ~=? "x1"
+    , "skip x0"            ~: freshen "x" ("x" ::: "x0" ::: VNil) ~=? "x1"
     , "no conflict other"  ~: freshen "x" ("y" ::: VNil)    ~=? "x"
     ]
 
@@ -464,7 +466,7 @@ parseTests = "parse" ~: TestList
 
 
 ppTests :: Test
-ppTests = "parse" ~: TestList
+ppTests = "pp" ~: TestList
     [ "identity fn"    ~: pp S.ex_id ~=? "\\ x. x"
     , "const fn"       ~: pp S.ex_const ~=? "\\ x y. x"  
     , "shadowing"      ~: 
