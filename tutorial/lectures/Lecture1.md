@@ -28,6 +28,11 @@ The goals of this lecture are to:
     
 - show-off the `rebound` library 
 
+In general, the ideas that we will cover this week should translate to any functional 
+programming language with minimal support for dependent types. I'm using Haskell, but if 
+you are working in Agda, Idris, Lean, or Rocq, you can translate this code to that 
+setting.
+
 
 ## 1. The Problem: Variable Binding
 
@@ -46,6 +51,7 @@ we substitute `42` for `x` in `x + x`. But substitution in the presence of free 
 *Capture-avoiding substitution* handles this by tracking free variables and renaming binders that would capture them. Unfortunately, implementations of this operation are a notorious source of bugs.
 
 Furthermore, with named variables, `λx. x` and `λy. y` are *alpha-equivalent* but structurally different. When implementing lambda calculus terms, we want to decide when terms are equivalent up-to the names of bound variables.
+
 
 **De Bruijn indices** solve both problems, i.e. we replace variable names with numbers counting the binders between a use and its binding site:
 

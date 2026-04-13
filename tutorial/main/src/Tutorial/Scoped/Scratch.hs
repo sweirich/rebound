@@ -4,6 +4,7 @@
         Implement your POPL paper (in Haskell)
 
                 Stephanie Weirich
+              sweirich@seas.upenn.edu
             
              University of Pennsylvania
            (currently visiting INRIA Paris)
@@ -23,16 +24,20 @@
 
 
 
+
+
 -- | Well-scoped de Bruijn term representations from scratch.
 module Tutorial.Scoped.Scratch where
 
 ------------------------------------------------------------------------
--- * Finite sets
+-- * Bounded natural numbers
 ------------------------------------------------------------------------
 
 -- | Unary natural numbers, used as type-level scopes.
 -- A term in scope @n@ has variables @0 .. n-1@.
-data Nat = Z | S Nat
+data Nat where
+  Z :: Nat 
+  S :: Nat -> Nat
 
 -- some (type-level) natural numbers
 type N1 = S Z
@@ -40,7 +45,12 @@ type N2 = S (S Z)
 type N3 = S (S (S Z))
 type N4 = S N3
 
--- | `Fin n` is the type of de Bruijn indices in scope n:
+
+
+
+
+
+-- | @Fin n@ is the type of de Bruijn indices in scope n:
 -- the finite set @{0, 1, ..., n-1}@.
 -- `FZ` represents 0, and `FS x` represents @x + 1@.
 data Fin n where
@@ -49,9 +59,6 @@ data Fin n where
 
 -- NOTE: Fin is a *GADT* because the result type of each constructor mentions
 -- "S n" instead of n.
-
-
-
 
 -- Some example Fins
 -- "0"
@@ -114,7 +121,7 @@ instance Show (Fin n) where
 
 
 ------------------------------------------------------------------------
--- * Types, terms and binders
+-- * Well-scoped lambda calculus terms
 ------------------------------------------------------------------------
 
 -- NB: in Haskell, infix symbolic data constructors start with :
@@ -155,11 +162,11 @@ data Bind2 (n :: Nat) where
 
 -- | Identity function: λx. x  or  λ.0
 ex_id :: Tm Z
-ex_id = Lam (Bind1 (Var f0))
+ex_id = undefined
 
 -- | Constant function: λx. λy. x or λ.λ.1
 ex_const :: Tm Z
-ex_const = Lam (Bind1 (Lam (Bind1 (Var f1))))
+ex_const = undefined
 
 -- | Function composition: λf. λg. λx. f (g x) or λ.λ.λ. 2 (1 0)
 ex_comp :: Tm Z
@@ -170,9 +177,7 @@ ex_comp = Lam (Bind1 (Lam (Bind1 (Lam (Bind1
 -- λp. case p of (x, y) → (y, x)  
 -- λ. case 0 of (,) -> (0,1)
 ex_swap :: Tm Z
-ex_swap = Lam (Bind1
-    (MatchPair (Var f0)
-        (Bind2 (Pair (Var f0) (Var f1)))))
+ex_swap = undefined
 
 ------------------------------------------------------------------------
 -- * Substitution environments
@@ -183,7 +188,7 @@ type Env m n = Fin m -> Tm n
 
 -- | If there are no variables in the domain, we can map to any scope
 zeroE :: Env Z m
-zeroE = \f -> case f of {}
+zeroE = \f -> undefined
 
 -- | Extend an environment with a new term for the outermost variable.
 -- `t .: env` maps `FZ` to t and `FS x` to `env x`.
@@ -211,7 +216,7 @@ id3E = Var f0 .: Var f1 .: Var f2 .: zeroE
 
 -- | The identity environment: maps each variable to itself.
 idE :: Env n n 
-idE = Var   -- recall Var :: Fin n -> Tm n
+idE = undefined   -- recall Var :: Fin n -> Tm n
 
 
 -- | The shifting environment: increments the index of every variable by one
@@ -251,9 +256,15 @@ up env = Var f0 .: applyE shift . env
 -- NB: . is Haskell's function composition
 
 
+
+
+
 -- | Compose two substitutions
 (>>) :: Env m n -> Env n p -> Env m p
 s1 >> s2 = applyE s2 . s1 
+
+
+
 
 
 
@@ -276,7 +287,7 @@ instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 
 -- | (big-step) cbv evaluation function 
 eval :: Tm Z -> Maybe (Tm Z)
-eval (Var x)      = case x of {}  
+eval (Var x)      = undefined 
 eval (Lam m)      = return (Lam m)
 eval Unit         = return Unit
 eval (Pair e1 e2) = do 
@@ -286,13 +297,8 @@ eval (Pair e1 e2) = do
 eval (Inj i m) = do
     t <- eval m
     return (Inj i t)
-eval (App m n) = do 
-    mv <- eval m
-    nv <- eval n
-    case mv of 
-           Lam b -> eval (instantiate1 b nv)
-           _ -> Nothing
-eval (MatchSum  e0 m m') = do
+eval (App m n) = undefined
+eval (MatchSum e0 m m') = do
     v <- eval e0
     case v of
         (Inj 0 v1) -> eval (instantiate1 m v1) 
@@ -327,3 +333,6 @@ test2 = eval (MatchPair (Pair Unit (Inj 0 Unit)) (Bind2 (Var f0)))
 
 
 -- Question: what *properties* would we expect the evaluator to satisfy?
+
+-- Question: How much of the code above can we package into a 
+-- reusable library? How much is specific to the language we are implementing?

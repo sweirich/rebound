@@ -47,11 +47,6 @@ import Data.Type.Equality ((:~:)(Refl))
 
 import Text.Parsec ( ParseError )
 
--- | Find the index of the first element that satisfies the given predicate
-findIndex :: (a -> Bool) -> Vec n a -> Maybe (Fin n)
-findIndex f VNil = Nothing
-findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
-
 
 ------------------------------------------------------------------------
 -- * Parsing and Pretty Printing examples
@@ -338,6 +333,13 @@ injectPat (S.PInj i p) vs =
 -- syntactic forms not supported by the simple language (e.g. n-ary patterns).
 projectTm :: N.Tm -> Either ScopeCheckError (S.Tm Z)
 projectTm = projectTmWith VNil
+
+
+
+-- | Find the index of the first element that satisfies the given predicate
+findIndex :: (a -> Bool) -> Vec n a -> Maybe (Fin n)
+findIndex f VNil = Nothing
+findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
 
 
 -- | Convert a named term to a well-scoped term in scope @n@, given an
