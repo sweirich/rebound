@@ -84,14 +84,23 @@ f3 = FS (FS (FS f0))
 deriving instance (Eq (Fin n))
 
 -- >>> f1 == f1
+-- True
 
 
 
 -- >>> f1 == f2
+-- False
 
 
 
 -- >>> (f1 :: Fin N2) == (f1 :: Fin N3)
+-- Couldn't match type 'S 'Z with 'Z
+-- Expected: Fin N2
+--   Actual: Fin N3
+-- In the second argument of `(==)', namely `(f1 :: Fin N3)'
+-- In the expression: (f1 :: Fin N2) == (f1 :: Fin N3)
+-- In an equation for `it_acVP5':
+--     it_acVP5 = (f1 :: Fin N2) == (f1 :: Fin N3)
 
 
 
@@ -111,6 +120,7 @@ instance Show (Fin n) where
 
 
 -- >>> f3
+-- f3
 
 
 
@@ -128,7 +138,6 @@ instance Show (Fin n) where
 data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
 
- 
 data Tm (n :: Nat) where
     Var   :: Fin n -> Tm n
     Lam   :: Bind1 n -> Tm n
@@ -162,11 +171,11 @@ data Bind2 (n :: Nat) where
 
 -- | Identity function: λx. x  or  λ.0
 ex_id :: Tm Z
-ex_id = undefined
+ex_id = Lam (Bind1 (Var f0))
 
 -- | Constant function: λx. λy. x or λ.λ.1
 ex_const :: Tm Z
-ex_const = undefined
+ex_const = Lam (Bind1 (Lam (Bind1 (Var f1))))
 
 -- | Function composition: λf. λg. λx. f (g x) or λ.λ.λ. 2 (1 0)
 ex_comp :: Tm Z
@@ -177,7 +186,13 @@ ex_comp = Lam (Bind1 (Lam (Bind1 (Lam (Bind1
 -- λp. case p of (x, y) → (y, x)  
 -- λ. case 0 of (,) -> (0,1)
 ex_swap :: Tm Z
-ex_swap = undefined
+ex_swap = Lam (Bind1 (MatchPair (Var f0) (Bind2 (Pair (Var f0) (Var f1)))))
+
+
+-- >>> ex_id == ex_id
+-- True
+
+
 
 ------------------------------------------------------------------------
 -- * Substitution environments
@@ -187,8 +202,8 @@ ex_swap = undefined
 type Env m n = Fin m -> Tm n
 
 -- | If there are no variables in the domain, we can map to any scope
-zeroE :: Env Z m
-zeroE = \f -> undefined
+zeroE :: Env Z n
+zeroE = \f -> case f of {}
 
 -- | Extend an environment with a new term for the outermost variable.
 -- `t .: env` maps `FZ` to t and `FS x` to `env x`.
@@ -216,7 +231,7 @@ id3E = Var f0 .: Var f1 .: Var f2 .: zeroE
 
 -- | The identity environment: maps each variable to itself.
 idE :: Env n n 
-idE = undefined   -- recall Var :: Fin n -> Tm n
+idE = Var   -- recall Var :: Fin n -> Tm n
 
 
 -- | The shifting environment: increments the index of every variable by one
@@ -287,7 +302,7 @@ instantiate2 (Bind2 body) t1 t2 = applyE (t1 .: t2 .: idE) body
 
 -- | (big-step) cbv evaluation function 
 eval :: Tm Z -> Maybe (Tm Z)
-eval (Var x)      = undefined 
+eval (Var x)      = case x of {}
 eval (Lam m)      = return (Lam m)
 eval Unit         = return Unit
 eval (Pair e1 e2) = do 
@@ -297,7 +312,12 @@ eval (Pair e1 e2) = do
 eval (Inj i m) = do
     t <- eval m
     return (Inj i t)
-eval (App m n) = undefined
+eval (App m n) = do
+    mv <- eval m
+    nv <- eval n
+    case mv of 
+        Lam b -> eval (instantiate1 b nv)
+        _ -> Nothing
 eval (MatchSum e0 m m') = do
     v <- eval e0
     case v of
@@ -322,6 +342,7 @@ test1 :: Maybe (Tm Z)
 test1 = eval (App (App ex_const Unit) (Inj 0 Unit))
 
 --- >>> test1
+-- Just Unit
 
 
 -- case (Unit, Inj0 Unit) of (x,y) -> y
@@ -329,10 +350,24 @@ test2 :: Maybe (Tm Z)
 test2 = eval (MatchPair (Pair Unit (Inj 0 Unit)) (Bind2 (Var f0)))
 
 -- >>> test2
+-- Just (Inj 0 Unit)
 
 
 
 -- Question: what *properties* would we expect the evaluator to satisfy?
 
+isVal :: Tm Z -> Bool
+isVal = undefined
+
+
+prop_eval_isVal :: Tm Z -> Bool
+prop_eval_isVal t = 
+    case eval t of 
+        Just v -> (isVal v)
+        Nothing -> False
+
+
 -- Question: How much of the code above can we package into a 
 -- reusable library? How much is specific to the language we are implementing?
+
+-- ANSWER: maybe only the datatype, plus evaluator, plus what the variable is

@@ -2,6 +2,8 @@
 
 ## Modules referenced in this lecture
 
+- [Tutorial.Scoped.SyntaxScratch](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/SyntaxScratch.hs)
+
 - [Tutorial.Scoped.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Syntax.hs)
 - [Tutorial.Scoped.ScopeCheck](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/ScopeCheck.hs)
 - [Tutorial.Named.Syntax](https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Syntax.hs)
@@ -12,6 +14,7 @@
 
 In Lecture 1 we represented terms in a simple language using de Bruijn indices
 and implemented an evaluator.
+
 
 But will this work at scale, for more sophisticated languages, which might
 include, say, pattern matching?
@@ -31,11 +34,32 @@ The goals of this lecture are to:
 
 - demonstrate pattern binding and sophisticated use of the `rebound` library
 
-## 1. Parsing and pretty-printing scoped syntax
+## 1. Generic definition of substitution
+
+Last time, we worked with the module `Tutorial.Scoped.Syntax` and implemented 
+a simple interpreter for the lambda calculus. The `rebound` library can replace 
+some of this code with generic definitions. 
+
+The module `Tutorial.Scoped.SyntaxScratch` is a version of the same file relying 
+on the library for the definitions of the `Bind1` and `Bind2` types, the `Env` 
+data structure, and all of their associated operations.  It also uses generic 
+programming (i.e. GHC.Generics) to replace the definition of `applyE`. 
+
+The key part of this file are the instances of the `SubstVar` and `Subst` type 
+classes for the `Tm` AST type. 
+
+But, `rebound` can do more than the simple pattern matching shown in that
+file.  In `Tutorial.Scoped.Syntax` we extend the language with *deep* pattern
+matching.  This allows us to write nested patterns, eliminated with a single
+form of case expression.
+
+However, before we go into what is required for that file, let's talk a bit about 
+parsing, pretty-printing, and scope-checking first.
+
+## 2. Parsing and pretty-printing scoped syntax
 
 The module `Tutorial.Scoped.ScopeCheck` provides a parser and pretty printer
-for well-scoped abstract syntax trees defined in `Tutorial.Scoped.Syntax` (and
-are similar to the AST from Lecture 1).
+for well-scoped abstract syntax trees defined in `Tutorial.Scoped.Syntax`.
 
 However, so that we can only talk about scoping, these operations are broken up 
 into two steps, through the use of a parallel named AST.
@@ -65,7 +89,7 @@ Below, and in the `ScopeCheck` module, we use `S` to refer to the
 `Tutorial.Named.Syntax` module.
 
 
-## 2. Remembering user supplied names
+## 3. Remembering user supplied names
 
 Where do the names come from during pretty printing? Of course, we can just 
 make up names, making sure that we always use new ones. However, that can lead 
@@ -129,7 +153,7 @@ enforces access to the body only through smart constructors and accessors.
 However, pattern binding is a general construct and these operations are more generic than the types listed in the table above.
 
 
-## 3. General pattern binding
+## 4. General pattern binding
 
 In our simple language (from module `Tutorial.Scoped.Scratch`), we had
 separate constructors for pattern matching unit, pair and sum values. We would
@@ -256,7 +280,7 @@ arguments are equal.
 testEquality @SNat :: TestEquality SNat => SNat a -> SNat b -> Maybe (a :~: b)
 ```
 
-## 4. Alpha-equivalence for branches and patterns
+## 5. Alpha-equivalence for branches and patterns
 
 We cannot derive `Eq` automatically for `Pat` or `Branch` because of the
 dependent index `m`. 
@@ -311,7 +335,7 @@ instance Eq (Branch n) where
 ```
 
 
-## 5. Evaluating pattern matching
+## 6. Evaluating pattern matching
 
 The evaluator in `Tutorial.Scoped.Eval` provides three reduction strategies
 and uses pattern matching throughout.
@@ -354,7 +378,7 @@ success, returns an *environment* `Env Tm m n` — a mapping from the `m`
 pattern variables to `Tm n` values.
 
 
-## 6. Historical Notes
+## 7. Historical Notes
 
 
 **Scope checking as a compiler pass.** The idea of converting named surface syntax to an internal nameless or index-based form is standard in compiler design. Early Lisp interpreters used association lists (`alist`) to map symbol names to values at runtime — the direct ancestor of the `[(String, Fin n)]` context used in `projectTmWith`. In modern compilers this conversion is a distinct front-end pass, often called *name resolution* or *scope analysis*, that runs after parsing and before type checking, and uses a more efficient data structure.
