@@ -170,16 +170,16 @@ t5 = case parse "λ x. λ x. x" of Right y -> y ; _ -> error "OOPS"
 -- Can also parse and print *open* terms by providing additional information
 
 -- >>> :t parseWith
--- parseWith :: Vec n String -> String -> Either Error (Tm n)
+
 
 
 -- >>> parseWith ("x" ::: VNil) "λ y. x"
--- Right (Lam (bind1 (Var 1)))
+
 
 
 
 -- >>> :t ppWith
--- ppWith :: Vec n String -> Tm n -> String
+
 
 -- >>> ppWith ("x" ::: VNil) (S.Lam (S.bind1 (S.LocalName "y") (S.Var f1)))
 
@@ -274,9 +274,10 @@ projectTy = to where
 -- | Return @s@ if it does not appear in the vector, otherwise try
 -- @s0@, @s1@, @s2@, … until a fresh name is found.
 -- >>> freshen "x" ("x" ::: VNil)
--- "x0"
+
 -- >>> freshen "x" (show (S.LocalName "x") ::: VNil)
--- "x0"
+
+
 freshen :: String -> Vec n String -> String
 freshen s vs
     | not (inVec s vs) = s
@@ -284,8 +285,8 @@ freshen s vs
   where
     go i | not (inVec (s ++ show i) vs) = s ++ show i
          | otherwise                    = go (i + 1)
-
-inVec s vs = any (== s) vs
+    
+    inVec s vs = any (== s) vs
 
 -- | Convert an open well-scoped term to a named term, given a vector of
 -- names for the free variables.  The head of the vector (@index 'FZ'@) names

@@ -100,16 +100,18 @@ Pattern Binding (plus scope checking)</h1>
 <h2 id="modules-referenced-in-this-lecture">Modules referenced in this
 lecture</h2>
 <ul>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Syntax.hs">Tutorial.Scoped.Syntax</a></li>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/ScopeCheck.hs">Tutorial.Scoped.ScopeCheck</a></li>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Syntax.hs">Tutorial.Named.Syntax</a></li>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Parser.hs">Tutorial.Named.Parser</a></li>
-<li><a
-href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs">Tutorial.Named.PP</a></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/SyntaxScratch.hs">Tutorial.Scoped.SyntaxScratch</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/Syntax.hs">Tutorial.Scoped.Syntax</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Scoped/ScopeCheck.hs">Tutorial.Scoped.ScopeCheck</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Syntax.hs">Tutorial.Named.Syntax</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/Parser.hs">Tutorial.Named.Parser</a></p></li>
+<li><p><a
+href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs">Tutorial.Named.PP</a></p></li>
 </ul>
 <h2 id="overview-and-goals">Overview and Goals</h2>
 <p>In Lecture 1 we represented terms in a simple language using de
@@ -131,12 +133,33 @@ syntax trees</p></li>
 <li><p>demonstrate pattern binding and sophisticated use of the
 <code>rebound</code> library</p></li>
 </ul>
-<h2 id="parsing-and-pretty-printing-scoped-syntax">1. Parsing and
+<h2 id="generic-definition-of-substitution">1. Generic definition of
+substitution</h2>
+<p>Last time, we worked with the module
+<code>Tutorial.Scoped.Syntax</code> and implemented a simple interpreter
+for the lambda calculus. The <code>rebound</code> library can replace
+some of this code with generic definitions.</p>
+<p>The module <code>Tutorial.Scoped.SyntaxScratch</code> is a version of
+the same file relying on the library for the definitions of the
+<code>Bind1</code> and <code>Bind2</code> types, the <code>Env</code>
+data structure, and all of their associated operations. It also uses
+generic programming (i.e. GHC.Generics) to replace the definition of
+<code>applyE</code>.</p>
+<p>The key part of this file are the instances of the
+<code>SubstVar</code> and <code>Subst</code> type classes for the
+<code>Tm</code> AST type.</p>
+<p>But, <code>rebound</code> can do more than the simple pattern
+matching shown in that file. In <code>Tutorial.Scoped.Syntax</code> we
+extend the language with <em>deep</em> pattern matching. This allows us
+to write nested patterns, eliminated with a single form of case
+expression.</p>
+<p>However, before we go into what is required for that file, let’s talk
+a bit about parsing, pretty-printing, and scope-checking first.</p>
+<h2 id="parsing-and-pretty-printing-scoped-syntax">2. Parsing and
 pretty-printing scoped syntax</h2>
 <p>The module <code>Tutorial.Scoped.ScopeCheck</code> provides a parser
 and pretty printer for well-scoped abstract syntax trees defined in
-<code>Tutorial.Scoped.Syntax</code> (and are similar to the AST from
-Lecture 1).</p>
+<code>Tutorial.Scoped.Syntax</code>.</p>
 <p>However, so that we can only talk about scoping, these operations are
 broken up into two steps, through the use of a parallel named AST.</p>
 <p>In other words, to parse, we divide the work into parsing raw strings
@@ -159,7 +182,7 @@ Scoped Syntax -------&gt; Named Syntax -------------&gt; String</code></pre>
 <code>S</code> to refer to the <code>Tutorial.Scoped.Syntax</code>
 module and <code>N</code> to refer to the
 <code>Tutorial.Named.Syntax</code> module.</p>
-<h2 id="remembering-user-supplied-names">2. Remembering user supplied
+<h2 id="remembering-user-supplied-names">3. Remembering user supplied
 names</h2>
 <p>Where do the names come from during pretty printing? Of course, we
 can just make up names, making sure that we always use new ones.
@@ -239,7 +262,7 @@ constructors and accessors.</p>
 </table>
 <p>However, pattern binding is a general construct and these operations
 are more generic than the types listed in the table above.</p>
-<h2 id="general-pattern-binding">3. General pattern binding</h2>
+<h2 id="general-pattern-binding">4. General pattern binding</h2>
 <p>In our simple language (from module
 <code>Tutorial.Scoped.Scratch</code>), we had separate constructors for
 pattern matching unit, pair and sum values. We would like to combine
@@ -368,7 +391,7 @@ a proof of equivalence for its <em>indices</em> when its arguments are
 equal.</p>
 <pre><code>&gt;&gt;&gt; :t testEquality @SNat
 testEquality @SNat :: TestEquality SNat =&gt; SNat a -&gt; SNat b -&gt; Maybe (a :~: b)</code></pre>
-<h2 id="alpha-equivalence-for-branches-and-patterns">4.
+<h2 id="alpha-equivalence-for-branches-and-patterns">5.
 Alpha-equivalence for branches and patterns</h2>
 <p>We cannot derive <code>Eq</code> automatically for <code>Pat</code>
 or <code>Branch</code> because of the dependent index
@@ -413,7 +436,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a
 <span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> testEquality (getPat b1) (getPat b2) <span class="kw">of</span></span>
 <span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> <span class="dt">Refl</span> <span class="ot">-&gt;</span> getBody b1 <span class="op">==</span> getBody b2</span>
 <span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">False</span></span></code></pre></div>
-<h2 id="evaluating-pattern-matching">5. Evaluating pattern matching</h2>
+<h2 id="evaluating-pattern-matching">6. Evaluating pattern matching</h2>
 <p>The evaluator in <code>Tutorial.Scoped.Eval</code> provides three
 reduction strategies and uses pattern matching throughout.</p>
 <h3 id="big-step-evaluation-eval">Big-step evaluation
@@ -448,7 +471,7 @@ class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a
 value and, on success, returns an <em>environment</em>
 <code>Env Tm m n</code> — a mapping from the <code>m</code> pattern
 variables to <code>Tm n</code> values.</p>
-<h2 id="historical-notes">6. Historical Notes</h2>
+<h2 id="historical-notes">7. Historical Notes</h2>
 <p><strong>Scope checking as a compiler pass.</strong> The idea of
 converting named surface syntax to an internal nameless or index-based
 form is standard in compiler design. Early Lisp interpreters used
