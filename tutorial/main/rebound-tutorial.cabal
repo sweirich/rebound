@@ -61,6 +61,7 @@ library
     , Tutorial.Exercise1
     , Tutorial.Exercise2
     , Tutorial.Exercise3
+    , Tutorial.Exercise4
   hs-source-dirs: src
 
 test-suite tutorial-tests
