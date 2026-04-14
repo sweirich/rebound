@@ -528,6 +528,21 @@ is that <code>applyRen</code> <em>is</em> structurally recursive (it
 produces variables, not terms), so it can be used to define
 <code>up</code> without the mutual recursion that troubles Agda and
 Rocq.</p>
+<p><strong>5. Alternative representation of Env.</strong></p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Vec</span> n a <span class="kw">where</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">VNil</span><span class="ot"> ::</span> <span class="dt">Vec</span> <span class="dt">Z</span> a</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  (:::) ::</span> a <span class="ot">-&gt;</span> <span class="dt">Vec</span> n a <span class="ot">-&gt;</span> <span class="dt">Vec</span> (<span class="dt">S</span> n) a</span></code></pre></div>
+<p>Can you implement substitution environments as length-indexed
+lists?</p>
+<pre><code>type Env m n = Vec m (Tm n)</code></pre>
+<p>First, define the lookup operation for accessing the definition of a
+particular index.</p>
+<pre><code>applyEnv :: Env m n -&gt; Fin m -&gt; Tm n</code></pre>
+<p>Now consider the other operations on environment.The implementation
+of <code>zeroE</code> and <code>(.:)</code> is straightforward. But what
+about the other operations, such as <code>idE</code>,
+<code>shiftE</code>, and the composition of two environments.</p>
 </main>
 
 <footer>
