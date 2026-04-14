@@ -436,4 +436,26 @@ Now observe: every renaming `r :: Ren m n` induces a substitution `Var . r :: En
 The reason proof assistants define `applyRen` separately is that `applyRen` *is* structurally recursive (it produces variables, not terms), so it can be used to define `up` without the mutual recursion that troubles Agda and Rocq.
 
 
+**5. Alternative representation of Env.** 
+
+```haskell
+data Vec n a where
+  VNil :: Vec Z a
+  (:::) :: a -> Vec n a -> Vec (S n) a
+```
+
+Can you implement substitution environments as length-indexed lists?
+
+```
+type Env m n = Vec m (Tm n)
+```
+
+First, define the lookup operation for accessing the definition of a particular index.
+
+```
+applyEnv :: Env m n -> Fin m -> Tm n
+```
+
+Now consider the other operations on environment.The implementation of `zeroE` and `(.:)` is straightforward. But what about the other operations, such as `idE`, `shiftE`, and the composition 
+of two environments.
 

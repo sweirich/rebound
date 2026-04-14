@@ -118,3 +118,89 @@ applyRen r (MatchSum a (Bind1 b1) (Bind1 b2)) =
 prop_renShift :: Tm Z -> Bool
 prop_renShift t = applyRen FS t == applyE shift t
 
+------------------------------------------------------------------------
+-- * Exercise 5: Alternative representation of Env
+------------------------------------------------------------------------
+
+-- | Length-indexed list.
+data Vec n a where
+  VNil  :: Vec Z a
+  (:::) :: a -> Vec n a -> Vec (S n) a
+
+infixr 5 :::
+
+-- | Map over a length-indexed list.
+mapVec :: (a -> b) -> Vec n a -> Vec n b
+mapVec _ VNil       = VNil
+mapVec f (x ::: xs) = f x ::: mapVec f xs
+
+-- | Singleton natural numbers — needed to build idE and shiftE, which
+-- must construct a list of a statically-known length at runtime.
+data SNat n where
+  SZ :: SNat Z
+  SS :: SNat n -> SNat (S n)
+
+-- | Vec-based substitution environment.
+-- We use 'VEnv' to avoid clashing with the function-based 'Env' imported
+-- from Tutorial.Scoped.Scratch.
+type VEnv m n = Vec m (Tm n)
+
+-- | Look up the term for a given variable index.
+vApplyEnv :: VEnv m n -> Fin m -> Tm n
+vApplyEnv VNil       x      = case x of {}
+vApplyEnv (t ::: _)  FZ     = t
+vApplyEnv (_ ::: ts) (FS x) = vApplyEnv ts x
+
+-- | Empty environment: no variables to map.
+vZeroE :: VEnv Z n
+vZeroE = VNil
+
+-- | Extend an environment: bind the outermost variable to 't'.
+-- Straightforward — just cons onto the list.
+vExtend :: Tm n -> VEnv m n -> VEnv (S m) n
+vExtend = (:::)
+
+-- | Identity environment: map each variable to itself.
+-- Unlike the function-based 'idE = Var', this requires a runtime witness
+-- of the scope because we must construct a concrete list.
+vIdE :: SNat n -> VEnv n n
+vIdE SZ     = VNil
+vIdE (SS n) = Var FZ ::: mapVec (applyRen FS) (vIdE n)
+
+-- | Shift environment: map each variable to the next one.
+-- Also requires a runtime scope witness for the same reason.
+vShiftE :: SNat n -> VEnv n (S n)
+vShiftE SZ     = VNil
+vShiftE (SS n) = Var (FS FZ) ::: mapVec (applyRen FS) (vShiftE n)
+
+-- | Lift a Vec environment under one binder: FZ maps to itself, every
+-- other variable x maps to (env x) weakened into the larger scope.
+-- We use 'applyRen FS' (from Exercise 4) to weaken — this avoids
+-- the mutual recursion that would arise from using vApplyE here.
+vUp :: VEnv m n -> VEnv (S m) (S n)
+vUp env = Var FZ ::: mapVec (applyRen FS) env
+
+-- | Apply a Vec environment to a term.
+-- Identical in structure to 'applyE'; the only difference is that
+-- variable lookup goes through 'vApplyEnv' instead of function application.
+vApplyE :: VEnv m n -> Tm m -> Tm n
+vApplyE env (Var x)                          = vApplyEnv env x
+vApplyE env (Lam (Bind1 b))                  = Lam (Bind1 (vApplyE (vUp env) b))
+vApplyE _   Unit                             = Unit
+vApplyE env (Pair a b)                       = Pair (vApplyE env a) (vApplyE env b)
+vApplyE env (Inj i t)                        = Inj i (vApplyE env t)
+vApplyE env (App f a)                        = App (vApplyE env f) (vApplyE env a)
+vApplyE env (MatchUnit a b)                  = MatchUnit (vApplyE env a) (vApplyE env b)
+vApplyE env (MatchPair a (Bind2 b))          =
+    MatchPair (vApplyE env a) (Bind2 (vApplyE (vUp (vUp env)) b))
+vApplyE env (MatchSum a (Bind1 b1) (Bind1 b2)) =
+    MatchSum (vApplyE env a)
+             (Bind1 (vApplyE (vUp env) b1))
+             (Bind1 (vApplyE (vUp env) b2))
+
+-- | Compose two Vec environments: (vComp e2 e1) maps i to e2 applied to e1(i).
+-- This is the analogue of substitution composition.
+vComp :: VEnv n p -> VEnv m n -> VEnv m p
+vComp _  VNil       = VNil
+vComp e2 (t ::: e1) = vApplyE e2 t ::: vComp e2 e1
+
