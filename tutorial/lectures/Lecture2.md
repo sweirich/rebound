@@ -12,49 +12,113 @@
 
 ## Overview and Goals
 
-In Lecture 1 we represented terms in a simple language using de Bruijn indices
-and implemented an evaluator.
+In Lecture 1 we represented terms in a simple language using well-scoped 
+de Bruijn indices and implemented a big-step call-by-value evaluator.
 
+But, do we need to do all of this work every time? Can library support help?
 
-But will this work at scale, for more sophisticated languages, which might
+And, will this approach work for more sophisticated languages, which might
 include, say, pattern matching?
 
-And, when working on a real implementation, we want to be able to parse and
-pretty-print our AST. While full parsing and pretty-printing is out of scope
-(heh) for this tutorial, we do want to consider how well scoped terms interact
-with these operations. In particular, if a user writes their code with
-explicit names, we need to ensure that all names are in scope. Similarly, to
-print code nicely, we want to preserve the names that the user originally
-wrote.
+Additionally, when working on a real implementation, we want to do more with 
+our AST besides evaluate it. For example, we'd like to be able to parse 
+and pretty-print our terms, just to make them easier to work with.
+
+While full parsing and pretty-printing is out of scope (heh) for this
+tutorial, we do want to consider how well scoped terms interact with these
+operations. In particular, if a user writes their code with explicit names, we
+need to ensure that all names are in scope. Similarly, to print code nicely,
+we want to preserve the names that the user originally wrote.
 
 The goals of this lecture are to:
 
 - cover more practical aspects of working with de Bruijn indices: maintaining
-  user-supplied variable names and generating well-scoped syntax trees
+  user-supplied variable names during parsing and printing
 
-- demonstrate pattern binding and sophisticated use of the `rebound` library
+- demonstrate pattern binding, where the number of variables introduced by 
+  the patterns is not known statically
 
-## 1. Generic definition of substitution
+- introduce features of the `rebound` library
+
+## 1. `rebound` definitions and generic substitution
 
 Last time, we worked with the module `Tutorial.Scoped.Syntax` and implemented 
 a simple interpreter for the lambda calculus. The `rebound` library can replace 
-some of this code with generic definitions. 
+much of this code with imported definitions and derived operations.
 
 The module `Tutorial.Scoped.SyntaxScratch` is a version of the same file relying 
 on the library for the definitions of the `Bind1` and `Bind2` types, the `Env` 
-data structure, and all of their associated operations.  It also uses generic 
-programming (i.e. GHC.Generics) to replace the definition of `applyE`. 
+data structure, and associated operations.  It also uses generic 
+programming (i.e. [GHC.Generics](https://hackage-content.haskell.org/package/base-4.22.0.0/docs/GHC-Generics.html)) to replace the definition of `applyE`. 
 
-The key part of this file are the instances of the `SubstVar` and `Subst` type 
-classes for the `Tm` AST type. 
+The key parts of this example are the instances of the `SubstVar` and `Subst` type 
+classes for the `Tm` AST type. The first class identifies the `Var` constructor for 
+the `Tm` type. This allows the library to have a polymorphic definition of `idE` 
+(of type `idE :: SubstVar v => Env v n n`).
 
-But, `rebound` can do more than the simple pattern matching shown in that
+
+```haskell
+instance SubstVar Tm where
+  var :: Fin n -> Tm n
+  var = Var
+  
+instance Subst Tm Tm where
+  applyE :: Env Tm m n -> Tm m -> Tm n
+  applyE env (Var x)              = applyEnv env x
+  applyE env (Lam b)              = Lam (applyE env b)
+  applyE _   Unit                 = Unit
+  applyE env (Pair a b)           = Pair (applyE env a) (applyE env b)
+  applyE env (Inj i t)            = Inj i (applyE env t)
+  applyE env (App f a)            = App (applyE env f) (applyE env a)
+  applyE env (MatchUnit a b)      = MatchUnit (applyE env a) (applyE env b)
+  applyE env (MatchPair a b) =
+    MatchPair (applyE env a) (applyE env b)
+  applyE env (MatchSum a b1 b2) =
+    MatchSum (applyE env a) (applyE env b1) (applyE env b2)
+```
+
+The `Subst` class takes two type parameters and overloads the `applyE` operation. 
+The polymorphic type looks like this:
+
+```haskell
+applyE :: Subst v c => Env v n m -> c n -> c m
+```
+
+The first parameter is used in the type of the environment --- this is the type of term 
+that will replace all variables. The second is the type of term that we are substituting 
+*into*. By separating these two types, the we can apply substitution environments not just 
+to terms, but to types that contain terms.  For example, the `rebound` library includes 
+instances for `Bind1` and `Bind2`, simplifying the definition above. No need to use `up` at the 
+binders---those instances do that automatically.
+
+However, `applyE` also has a generic default definition in the `Subst` type class. We can 
+replace the above definition of `applyE` with the shorter implementation of `isVar` that 
+identifies the variable constructor in the type. 
+
+```haskell
+instance Subst Tm Tm where
+  isVar :: Tm n -> Maybe (Tm :~: Tm, Fin n)
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+```
+
+The variable case is the *only* case in the definition of `applyE` that does anything interesting. All other cases do structural recursive calls. Note that `isVar` also includes a small proof of correctness. 
+
+```haskell
+isVar :: Subst v c => c n -> Maybe (v :~: c, Fin n)
+```
+Not only does it need to return the index of the variable, but it also must produce a proof that the two type parameters in the `Subst` class are the same. We can use `Refl` in this case becase `Tm` is the same of `Tm`. But if we were substituting in some other type `c`, not the same as `Tm`, then we couldn't pick out a variable constructor --- it would be unsound to replace that variable with a `Tm`.
+
+Once we define `isVar`, we can use the default definition of `applyE`. No need to implement
+this recursion. It is our choice whether we want to do so our not.
+
+The `rebound` library can do more than the simple pattern matching shown in that
 file.  In `Tutorial.Scoped.Syntax` we extend the language with *deep* pattern
 matching.  This allows us to write nested patterns, eliminated with a single
 form of case expression.
 
-However, before we go into what is required for that file, let's talk a bit about 
-parsing, pretty-printing, and scope-checking first.
+However, before we go into what is required for this extension, let's talk a
+bit about parsing, pretty-printing, and scope-checking first.
 
 ## 2. Parsing and pretty-printing scoped syntax
 

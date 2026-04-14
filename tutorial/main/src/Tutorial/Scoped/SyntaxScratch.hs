@@ -78,13 +78,26 @@ ex_swap = Lam (bind1 (MatchPair (Var f0) (bind2 (Pair (Var f0) (Var f1)))))
 -- Substitution
 --------------------------------------------------------------------
 
--- Substitution is enabled by 
-
 instance SubstVar Tm where
   var :: Fin n -> Tm n
   var = Var
   
 instance Subst Tm Tm where
+{-    
+  applyE :: Env Tm m n -> Tm m -> Tm n
+  applyE env (Var x)              = applyEnv env x
+  applyE env (Lam b)              = Lam (applyE env b)
+  applyE _   Unit                 = Unit
+  applyE env (Pair a b)           = Pair (applyE env a) (applyE env b)
+  applyE env (Inj i t)            = Inj i (applyE env t)
+  applyE env (App f a)            = App (applyE env f) (applyE env a)
+  applyE env (MatchUnit a b)      = MatchUnit (applyE env a) (applyE env b)
+  applyE env (MatchPair a b) =
+    MatchPair (applyE env a) (applyE env b)
+  applyE env (MatchSum a b1 b2) =
+    MatchSum (applyE env a) (applyE env b1) (applyE env b2)
+-}
+
   isVar :: Tm n -> Maybe (Tm :~: Tm, Fin n)
   isVar (Var x) = Just (Refl, x)
   isVar _ = Nothing

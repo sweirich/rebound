@@ -114,47 +114,116 @@ href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/N
 href="https://github.com/sweirich/rebound/blob/main/tutorial/main/src/Tutorial/Named/PP.hs">Tutorial.Named.PP</a></p></li>
 </ul>
 <h2 id="overview-and-goals">Overview and Goals</h2>
-<p>In Lecture 1 we represented terms in a simple language using de
-Bruijn indices and implemented an evaluator.</p>
-<p>But will this work at scale, for more sophisticated languages, which
+<p>In Lecture 1 we represented terms in a simple language using
+well-scoped de Bruijn indices and implemented a big-step call-by-value
+evaluator.</p>
+<p>But, do we need to do all of this work every time? Can library
+support help?</p>
+<p>And, will this approach work for more sophisticated languages, which
 might include, say, pattern matching?</p>
-<p>And, when working on a real implementation, we want to be able to
-parse and pretty-print our AST. While full parsing and pretty-printing
-is out of scope (heh) for this tutorial, we do want to consider how well
-scoped terms interact with these operations. In particular, if a user
-writes their code with explicit names, we need to ensure that all names
-are in scope. Similarly, to print code nicely, we want to preserve the
-names that the user originally wrote.</p>
+<p>Additionally, when working on a real implementation, we want to do
+more with our AST besides evaluate it. For example, we’d like to be able
+to parse and pretty-print our terms, just to make them easier to work
+with.</p>
+<p>While full parsing and pretty-printing is out of scope (heh) for this
+tutorial, we do want to consider how well scoped terms interact with
+these operations. In particular, if a user writes their code with
+explicit names, we need to ensure that all names are in scope.
+Similarly, to print code nicely, we want to preserve the names that the
+user originally wrote.</p>
 <p>The goals of this lecture are to:</p>
 <ul>
 <li><p>cover more practical aspects of working with de Bruijn indices:
-maintaining user-supplied variable names and generating well-scoped
-syntax trees</p></li>
-<li><p>demonstrate pattern binding and sophisticated use of the
-<code>rebound</code> library</p></li>
+maintaining user-supplied variable names during parsing and
+printing</p></li>
+<li><p>demonstrate pattern binding, where the number of variables
+introduced by the patterns is not known statically</p></li>
+<li><p>introduce features of the <code>rebound</code> library</p></li>
 </ul>
-<h2 id="generic-definition-of-substitution">1. Generic definition of
-substitution</h2>
+<h2 id="rebound-definitions-and-generic-substitution">1.
+<code>rebound</code> definitions and generic substitution</h2>
 <p>Last time, we worked with the module
 <code>Tutorial.Scoped.Syntax</code> and implemented a simple interpreter
 for the lambda calculus. The <code>rebound</code> library can replace
-some of this code with generic definitions.</p>
+much of this code with imported definitions and derived operations.</p>
 <p>The module <code>Tutorial.Scoped.SyntaxScratch</code> is a version of
 the same file relying on the library for the definitions of the
 <code>Bind1</code> and <code>Bind2</code> types, the <code>Env</code>
-data structure, and all of their associated operations. It also uses
-generic programming (i.e. GHC.Generics) to replace the definition of
-<code>applyE</code>.</p>
-<p>The key part of this file are the instances of the
+data structure, and associated operations. It also uses generic
+programming (i.e. <a
+href="https://hackage-content.haskell.org/package/base-4.22.0.0/docs/GHC-Generics.html">GHC.Generics</a>)
+to replace the definition of <code>applyE</code>.</p>
+<p>The key parts of this example are the instances of the
 <code>SubstVar</code> and <code>Subst</code> type classes for the
-<code>Tm</code> AST type.</p>
-<p>But, <code>rebound</code> can do more than the simple pattern
+<code>Tm</code> AST type. The first class identifies the
+<code>Var</code> constructor for the <code>Tm</code> type. This allows
+the library to have a polymorphic definition of <code>idE</code> (of
+type <code>idE :: SubstVar v =&gt; Env v n n</code>).</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">SubstVar</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  var ::</span> <span class="dt">Fin</span> n <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  var <span class="ot">=</span> <span class="dt">Var</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ot">  applyE ::</span> <span class="dt">Env</span> <span class="dt">Tm</span> m n <span class="ot">-&gt;</span> <span class="dt">Tm</span> m <span class="ot">-&gt;</span> <span class="dt">Tm</span> n</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">Var</span> x)              <span class="ot">=</span> applyEnv env x</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">Lam</span> b)              <span class="ot">=</span> <span class="dt">Lam</span> (applyE env b)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  applyE _   <span class="dt">Unit</span>                 <span class="ot">=</span> <span class="dt">Unit</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">Pair</span> a b)           <span class="ot">=</span> <span class="dt">Pair</span> (applyE env a) (applyE env b)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">Inj</span> i t)            <span class="ot">=</span> <span class="dt">Inj</span> i (applyE env t)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">App</span> f a)            <span class="ot">=</span> <span class="dt">App</span> (applyE env f) (applyE env a)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">MatchUnit</span> a b)      <span class="ot">=</span> <span class="dt">MatchUnit</span> (applyE env a) (applyE env b)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">MatchPair</span> a b) <span class="ot">=</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MatchPair</span> (applyE env a) (applyE env b)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  applyE env (<span class="dt">MatchSum</span> a b1 b2) <span class="ot">=</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MatchSum</span> (applyE env a) (applyE env b1) (applyE env b2)</span></code></pre></div>
+<p>The <code>Subst</code> class takes two type parameters and overloads
+the <code>applyE</code> operation. The polymorphic type looks like
+this:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">applyE ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> <span class="dt">Env</span> v n m <span class="ot">-&gt;</span> c n <span class="ot">-&gt;</span> c m</span></code></pre></div>
+<p>The first parameter is used in the type of the environment — this is
+the type of term that will replace all variables. The second is the type
+of term that we are substituting <em>into</em>. By separating these two
+types, the we can apply substitution environments not just to terms, but
+to types that contain terms. For example, the <code>rebound</code>
+library includes instances for <code>Bind1</code> and
+<code>Bind2</code>, simplifying the definition above. No need to use
+<code>up</code> at the binders—those instances do that
+automatically.</p>
+<p>However, <code>applyE</code> also has a generic default definition in
+the <code>Subst</code> type class. We can replace the above definition
+of <code>applyE</code> with the shorter implementation of
+<code>isVar</code> that identifies the variable constructor in the
+type.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Subst</span> <span class="dt">Tm</span> <span class="dt">Tm</span> <span class="kw">where</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  isVar ::</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> <span class="op">:~:</span> <span class="dt">Tm</span>, <span class="dt">Fin</span> n)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  isVar (<span class="dt">Var</span> x) <span class="ot">=</span> <span class="dt">Just</span> (<span class="dt">Refl</span>, x)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  isVar _ <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
+<p>The variable case is the <em>only</em> case in the definition of
+<code>applyE</code> that does anything interesting. All other cases do
+structural recursive calls. Note that <code>isVar</code> also includes a
+small proof of correctness.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ot">isVar ::</span> <span class="dt">Subst</span> v c <span class="ot">=&gt;</span> c n <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (v <span class="op">:~:</span> c, <span class="dt">Fin</span> n)</span></code></pre></div>
+<p>Not only does it need to return the index of the variable, but it
+also must produce a proof that the two type parameters in the
+<code>Subst</code> class are the same. We can use <code>Refl</code> in
+this case becase <code>Tm</code> is the same of <code>Tm</code>. But if
+we were substituting in some other type <code>c</code>, not the same as
+<code>Tm</code>, then we couldn’t pick out a variable constructor — it
+would be unsound to replace that variable with a <code>Tm</code>.</p>
+<p>Once we define <code>isVar</code>, we can use the default definition
+of <code>applyE</code>. No need to implement this recursion. It is our
+choice whether we want to do so our not.</p>
+<p>The <code>rebound</code> library can do more than the simple pattern
 matching shown in that file. In <code>Tutorial.Scoped.Syntax</code> we
 extend the language with <em>deep</em> pattern matching. This allows us
 to write nested patterns, eliminated with a single form of case
 expression.</p>
-<p>However, before we go into what is required for that file, let’s talk
-a bit about parsing, pretty-printing, and scope-checking first.</p>
+<p>However, before we go into what is required for this extension, let’s
+talk a bit about parsing, pretty-printing, and scope-checking first.</p>
 <h2 id="parsing-and-pretty-printing-scoped-syntax">2. Parsing and
 pretty-printing scoped syntax</h2>
 <p>The module <code>Tutorial.Scoped.ScopeCheck</code> provides a parser
@@ -192,29 +261,29 @@ names if possible.</p>
 remember such names for printing.</p>
 <p>When a user writes <code>\x. x</code> and we scope-check it, we
 produce:</p>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span></code></pre></div>
 <p>This way, the string <code>"x"</code> is stored inside the binder as
 a <code>LocalName</code>. When later printed, the output reads
 <code>\ x. x</code>.</p>
 <p>A local name is just a wrapper for a string, but we want to make sure
 that the strings do not interfere with alpha-equivalence.</p>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">newtype</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">LocalName</span> {<span class="ot"> name ::</span> <span class="dt">String</span> }</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    x1 <span class="op">==</span> x2 <span class="ot">=</span> <span class="dt">True</span>   <span class="co">-- all LocalNames are equal!</span></span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">newtype</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">LocalName</span> {<span class="ot"> name ::</span> <span class="dt">String</span> }</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    x1 <span class="op">==</span> x2 <span class="ot">=</span> <span class="dt">True</span>   <span class="co">-- all LocalNames are equal!</span></span></code></pre></div>
 <p>The deliberately trivial <code>Eq</code> instance means that two
 binders with <em>different</em> user names are still considered equal as
 long as their bodies are equal under de Bruijn comparison. This gives
 the correct notion of α-equivalence for free:</p>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ x. x</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>t1 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ y. y</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>t2 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- &gt;&gt;&gt; t1 == t2</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- True</span></span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ x. x</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>t1 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;x&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">--  λ y. y</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>t2 <span class="ot">=</span> <span class="dt">S.Lam</span> (S.bind (<span class="dt">S.LocalName</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">S.Var</span> <span class="dt">FZ</span>))</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- &gt;&gt;&gt; t1 == t2</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- True</span></span></code></pre></div>
 <h3 id="the-pat.bind-interface">The <code>Pat.Bind</code> interface</h3>
 <p>In <code>Tutorial.Scoped.Syntax</code>, we define the single binder
 type <code>Bind1 n</code> as <code>Pat.Bind Tm Tm LocalName n</code>,
@@ -271,12 +340,12 @@ patterns. This requires a pattern datatype and a way to bind the
 variables introduced by a pattern in the branch body.</p>
 <h3 id="the-pat-and-branch-datatypes">The <code>Pat</code> and
 <code>Branch</code> datatypes</h3>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Pat</span> (<span class="ot">m ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PVar</span><span class="ot">  ::</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> <span class="dt">Pat</span> <span class="dt">N1</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PUnit</span><span class="ot"> ::</span> <span class="dt">Pat</span> <span class="dt">N0</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PPair</span><span class="ot"> ::</span> <span class="dt">Pat</span> m1 <span class="ot">-&gt;</span> <span class="dt">Pat</span> m2 <span class="ot">-&gt;</span> <span class="dt">Pat</span> (m2 <span class="op">+</span> m1)</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PInj</span><span class="ot">  ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Pat</span> m <span class="ot">-&gt;</span> <span class="dt">Pat</span> m</span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Pat</span> (<span class="ot">m ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PVar</span><span class="ot">  ::</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> <span class="dt">Pat</span> <span class="dt">N1</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PUnit</span><span class="ot"> ::</span> <span class="dt">Pat</span> <span class="dt">N0</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PPair</span><span class="ot"> ::</span> <span class="dt">Pat</span> m1 <span class="ot">-&gt;</span> <span class="dt">Pat</span> m2 <span class="ot">-&gt;</span> <span class="dt">Pat</span> (m2 <span class="op">+</span> m1)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">PInj</span><span class="ot">  ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Pat</span> m <span class="ot">-&gt;</span> <span class="dt">Pat</span> m</span></code></pre></div>
 <p>In the type <code>Pat m</code> index <code>m</code> is the number of
 variables <em>bound</em> by the pattern, tracked at the type level.
 <code>PVar</code> binds one variable, <code>PUnit</code> binds none, and
@@ -286,9 +355,9 @@ order in the type of <code>PPair</code>: variables from the
 smaller de Bruijn indices), so they come first in the sum
 <code>m2 + m1</code>. <code>PInj</code> is a tag for injection patterns
 and passes the binding count through unchanged.</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Branch</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Branch</span><span class="ot"> ::</span> <span class="dt">Pat.Bind</span> <span class="dt">Tm</span> <span class="dt">Tm</span> (<span class="dt">Pat</span> m) n <span class="ot">-&gt;</span> <span class="dt">Branch</span> n</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Branch</span> (<span class="ot">n ::</span> <span class="dt">Nat</span>) <span class="kw">where</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Branch</span><span class="ot"> ::</span> <span class="dt">Pat.Bind</span> <span class="dt">Tm</span> <span class="dt">Tm</span> (<span class="dt">Pat</span> m) n <span class="ot">-&gt;</span> <span class="dt">Branch</span> n</span></code></pre></div>
 <p><code>Bind Tm Tm (Pat m) n</code> is the pattern-binding abstraction
 provided by <code>Rebound.Bind.Pat</code>. For simplicity, we use the
 type abbreviation <code>BindP m n</code> to stand for this type.</p>
@@ -344,23 +413,23 @@ type <code>LocalName</code> binds exactly one variable.</p>
 <p>Therefore, <code>rebound</code> uses the <code>Sized</code> class to
 calculate this information, both in types and also dynamically, using a
 singleton.</p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Sized</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span> <span class="dt">Size</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">N1</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ot">    size ::</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> <span class="dt">SNat</span> (<span class="dt">Size</span> (<span class="dt">LocalName</span>))</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    size _ <span class="ot">=</span> s1</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Sized</span> (<span class="dt">Pat</span> m) <span class="kw">where</span></span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span> <span class="dt">Size</span> (<span class="dt">Pat</span> m) <span class="ot">=</span> m</span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="ot">    size ::</span> <span class="dt">Pat</span> m <span class="ot">-&gt;</span> <span class="dt">SNat</span> (<span class="dt">Size</span> (<span class="dt">Pat</span> m))</span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PVar</span> _)      <span class="ot">=</span> s1</span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    size <span class="dt">PUnit</span>         <span class="ot">=</span> s0</span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PPair</span> p1 p2) <span class="ot">=</span> sPlus (size p2) (size p1)</span>
-<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PInj</span> _ p)    <span class="ot">=</span> size p</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Sized</span> <span class="dt">LocalName</span> <span class="kw">where</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span> <span class="dt">Size</span> <span class="dt">LocalName</span> <span class="ot">=</span> <span class="dt">N1</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="ot">    size ::</span> <span class="dt">LocalName</span> <span class="ot">-&gt;</span> <span class="dt">SNat</span> (<span class="dt">Size</span> (<span class="dt">LocalName</span>))</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    size _ <span class="ot">=</span> s1</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Sized</span> (<span class="dt">Pat</span> m) <span class="kw">where</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span> <span class="dt">Size</span> (<span class="dt">Pat</span> m) <span class="ot">=</span> m</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="ot">    size ::</span> <span class="dt">Pat</span> m <span class="ot">-&gt;</span> <span class="dt">SNat</span> (<span class="dt">Size</span> (<span class="dt">Pat</span> m))</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PVar</span> _)      <span class="ot">=</span> s1</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    size <span class="dt">PUnit</span>         <span class="ot">=</span> s0</span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PPair</span> p1 p2) <span class="ot">=</span> sPlus (size p2) (size p1)</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    size (<span class="dt">PInj</span> _ p)    <span class="ot">=</span> size p</span></code></pre></div>
 <p>The type <code>SNat</code> and type class <code>SNatI</code> provide
 <em>runtime</em> access to type-level natural numbers. Haskell is not a
 full-spectrum dependently-typed language, so numbers that appear in
@@ -413,29 +482,29 @@ heterogeneous pattern equality</h3>
 <p>Instead, we can create an instance of the <code>TestEquality</code>
 class. This instance compares the patterns for equality and also returns
 a <em>proof</em> that they bind the same number of variables.</p>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">TestEquality</span> <span class="dt">Pat</span> <span class="kw">where</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  testEquality ::</span> <span class="dt">Pat</span> a <span class="ot">-&gt;</span> <span class="dt">Pat</span> b <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (a <span class="op">:~:</span> b)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PVar</span> x) (<span class="dt">PVar</span> y) <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Refl</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  testEquality <span class="dt">PUnit</span> <span class="dt">PUnit</span> <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Refl</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PInj</span> i p) (<span class="dt">PInj</span> j p&#39;) <span class="op">|</span> i <span class="op">==</span> j <span class="ot">=</span> testEquality p p&#39;</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PPair</span> p1 p2) (<span class="dt">PPair</span> p1&#39; p2&#39;) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Refl</span> <span class="ot">&lt;-</span> testEquality p1 p1&#39;</span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Refl</span> <span class="ot">&lt;-</span> testEquality p2 p2&#39;</span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> <span class="dt">Refl</span></span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  testEquality _ _ <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">TestEquality</span> <span class="dt">Pat</span> <span class="kw">where</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  testEquality ::</span> <span class="dt">Pat</span> a <span class="ot">-&gt;</span> <span class="dt">Pat</span> b <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (a <span class="op">:~:</span> b)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PVar</span> x) (<span class="dt">PVar</span> y) <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Refl</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  testEquality <span class="dt">PUnit</span> <span class="dt">PUnit</span> <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Refl</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PInj</span> i p) (<span class="dt">PInj</span> j p&#39;) <span class="op">|</span> i <span class="op">==</span> j <span class="ot">=</span> testEquality p p&#39;</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  testEquality (<span class="dt">PPair</span> p1 p2) (<span class="dt">PPair</span> p1&#39; p2&#39;) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Refl</span> <span class="ot">&lt;-</span> testEquality p1 p1&#39;</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Refl</span> <span class="ot">&lt;-</span> testEquality p2 p2&#39;</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> <span class="dt">Refl</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  testEquality _ _ <span class="ot">=</span> <span class="dt">Nothing</span></span></code></pre></div>
 <p>Notice that <code>PVar</code> patterns are always considered equal
 regardless of the stored name—consistent with <code>LocalName</code>’s
 trivial <code>Eq</code> instance.</p>
 <p>The returned proof is exactly what we need to be able to compare the
 bodies of the pattern with the usual <code>Eq</code> type class.</p>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> (<span class="dt">Branch</span> n) <span class="kw">where</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  (==) ::</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">Branch</span> b1 <span class="op">==</span> <span class="dt">Branch</span> b2 <span class="ot">=</span> </span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> testEquality (getPat b1) (getPat b2) <span class="kw">of</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> <span class="dt">Refl</span> <span class="ot">-&gt;</span> getBody b1 <span class="op">==</span> getBody b2</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">False</span></span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Eq</span> (<span class="dt">Branch</span> n) <span class="kw">where</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  (==) ::</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Branch</span> n <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">Branch</span> b1 <span class="op">==</span> <span class="dt">Branch</span> b2 <span class="ot">=</span> </span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> testEquality (getPat b1) (getPat b2) <span class="kw">of</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> <span class="dt">Refl</span> <span class="ot">-&gt;</span> getBody b1 <span class="op">==</span> getBody b2</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">False</span></span></code></pre></div>
 <h2 id="evaluating-pattern-matching">6. Evaluating pattern matching</h2>
 <p>The evaluator in <code>Tutorial.Scoped.Eval</code> provides three
 reduction strategies and uses pattern matching throughout.</p>
@@ -443,30 +512,30 @@ reduction strategies and uses pattern matching throughout.</p>
 (<code>eval</code>)</h3>
 <p><code>eval :: Tm Z -&gt; Maybe (Tm Z)</code> evaluates closed terms
 to values. The interesting cases are application and match:</p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">App</span> m n) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    mv <span class="ot">&lt;-</span> eval m</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    nv <span class="ot">&lt;-</span> eval n</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b nv)</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">Match</span> e brs) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    v <span class="ot">&lt;-</span> eval e</span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    br <span class="ot">&lt;-</span> findBranch v brs</span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    eval br</span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">App</span> m n) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    mv <span class="ot">&lt;-</span> eval m</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    nv <span class="ot">&lt;-</span> eval n</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> mv <span class="kw">of</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Lam</span> b <span class="ot">-&gt;</span> eval (instantiate1 b nv)</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>        _     <span class="ot">-&gt;</span> <span class="dt">Nothing</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>eval (<span class="dt">Match</span> e brs) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    v <span class="ot">&lt;-</span> eval e</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    br <span class="ot">&lt;-</span> findBranch v brs</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    eval br</span></code></pre></div>
 <p>In particular, in the case of a <code>Match</code> expression,
 <code>findBranch</code> iterates through the list of branches and
 comparing the value using the <code>patternMatch</code> operation with
 each pattern. If this comparison is successful, it returns an
 <em>environment</em> mapping each variable bound in the patter with a
 subterm of the matched value.</p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">findBranch ::</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> [<span class="dt">Branch</span> n] <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> n)</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>findBranch _ [] <span class="ot">=</span> <span class="dt">Nothing</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>findBranch e (<span class="dt">Branch</span> b <span class="op">:</span> rest) <span class="ot">=</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> patternMatch (getPat b) e <span class="kw">of</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> r  <span class="ot">-&gt;</span> <span class="dt">Just</span> (instantiate b r)</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> findBranch e rest</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">findBranch ::</span> <span class="dt">Tm</span> n <span class="ot">-&gt;</span> [<span class="dt">Branch</span> n] <span class="ot">-&gt;</span> <span class="dt">Maybe</span> (<span class="dt">Tm</span> n)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>findBranch _ [] <span class="ot">=</span> <span class="dt">Nothing</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>findBranch e (<span class="dt">Branch</span> b <span class="op">:</span> rest) <span class="ot">=</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">case</span> patternMatch (getPat b) e <span class="kw">of</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> r  <span class="ot">-&gt;</span> <span class="dt">Just</span> (instantiate b r)</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> findBranch e rest</span></code></pre></div>
 <p>More generally <code>patternMatch</code> compares a pattern against a
 value and, on success, returns an <em>environment</em>
 <code>Env Tm m n</code> — a mapping from the <code>m</code> pattern
@@ -500,8 +569,8 @@ Weirich, “Dependently Typed Programming with Singletons”, 2012</a>). The
 <p><strong>1. Tracing <code>projectTmWith</code>.</strong> Manually
 trace through the following call, writing down the association list at
 each recursive step and the final de Bruijn term produced:</p>
-<div class="sourceCode" id="cb18"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">N.Lam</span> <span class="st">&quot;y&quot;</span> (<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)))</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">N.Lam</span> <span class="st">&quot;y&quot;</span> (<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)))</span></code></pre></div>
 <ul>
 <li>What is the association list when we recurse into the body of the
 outer <code>λx.</code>?</li>
@@ -510,9 +579,9 @@ inner <code>λy.</code>?</li>
 <li>What is the final <code>S.Tm Z</code> that is returned?</li>
 </ul>
 <p>Now do the same for:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Case</span> (<span class="dt">N.Var</span> <span class="st">&quot;p&quot;</span>)</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="dt">N.Pair</span> [<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>, <span class="dt">N.Var</span> <span class="st">&quot;y&quot;</span>], <span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)])</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>projectTm (<span class="dt">N.Case</span> (<span class="dt">N.Var</span> <span class="st">&quot;p&quot;</span>)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="dt">N.Pair</span> [<span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>, <span class="dt">N.Var</span> <span class="st">&quot;y&quot;</span>], <span class="dt">N.Var</span> <span class="st">&quot;x&quot;</span>)])</span></code></pre></div>
 <p>Which variable maps to <code>FZ</code> inside the body —
 <code>x</code> or <code>y</code>? Why?</p>
 <hr />
