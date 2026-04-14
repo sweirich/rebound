@@ -289,8 +289,7 @@ freshen s vs
     inVec s vs = any (== s) vs
 
 -- | Convert an open well-scoped term to a named term, given a vector of
--- names for the free variables.  The head of the vector (@index 'FZ'@) names
--- the innermost variable; names are prepended at each binder site.
+-- names for the free variables.  
 injectTmWith :: Vec n String -> S.Tm n -> N.Tm
 injectTmWith vs (S.Var x)     = N.Var (vs ! x)
 injectTmWith vs (S.Lam t)     = N.Lam s (injectTmWith (s ::: vs) (S.getBody t))
@@ -321,8 +320,8 @@ injectPat (S.PVar ln) vs =
     in (N.Var s, s ::: vs)
 injectPat S.PUnit vs = (N.Pair [], vs)
 injectPat (S.PPair (p1 :: S.Pat m1) (p2 :: S.Pat m2)) (vs :: Vec n String) =
-    -- PPair p1 p2 :: Pat (m2 + m1); p2's vars are innermost (lower body indices).
-    -- Process p1 first so its names sit deeper, then prepend p2's names on top.
+    -- PPair p1 p2 :: Pat (m2 + m1); p2's vars are innermost (lower indices).
+    -- Process p1 first, then append p2's names on top.
     let (np1, vs1) = injectPat p1 vs
         (np2, vs2) = injectPat p2 vs1
     in case axiomAssoc @m2 @m1 @n of
@@ -344,13 +343,13 @@ projectTm = projectTmWith VNil
 -- | Find the index of the first element that satisfies the given predicate
 findIndex :: (a -> Bool) -> Vec n a -> Maybe (Fin n)
 findIndex f VNil = Nothing
-findIndex f (x ::: xs) = if f x then return FZ else FS <$> findIndex f xs
+findIndex f (x ::: xs) = 
+    if f x then return FZ else FS <$> findIndex f xs
 
 
 -- | Convert a named term to a well-scoped term in scope @n@, given an
 -- vector of names for free variables.  Returns @Left err@ if a free variable is
--- encountered or if the term uses a syntactic form not supported by the
--- simple language (e.g. n-ary patterns).
+-- encountered or if the term uses an unsupported syntactic form.
 projectTmWith :: Vec n String -> N.Tm -> Either ScopeCheckError (S.Tm n)
 -- A variable must be in scope; fail with UnboundVariable if not found
 projectTmWith vs (N.Var v) = case findIndex (==v) vs of
@@ -379,48 +378,29 @@ projectTmWith vs (N.Case e brs) = do
     return (S.Match a' brs')
 projectTmWith vs t = Left (UnsupportedForm t)
 
--- | A projected pattern, binding an arbitrary number of names
--- The names are also listed in the length-indexed vector
-data PatNames where
-    PatNames :: S.Pat m -> Vec m String -> PatNames
+-- | A projected pattern, binding an arbitrary number of names, paired with 
+-- the vector of names for the bound variables
+data SomePat where
+    SomePat :: S.Pat m -> Vec m String -> SomePat
 
-projectPat :: N.Tm -> Either ScopeCheckError PatNames
-projectPat (N.Var x) = return (PatNames (S.PVar (S.LocalName x)) (x ::: VNil))
+-- | convert a named term to a pattern, binding an unknown number of variables
+projectPat :: N.Tm -> Either ScopeCheckError SomePat
+projectPat (N.Var x) = return (SomePat (S.PVar (S.LocalName x)) (x ::: VNil))
 projectPat (N.Inj i t) | i == 0 || i == 1 = do
-    pn <- projectPat t 
-    case pn of 
-        PatNames p vs -> return (PatNames (S.PInj i p) vs)
+    SomePat p vs <- projectPat t 
+    return (SomePat (S.PInj i p) vs)
 projectPat (N.Pair [t1, t2]) = do
-    p1 <- projectPat t1
-    p2 <- projectPat t2
-    case (p1,p2) of 
-        (PatNames p1 vs1, PatNames p2 vs2) -> 
-            return (PatNames (S.PPair p1 p2) (vs2 Vec.++ vs1))
-projectPat (N.Pair []) = return (PatNames S.PUnit VNil)
+    SomePat p1 vs1 <- projectPat t1
+    SomePat p2 vs2 <- projectPat t2
+    return (SomePat (S.PPair p1 p2) (vs2 Vec.++ vs1))
+projectPat (N.Pair []) = return (SomePat S.PUnit VNil)
 projectPat t = Left (UnsupportedForm t)
 
 projectBranchWith :: Vec n String -> (N.Tm,N.Tm) -> Either ScopeCheckError (S.Branch n)
 projectBranchWith vs (t1, t2) = do
-    pn <- projectPat t1
-    case pn of 
-        PatNames pat vs' -> do
-            e <- projectTmWith (vs' Vec.++ vs) t2
-            return (S.Branch (S.bind pat e))
-
-------------------------------------------------------------------------
--- * Round-trip properties
-------------------------------------------------------------------------
-
--- | Injecting a scoped term into named form and projecting back yields
--- the original term.
-prop_project_round_trip :: S.Tm Z -> Bool
-prop_project_round_trip i = 
-   projectTm (injectTm i) == Right i
-
--- | Pretty-printing a term and parsing it back yields the original scoped term.
-prop_parse_round_trip :: S.Tm Z -> Bool
-prop_parse_round_trip i =
-   parse (pp i) == Right i
+    SomePat pat vs' <- projectPat t1
+    e <- projectTmWith (vs' Vec.++ vs) t2
+    return (S.Branch (S.bind pat e))
 
 ------------------------------------------------------------------------
 -- * Unit tests
@@ -479,8 +459,6 @@ ppTests = "pp" ~: TestList
         ~=? "\\ f x. f x"
     ]
 
--- injectTy / projectTy round trips
-
 tyTests :: Test
 tyTests = "injectTy/projectTy" ~: TestList
     [ "One"     ~: projectTy (injectTy S.One)                  ~=? Just S.One
@@ -488,3 +466,20 @@ tyTests = "injectTy/projectTy" ~: TestList
     , "product" ~: projectTy (injectTy (S.One S.:* S.One))     ~=? Just (S.One S.:* S.One)
     , "sum"     ~: projectTy (injectTy (S.One S.:+ S.One))     ~=? Just (S.One S.:+ S.One)
     ]
+
+
+
+------------------------------------------------------------------------
+-- * Round-trip properties
+------------------------------------------------------------------------
+
+-- | Injecting a scoped term into named form and projecting back yields
+-- the original term.
+prop_project_round_trip :: S.Tm Z -> Bool
+prop_project_round_trip i = 
+   projectTm (injectTm i) == Right i
+
+-- | Pretty-printing a term and parsing it back yields the original scoped term.
+prop_parse_round_trip :: S.Tm Z -> Bool
+prop_parse_round_trip i =
+   parse (pp i) == Right i

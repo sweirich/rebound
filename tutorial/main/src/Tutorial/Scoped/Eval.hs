@@ -51,7 +51,7 @@ patternMatch PUnit Unit  = return zeroE
 patternMatch (PPair p1 p2) (Pair v1 v2) = do
     env1 <- patternMatch p1 v1
     env2 <- patternMatch p2 v2   
-    -- appending two Environments requires knowing their length 
+    -- appending Envs requires knowing the length of the first
     withSNat (size p2) $ return (env2 .++ env1)
 patternMatch (PInj i p) (Inj j v) | i == j = patternMatch p v
 patternMatch _ _ = Nothing
