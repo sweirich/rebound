@@ -11,6 +11,8 @@
 
           https://sweirich.github.io/rebound/
 
+    NOTE: website includes lecture notes, link to code & exercises
+
 
 
 -}

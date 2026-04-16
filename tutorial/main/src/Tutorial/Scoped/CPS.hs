@@ -2,9 +2,15 @@
 Module      : Tutorial.Scoped.CPS
 Description : Call-by-value CPS translation for the simply-typed lambda calculus
 
-This module implements a standard call-by-value CPS translation.  
+This module implements a call-by-value CPS translation.  
 
-The translation is defined by the following equations, where @[[e]] k@ means
+
+Why is the CPS translation important?
+ - Makes the evaluation order explicit
+ - Useful for programmers (compilation / cooperative concurrency)
+ - Fascinating connection with classical logic 
+
+Plotkin's translation is defined by the following equations, where @[[e]] k@ means
 "translate @e@, passing results to continuation @k@":
 
 @
@@ -17,8 +23,14 @@ The translation is defined by the following equations, where @[[e]] k@ means
 [[case e of p_i -> b_i]]     k = [[e]]  (λz. case z of p_i -> [[b_i]] k)
 @
 
-The top-level entry point uses the identity continuation @λx. x@. We can also 
-observe what happens when we use a free variable @k@ for the top-level continuation.
+
+Why cover it today?
+
+Example of a translation that requires *renaming* variables during traversal.
+
+
+
+
 -}
 module Tutorial.Scoped.CPS where
 
@@ -48,15 +60,22 @@ cps :: Tm Z -> Tm Z
 cps e = cpsExp zeroE e idTm
 
 
+-- Example:
+--   [[ \x.x ]] k == k (\x.\k'. k' x)
+--   [[ \.0  ]] k == k (\ \ . 0 1)      <- x was 0 before, is now 1
+
+-- >>> pp (cps idTm)
+
+
 ------------------------------------------------------------------------
 -- * CBV CPS translation 
 ------------------------------------------------------------------------
 
-wk :: Env Tm n (S n)
-wk = shift1E
+wk :: SNat m -> Env Tm n (m + n)
+wk = shiftNE
 
--- [[ \x.x ]] k == k (\x.\k'. k' x)
--- [[ \.0 ]] k == k (\ \ . 0 1)
+wk1 :: Env Tm n (S n)
+wk1 = wk s1
 
 cpsExp :: forall n m. Env Tm n m -> Tm n -> Tm m -> Tm m
 -- [[x]] k = k x
@@ -68,16 +87,16 @@ cpsExp r (Lam b) k =
     App k (Lam (bind (LocalName (name (getPat b))) 
             (Lam (bind (LocalName "k") (cpsExp r' (getBody b) k')))))
        where r' :: Env Tm (S n) (S (S m))
-             r' = up r .>> wk 
+             r' = up r .>> wk1
              k' :: Tm (S (S m))
              k' = Var FZ
 -- [[e1 e2]] k = [[e1]] (λx. [[e2]] (λy. x y k))
 cpsExp r (App e1 e2) k = 
     cpsExp r e1 (Lam (bind (LocalName "x") 
-                       (cpsExp (r .>> wk) e2 (Lam (bind (LocalName "y")
+                       (cpsExp (r .>> wk s1) e2 (Lam (bind (LocalName "y")
                             (App (App (Var (FS FZ)) (Var FZ)) k'))))))
         where k' :: Tm (S (S m))
-              k' = applyE (wk .>> wk) k
+              k' = applyE (wk s2) k
 
 -- [[(e1, e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
 cpsExp r (Pair t1 t2) k =
@@ -85,23 +104,24 @@ cpsExp r (Pair t1 t2) k =
        (cpsExp (skip r) t2 (Lam (bind (LocalName "w")
           (App k'' (Pair (Var (FS FZ)) (Var FZ))))))))
       where 
-        r'  = r .>> wk
-        k'' = applyE (wk .>> wk) k
+        r'  = r .>> wk s1
+        k'' = applyE (wk s2) k
+-- [[inj i e]] k = [[e]]  (λx. k (inj i x))
 cpsExp r (Inj i e) k =
     cpsExp r e (Lam (bind (LocalName "v")
        (App k' (Inj i (Var FZ)))))
-       where k' = applyE wk k
+       where k' = applyE (wk s1) k
 -- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExp r (Match e brs) k =
     cpsExp r e (Lam (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
-        r' = r .>> wk
-        k' = applyE wk k
+        r' = r .>> wk s1
+        k' = applyE (wk s1) k
         cpsBranch :: Branch n -> Branch (S m)
         cpsBranch (Branch b) =
             let pat   = Pat.getPat b
                 sz    = size pat
-                body' = cpsExp (upN sz r') (Pat.getBody b) (applyE @Tm (shiftNE sz) k')
+                body' = cpsExp (upN sz r') (Pat.getBody b) (applyE (wk sz) k')
             in Branch (Pat.bind pat body')
 
 ------------------------------------------------------------------------
@@ -115,15 +135,17 @@ cpsExp r (Match e brs) k =
 --  i.e.       e =>  v1     and   [[e]]_id => v2  and   v1 == v2
 --         
 -- 
--- NB: this property is not true, what is a counter example?
+-- NB: this property fails, why?
 prop_cps_result :: Property
-prop_cps_result = forAll0 Typed Full $ \ e ->
-      let cps_e        = cps e
-          eval_e     = eval e 
-          eval_cps_e = eval (cps_e)
+prop_cps_result = forAll0 Scoped Full $ \ e ->
+      let cps_e      = cps e
+          eval_e     = fromMaybe discard $ eval e 
+          eval_cps_e = fromMaybe discard $ eval (cps_e)
        in
-         counterexample ("e          = " ++ pp e)          $
-         counterexample ("cps_e      = " ++ pp cps_e)      $
+         counterexample ("*** cps_e =\n" ++ pp cps_e) $
+         counterexample ("*** eval_e =\n" ++ pp eval_e) $
+         counterexample ("*** eval_cps_e =\n" ++ pp eval_cps_e) $
+         discardAfter 10000 $
          eval_e == eval_cps_e
 
 -- | CPS preserves big-step evaluation for *firstorder* values
@@ -131,16 +153,17 @@ prop_cps_result = forAll0 Typed Full $ \ e ->
 -- @eval(e) == eval(cps(e))@ for firstorder values
 -- 
 prop_cps_result_firstorder :: Property
-prop_cps_result_firstorder = forAll0 Typed Full $ \e ->
+prop_cps_result_firstorder = forAll0 Scoped Full $ \e ->
     let
-       cps_e = cps e
-       eval_e = fromMaybe discard $ eval e 
+       cps_e      = cps e
+       eval_e     = fromMaybe discard $ eval e 
        eval_cps_e = fromMaybe discard $ eval cps_e 
     in
-      counterexample ("e            = " ++ pp e)            $
+      counterexample ("e          = " ++ pp e)          $
       counterexample ("eval_e     = " ++ pp eval_e)     $
-      counterexample ("cps_e        = " ++ pp cps_e)        $
+      counterexample ("cps_e      = " ++ pp cps_e)      $
       counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+      discardAfter 10000 $
       isFirstOrder eval_e ==>
            eval_e == eval_cps_e
       
@@ -164,29 +187,17 @@ isFirstOrder _ = False
 --   we can write this property succinctly as:
 --      eval (cps e) = cps (eval e) 
 --
--- NB: this property fails
+-- NB: this property fails, why?
 prop_cps_simulates :: Property
-prop_cps_simulates = forAll0 Typed Full $ \e ->
-       counterexample ("e          = " ++ pp e)          $
-       counterexample ("cps_e      = " ++ pp (cps e))    $
-       eval (cps e) == (cps <$> eval e)   -- lift cps over Maybe type
-
-
-prop_no_admin_cpsOptM = forAll0 Typed PureLC $ \e -> 
-    let 
-       cps_e = cpsOptM e 
-    in
-       counterexample ("cpsOptM_e =\n" ++ pp cps_e)  $ 
-       countLam e + 2 * countApp e >= countApp cps_e
-
-
-prop_no_admin_cps = forAll0 Typed PureLC $ \e -> 
-    let 
-       cps_e = cps e 
-    in
-       counterexample ("cps_e =\n" ++ pp cps_e)  $ 
-       countLam e + 2 * countApp e >= countApp cps_e
-
+prop_cps_simulates = forAll0 Scoped Full $ \e ->
+       let eval_cps_e = fromMaybe discard $ eval (cps e)
+           cps_eval_e = fromMaybe discard $ cps <$> eval e
+        in
+           counterexample ("*** cps_e =\n" ++ pp (cps e))    $
+           counterexample ("*** eval_cps_e =\n" ++ pp eval_cps_e) $
+           counterexample ("*** cps_eval_e =\n" ++ pp cps_eval_e) $
+           discardAfter 10000 $
+           eval_cps_e == cps_eval_e
 
 ------------------------------------------------------------------------
 -- * Optimized CPS translation
@@ -231,14 +242,15 @@ instance Subst Tm Cont where
 ------------------------------------------------------------------------
    
 -- | entry point with identity function
-cpsOpt :: Tm Z -> Tm Z
-cpsOpt e = cpsExpOpt zeroE e (Obj idTm)
+cpsOptId :: Tm Z -> Tm Z
+cpsOptId e = cpsExpOpt zeroE e (Obj idTm)
 
 -- | entry point with meta-identity function
-cpsOptM :: Tm Z -> Tm Z
-cpsOptM e = cpsExpOpt zeroE e (Meta (bind (LocalName "x") (Var FZ)))
+cpsOpt :: Tm Z -> Tm Z
+cpsOpt e = cpsExpOpt zeroE e (Meta (bind (LocalName "x") (Var FZ)))
 
 
+-- | optimized CPS translation
 cpsExpOpt :: forall n m. Env Tm n m -> Tm n -> Cont m -> Tm m
 cpsExpOpt r (Var x) k = applyCont k (applyEnv r x)
 cpsExpOpt r Unit k    = applyCont k Unit
@@ -252,30 +264,30 @@ cpsExpOpt r (Pair t1 t2) k =
           (applyCont k'' (Pair (Var (FS FZ)) (Var FZ))))))))
       where 
         r' :: Env Tm n (S m)
-        r'  = r .>> wk
+        r'  = r .>> wk s1
         k'' :: Cont (S (S m))
-        k'' = applyE (wk .>> wk) k
+        k'' = applyE (wk s2) k
 cpsExpOpt r (App t1 t2) k = 
     cpsExpOpt r t1 (Meta (bind (LocalName "v")
       (cpsExpOpt r' t2 (Meta (bind (LocalName "w")
           (App (App (Var (FS FZ)) (Var FZ)) (reifyCont k'')))))))  
        where
-         r'  = r .>> wk
-         k'' = applyE (wk .>> wk) k
+         r'  = r .>> wk s1
+         k'' = applyE (wk s2) k
 cpsExpOpt r (Inj i e) k =
     cpsExpOpt r e (Meta (bind (LocalName "v")
        (applyCont k' (Inj i (Var FZ)))))
-       where k' = applyE wk k
+       where k' = applyE (wk s1) k
 cpsExpOpt r (Match e brs) k =
     cpsExpOpt r e (Meta (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
     where
-        r' = r .>> wk
-        k' = applyE wk k
+        r' = r .>> wk s1
+        k' = applyE (wk s1) k
         cpsBranch :: Branch n -> Branch (S m)
         cpsBranch (Branch b) =
             let pat   = Pat.getPat b
                 sz    = size pat
-                body' = cpsExpOpt (upN sz r') (Pat.getBody b) (applyE @Tm (shiftNE sz) k')
+                body' = cpsExpOpt (upN sz r') (Pat.getBody b) (applyE (wk sz) k')
             in Branch (Pat.bind pat body')
     
 ------------------------------------------------------------------------
@@ -284,7 +296,8 @@ cpsExpOpt r (Match e brs) k =
   
 -- | __Correctness__: CPS opt preserves big-step evaluation
 --
--- @eval(e) == eval(cps(e))@ for firstorder values
+-- @eval(e) == eval(cpsOpt(e))@ for firstorder values
+-- this also shows that cps e == cpsOpt e for firstorder values
 prop_cpsOpt_result_firstorder :: Property
 prop_cpsOpt_result_firstorder = forAll0 Typed Full $ \e ->
     let
@@ -292,47 +305,47 @@ prop_cpsOpt_result_firstorder = forAll0 Typed Full $ \e ->
        eval_e = fromMaybe discard $ eval e 
        eval_cps_e = fromMaybe discard $ eval cps_e 
     in
-      counterexample ("e          = " ++ pp e)          $
-      counterexample ("eval_e     = " ++ pp eval_e)     $
-      counterexample ("cps_e      = " ++ pp cps_e)      $
-      counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+      counterexample ("*** eval_e     =\n" ++ pp eval_e)     $
+      counterexample ("*** cps_e      =\n" ++ pp cps_e)      $
+      counterexample ("*** eval_cps_e =\n" ++ pp eval_cps_e) $
+      discardAfter 10000 $
       isFirstOrder eval_e ==> 
           eval_e == eval_cps_e
 
-
-prop_cpsOpt_simulates :: Property
-prop_cpsOpt_simulates = forAll0 Typed Full $ \e ->
+-- Do we have
+-- @eval(e) == eval(cpsOptId(e))@ 
+prop_cpsOptId_simulates :: Property
+prop_cpsOptId_simulates = forAll0 Typed Full $ \e ->
    let 
-       cps_e = cpsOpt e 
+       cps_e = cpsOptId e 
        eval_e = fromMaybe discard $ eval e 
-       cps_eval_e = cpsOpt eval_e 
+       cps_eval_e = cpsOptId eval_e 
        eval_cps_e = fromMaybe discard $ eval cps_e 
     in
-       counterexample ("e            = " ++ pp e)             $
-       counterexample ("eval_e     = " ++ pp eval_e)      $
-       counterexample ("cps_e        = " ++ pp cps_e)        $
-       counterexample ("cps_eval_e = " ++ pp cps_eval_e) $
-       counterexample ("eval_cps_e = " ++ pp eval_cps_e) $
+       counterexample ("*** eval_e     =\n" ++ pp eval_e)     $
+       counterexample ("*** cps_e      =\n" ++ pp cps_e)      $
+       counterexample ("*** cps_eval_e =\n" ++ pp cps_eval_e) $
+       counterexample ("*** eval_cps_e  =\n" ++ pp eval_cps_e) $
        eval_cps_e == cps_eval_e
 
 -- | __Correctness__: CPS opt preserves big-step evaluation
 --     
 --     e => v    iff    cps e => cps v    
 -- 
--- @eval(e) == eval(cps(e))@ with continuation parameter
-prop_cpsOptM_simulates :: Property
-prop_cpsOptM_simulates = forAll0 Typed Full $ \e ->
+-- @eval(e) == eval(cps(e))@ with meta continuation
+prop_cpsOpt_simulates :: Property
+prop_cpsOpt_simulates = forAll0 Typed Full $ \e ->
     let 
-       cps_e = cpsOptM e 
+       cps_e = cpsOpt e 
        eval_e = fromMaybe discard $ eval e 
-       cps_eval_e = cpsOptM eval_e 
+       cps_eval_e = cpsOpt eval_e 
        eval_cps_e = fromMaybe discard $ eval cps_e 
     in
-       counterexample ("cps_e        = \n" ++ pp (cps e))       $
-       counterexample ("cps_eval_e = \n" ++ pp cps_eval_e) $
-       counterexample ("eval_cps_e = \n" ++ pp eval_cps_e) $
+       counterexample ("*** cps_e      = \n" ++ pp (cps e))    $
+       counterexample ("*** cps_eval_e = \n" ++ pp cps_eval_e) $
+       counterexample ("*** eval_cps_e = \n" ++ pp eval_cps_e) $
+       discardAfter 100000 $
        eval_cps_e == cps_eval_e  
-
 
 
 ------------------------------------------------------------------------
@@ -387,3 +400,13 @@ countLam (Match e brs)  = countLam e + sum (map countLamBranch brs)
   where
     countLamBranch (Branch b) = countLam (getBody b)
 
+countReturns :: Tm n -> Int
+countReturns (Var _) = 0
+countReturns Unit = 0 
+countReturns (Lam b) = 1 + countReturns (getBody b)
+countReturns (Pair e1 e2) = countReturns e1 + countReturns e2
+countReturns (Inj _ e) = countReturns e
+countReturns (App e1 e2) = countReturns e1 + countReturns e2
+countReturns (Match e brs) = length brs + countReturns e + sum (map countReturnsBranch brs)
+   where 
+     countReturnsBranch (Branch b) = countReturns (getBody b)

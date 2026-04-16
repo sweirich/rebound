@@ -79,17 +79,19 @@ instantiateP = instantiate
 -- Example terms
 --------------------------------------------------------------------
 
-p1 :: Pat N1
-p1 = PPair (PVar (LocalName "x")) (PInj 0 PUnit)
+p1 :: Pat N2
+p1 = PPair (PVar (LocalName "y")) (PPair (PVar (LocalName "x")) (PInj 0 PUnit))
 
 t1 :: Tm N0
 t1 = Match Unit [Branch (bind p1 (Var f0))]
 
 --- >>> p1
+-- PPair (PVar x) (PInj 0 PUnit)
 
 
 
 --- >>> t1
+-- Match Unit [Branch (bind (PPair (PVar y) (PPair (PVar x) (PInj 0 PUnit))) (Var 0))]
 
 
 
@@ -126,6 +128,12 @@ ex_swap = Lam (bind (LocalName "p")
 --------------------------------------------------------------------
 -- Substitution
 --------------------------------------------------------------------
+
+-- >>> :t var
+-- var :: SubstVar v => Fin n -> v n
+
+-- >>> :t applyE
+-- applyE :: Subst v c => Env v n m -> c n -> c m
 
 instance SubstVar Tm where
   var :: Fin n -> Tm n
@@ -176,9 +184,12 @@ instance Sized (Pat m) where
     size (PInj _ p) = size p
 
 -- >>> :t s1
+-- s1 :: SNat N1
 
 -- >>> :t s0
 
+-- >>> :t sPlus
+-- sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
 
 -- The type `SNat` and type class `SNatI` provide *runtime* access to 
 -- type-level natural numbers. Haskell is not a full-spectrum 
@@ -213,6 +224,24 @@ instance Sized (Pat m) where
 -- >>> :t testEquality @SNat
 -- testEquality @SNat :: TestEquality SNat => SNat a -> SNat b -> Maybe (a :~: b)
 
+-- >>> s0 == s0
+-- True
+
+
+-- >>> s0 == s1
+-- Couldn't match type 'S N0 with 'Z
+-- Expected: SNat N0
+--   Actual: SNat N1
+-- In the second argument of `(==)', namely `s1'
+-- In the expression: s0 == s1
+-- In an equation for `it_a3Wes': it_a3Wes = s0 == s1
+
+
+-- >>> testEquality s0 s1
+-- Nothing
+
+-- >>> testEquality s0 s0
+-- Just Refl
 
 --------------------------------------------------------------------
 -- Alpha-equivalence 
@@ -223,10 +252,17 @@ instance Sized (Pat m) where
 instance Eq (Branch n) where
   (==) :: Branch n -> Branch n -> Bool
   Branch b1 == Branch b2 = 
-      case testEquality (getPat b1) (getPat b2) of
-        Just Refl -> getBody b1 == getBody b2
-        Nothing -> False
+    {-
+    case testEquality (getPat b1) (getPat b2) of
+      Just Refl ->  getBody b1 == getBody b2
+      Nothing -> False
+      -}
+      maybe False (\Refl -> getBody b1 == getBody b2)
+        (testEquality (getPat b1) (getPat b2))
 
+-- >>> :t maybe
+-- maybe :: b -> (a -> b) -> Maybe a -> b
+      
 -- Compare two patterns for equality, even if we don't statically know 
 -- that they bind the same number of variables.
 instance TestEquality Pat where

@@ -352,8 +352,8 @@ prop_cpsOpt_steps = forAll0 Typed Full $ \ e ->
      e' = case step e of
             Nothing -> discard -- if e does not step, ignore this test
             Just v -> v
-     cps_e  = cpsOptM e
-     cps_e' = cpsOptM e'
+     cps_e  = cpsOpt e
+     cps_e' = cpsOpt e'
    in
      counterexample ("e      = " ++ pp e) $
      counterexample ("e'     = " ++ pp e') $
@@ -373,8 +373,8 @@ prop_cpsOpt_steps_pure = forAll0 Typed PureLC $ \ e ->
      e' = case step e of
             Nothing -> discard -- if e does not step, ignore this test
             Just v -> v
-     cps_e  = cpsOptM e
-     cps_e' = cpsOptM e'
+     cps_e  = cpsOpt e
+     cps_e' = cpsOpt e'
      vv  = ("k" ::: VNil)
      pp' = ppWith ("k" ::: VNil)
    in
