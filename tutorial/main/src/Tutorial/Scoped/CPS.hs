@@ -14,6 +14,8 @@ Plotkin's translation is defined by the following equations, where @[[e]] k@ mea
 "translate @e@, passing results to continuation @k@":
 
 @
+[[ e ]] k  :: Env Tm n m -> Tm n -> Tm m -> Tm m
+
 [[x]]                        k = k x
 [[λx. e]]                    k = k (λx. λk'. [[e]] k')
 [[e1 e2]]                    k = [[e1]] (λx. [[e2]] (λy. x y k))
@@ -23,11 +25,13 @@ Plotkin's translation is defined by the following equations, where @[[e]] k@ mea
 [[case e of p_i -> b_i]]     k = [[e]]  (λz. case z of p_i -> [[b_i]] k)
 @
 
-
 Why cover it today?
 
-Example of a translation that requires *renaming* variables during traversal.
+The CPS translation requires *renaming* variables during traversal.
 
+Example:
+   [[ \x.x ]] id == id (\x.\k. k x)
+   [[ \.0  ]] id == id (\ \ . 0 1)      <- x was 0 before, is now 1
 
 
 
@@ -42,7 +46,6 @@ import Data.Maybe as Maybe
 import Tutorial.Scoped.Gen
 import Tutorial.Scoped.Eval
 import Tutorial.Scoped.ScopeCheck
-
 
 ------------------------------------------------------------------------
 -- * Top-level entry point 
@@ -59,11 +62,6 @@ idTm = Lam (bind (LocalName "x") (Var FZ))
 cps :: Tm Z -> Tm Z
 cps e = cpsExp zeroE e idTm
 
-
--- Example:
---   [[ \x.x ]] k == k (\x.\k'. k' x)
---   [[ \.0  ]] k == k (\ \ . 0 1)      <- x was 0 before, is now 1
-
 -- >>> pp (cps idTm)
 
 
@@ -71,46 +69,55 @@ cps e = cpsExp zeroE e idTm
 -- * CBV CPS translation 
 ------------------------------------------------------------------------
 
+-- environment for weakening 
 wk :: SNat m -> Env Tm n (m + n)
 wk = shiftNE
 
-wk1 :: Env Tm n (S n)
-wk1 = wk s1
 
 cpsExp :: forall n m. Env Tm n m -> Tm n -> Tm m -> Tm m
+
 -- [[x]] k = k x
 cpsExp r (Var x) k = App k (applyEnv r x)
+
 -- [[()]] k = k ()
 cpsExp r Unit k    = App k Unit
+
 -- [[λx. e]] k = k (λx. λk'. [[e]] k')
 cpsExp r (Lam b) k = 
-    App k (Lam (bind (LocalName (name (getPat b))) 
-            (Lam (bind (LocalName "k") (cpsExp r' (getBody b) k')))))
-       where r' :: Env Tm (S n) (S (S m))
-             r' = up r .>> wk1
-             k' :: Tm (S (S m))
-             k' = Var FZ
--- [[e1 e2]] k = [[e1]] (λx. [[e2]] (λy. x y k))
-cpsExp r (App e1 e2) k = 
-    cpsExp r e1 (Lam (bind (LocalName "x") 
-                       (cpsExp (r .>> wk s1) e2 (Lam (bind (LocalName "y")
-                            (App (App (Var (FS FZ)) (Var FZ)) k'))))))
-        where k' :: Tm (S (S m))
-              k' = applyE (wk s2) k
+    App k (Lam (bind (getPat b)
+             (Lam (bind (LocalName "k'")
+                 (cpsExp r' (getBody b) (Var FZ))))))
+       where 
+        r' :: Env Tm (S n) (S (S m))
+        r' = up r .>> wk s1
+
 
 -- [[(e1, e2)]] k = [[e1]] (λx. [[e2]] (λy. k (x,y)))
-cpsExp r (Pair t1 t2) k =
-    cpsExp r t1 (Lam (bind (LocalName "v")
-       (cpsExp (skip r) t2 (Lam (bind (LocalName "w")
-          (App k'' (Pair (Var (FS FZ)) (Var FZ))))))))
-      where 
-        r'  = r .>> wk s1
-        k'' = applyE (wk s2) k
+cpsExp r (Pair e1 e2) k =
+    cpsExp r e1 (Lam (bind (LocalName "x")
+                     (cpsExp r' e2 (Lam (bind (LocalName "y")
+                          (App k' (Pair (Var (FS FZ)) (Var FZ))))))))
+
+        where r' = r .>> wk s1
+              
+              k' = applyE (wk s2) k   
+
+-- [[e1 e2]] k = [[e1]] (λx. [[e2]] (λy. x y k))
+cpsExp r (App e1 e2) k = 
+    cpsExp r e1 (Lam (bind (LocalName "x")
+                     (cpsExp (r .>> wk s1) e2 (Lam (bind (LocalName "y")
+                         (App (App (Var (FS FZ)) (Var FZ)) k'))))))
+        where k' = applyE (wk s2) k 
+                        
+
+
+
 -- [[inj i e]] k = [[e]]  (λx. k (inj i x))
 cpsExp r (Inj i e) k =
     cpsExp r e (Lam (bind (LocalName "v")
        (App k' (Inj i (Var FZ)))))
        where k' = applyE (wk s1) k
+       
 -- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExp r (Match e brs) k =
     cpsExp r e (Lam (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
@@ -133,8 +140,6 @@ cpsExp r (Match e brs) k =
 -- @eval(e) == eval(cps(e))@
 --      
 --  i.e.       e =>  v1     and   [[e]]_id => v2  and   v1 == v2
---         
--- 
 -- NB: this property fails, why?
 prop_cps_result :: Property
 prop_cps_result = forAll0 Scoped Full $ \ e ->
@@ -153,7 +158,7 @@ prop_cps_result = forAll0 Scoped Full $ \ e ->
 -- @eval(e) == eval(cps(e))@ for firstorder values
 -- 
 prop_cps_result_firstorder :: Property
-prop_cps_result_firstorder = forAll0 Scoped Full $ \e ->
+prop_cps_result_firstorder = forAll0 Typed Full $ \e ->
     let
        cps_e      = cps e
        eval_e     = fromMaybe discard $ eval e 
