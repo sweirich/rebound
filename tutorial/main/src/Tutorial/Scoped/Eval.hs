@@ -58,9 +58,9 @@ patternMatch _ _ = Nothing
 
 -- | Find the first branch whose pattern matches the scrutinee and
 -- instantiate its body.
-findBranch :: Tm Z -> [Branch Z] -> Maybe (Tm Z)
-findBranch _ [] = Nothing
-findBranch e (Branch b : rest) =
+findBranch :: Tm Z -> BranchList Z -> Maybe (Tm Z)
+findBranch _ BNil = Nothing
+findBranch e (BCons b rest) =
     case patternMatch (getPat b) e of
         Just r  -> return (instantiate b r)
         Nothing -> findBranch e rest
@@ -177,9 +177,9 @@ patternMatch' _ _ = Left Stuck
 
 -- | Find the first branch whose pattern matches the scrutinee and
 -- instantiate its body.
-findBranch' :: Tm n -> [Branch n] -> Either Outcome (Tm n)
-findBranch' _ [] = Left NoMatch
-findBranch' e (Branch b : rest) =
+findBranch' :: Tm n -> BranchList n -> Either Outcome (Tm n)
+findBranch' _ BNil = Left NoMatch
+findBranch' e (BCons b rest) =
     case patternMatch' (getPat b) e of
         Right r  -> Right (instantiate b r)
         Left NoMatch -> findBranch' e rest

@@ -141,11 +141,11 @@ step (Match e brs)
 
 
 t1 = App (Lam (bind (LocalName "x") (Inj 0 (Var FZ)))) Unit
-t0 = Match Unit [Branch (bind PUnit (Pair Unit Unit))]
-t2 = Match t0 [Branch (bind (PPair (PVar (LocalName "y")) (PVar (LocalName "z")))
-                         (Lam (bind (LocalName "x") (Inj 0 (Var FZ)))))]
+t0 = Match Unit (BCons(bind PUnit (Pair Unit Unit)) BNil)
+t2 = Match t0 (BCons (bind (PPair (PVar (LocalName "y")) (PVar (LocalName "z")))
+                         (Lam (bind (LocalName "x") (Inj 0 (Var FZ))))) BNil)
 
-t3 = Match t0 [Branch (bind PUnit (Pair Unit Unit))]
+t3 = Match t0 (BCons (bind PUnit (Pair Unit Unit)) BNil)
 
 -- >>> findBranch' Unit [Branch (bind PUnit (Pair Unit Unit))]
 -- Right (Pair Unit Unit)
@@ -233,13 +233,15 @@ normalize (Match e brs) = do
     case findBranch' v brs of
         Right body -> normalize body
         Left _   -> do
-            brs' <- mapM normBranch brs
+            brs' <- normBranch brs
             return (Match v brs')
   where
-    normBranch :: Branch n -> Maybe (Branch n)
-    normBranch (Branch b) = do
+    normBranch :: BranchList n -> Maybe (BranchList n)
+    normBranch BNil = return BNil
+    normBranch (BCons b brs) = do
             body' <- normalize (getBody b)
-            return (Branch (bind (getPat b) body'))
+            brs' <- normBranch brs
+            return (BCons (bind (getPat b) body') brs')
 
 -- | a normal term cannot reduce any further
 isNormal :: Tm n -> Bool
@@ -251,10 +253,13 @@ isNormal Unit = True
 isNormal (Pair e1 e2) = isNormal e1 && isNormal e2
 isNormal (Inj i e) = isNormal e
 isNormal (Match e brs) = isNormal e && case findBranch' e brs of
-    Left Stuck  -> all isNormalBranch brs
+    Left Stuck  -> isNormalBranch brs
     Left NoMatch -> False
     Right v -> False
-isNormalBranch (Branch b) = isNormal (getBody b)
+
+isNormalBranch :: BranchList n -> Bool
+isNormalBranch BNil = True
+isNormalBranch (BCons b brs) = isNormal (getBody b) && isNormalBranch brs
 
 -- | normalize always produces a term in full normal form.
 prop_normalize_normal :: Tm Z -> Property

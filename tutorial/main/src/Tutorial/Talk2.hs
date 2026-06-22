@@ -1,20 +1,30 @@
 {-|
-Module      : Tutorial.Scoped.Syntax
-Description : Well-scoped abstract syntax for a simply-typed lambda calculus
-              with nested pattern matching
+
+Now let's see how Rebound can help!  
+
+In this module, we 
+  - define the syntax, declaratively specifying binding structure
+    including a separate datatype for patterns!
+  - define capture avoiding substitution
+  - define alpha-equivalence
+
+This module is an annotated version of Syntax.hs in the rebound Tutorial.
 
 -}
-module Tutorial.Scoped.Syntax(
+module Tutorial.Talk2(
     Ty(..), Tm(..), BranchList(..), Pat(..),Bind1,BindP,instantiate1,
     module Rebound,
-    module Pat,
-    ex_id, ex_const, ex_comp, ex_swap) where
+    module Pat) where
 
 import Rebound hiding (Ctx)
 import Rebound.Bind.Pat as Pat
 import Data.Maybe as Maybe
 import Data.Fin
 
+
+------------------------------------------------------------------------
+-- * Syntax and binding specification
+------------------------------------------------------------------------
 
 data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
@@ -29,10 +39,12 @@ data Tm (n :: Nat) where
     Match :: Tm n -> BranchList n -> Tm n
       deriving (Eq, Show, Generic1)
 
--- a list of branches, where each branch includes a pattern binding
+-- A pattern binding (BindP) of m variables, in scope n
+-- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
 data BranchList (n :: Nat) where
-    BNil  :: BranchList n
+    BNil :: BranchList n
     BCons :: BindP m n -> BranchList n -> BranchList n
+
 
 -- m is the number of variables *bound* by the pattern
 data Pat (m :: Nat) where
@@ -40,6 +52,7 @@ data Pat (m :: Nat) where
     PUnit :: Pat N0
     PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)
     PInj  :: Int -> Pat m -> Pat m
+
 
 -- type abbreviations for convenience
 type Bind1 n   = Bind Tm Tm LocalName n
@@ -77,74 +90,20 @@ instantiateP :: BindP m n -> Env Tm m n -> Tm n
 instantiateP = instantiate
 
 --------------------------------------------------------------------
--- Example terms
---------------------------------------------------------------------
-
-p1 :: Pat N2
-p1 = PPair (PVar (LocalName "y")) (PPair (PVar (LocalName "x")) (PInj 0 PUnit))
-
-t1 :: Tm N0
-t1 = Match Unit (BCons (bind p1 (Var f0)) BNil)
-
---- >>> p1
--- PPair (PVar x) (PInj 0 PUnit)
-
-
-
---- >>> t1
--- Match Unit [Branch (bind (PPair (PVar y) (PPair (PVar x) (PInj 0 PUnit))) (Var 0))]
-
-
-
--- >>> Lam (bind (LocalName "x") (Var f0))
-
-
-
-
-------------------------------------------------------------------------
--- * Examples
-------------------------------------------------------------------------
-
--- | Identity function: λx. x  or  λ.0
-ex_id :: Tm Z
-ex_id = Lam (bind (LocalName "x") (Var f0))
-
--- | Constant function: λx. λy. x or λ.λ.1
-ex_const :: Tm Z
-ex_const = Lam (bind (LocalName "x") (Lam (bind (LocalName "y") (Var f1))))
-
--- | Function composition: λf. λg. λx. f (g x) or λ.λ.λ. 2 (1 0)
-ex_comp :: Tm Z
-ex_comp = Lam (bind (LocalName "f") (Lam (bind (LocalName "g") (Lam (bind (LocalName "x")
-    (App (Var f2) (App (Var f1) (Var f0))))))))
-
--- | Swap a pair: λp. case p of (x, y) → (y, x)  or  λ. case 0 of (,) -> (0,1)
-ex_swap :: Tm Z
-ex_swap = Lam (bind (LocalName "p")
-    (Match (Var f0)
-        (BCons (bind (PPair (PVar (LocalName "x")) (PVar (LocalName "y"))) 
-                           (Pair (Var f0) (Var f1))) BNil)))
-
-
---------------------------------------------------------------------
--- Substitution
+-- * Substitution
 --------------------------------------------------------------------
 
 -- >>> :t var
--- var :: SubstVar v => Fin n -> v n
+
 
 -- >>> :t applyE
--- applyE :: Subst v c => Env v n m -> c n -> c m
+
 
 instance SubstVar Tm where
   var :: Fin n -> Tm n
   var = Var
   
 instance Subst Tm Tm where
-  isVar (Var x) = Just (Refl, x)
-  isVar _ = Nothing
-
-{-
   applyE :: Env Tm n m -> Tm n -> Tm m
   applyE r (Var x) = applyEnv r x
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
@@ -153,18 +112,16 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e) = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (applyE r brs)
--}
 
 instance Subst Tm BranchList where
   applyE :: Env Tm n m -> BranchList n -> BranchList m
-  applyE r (BCons b bs) = BCons (applyE r b) (applyE r bs)
+  applyE r (BCons b brs) = BCons (applyE r b) (applyE r brs)
   applyE r BNil = BNil
 
 -- >>> applyE (Unit .: zeroE) (Var FZ)
 
 
 -- >>> applyE (Unit .: zeroE) (Lam (bind1 (LocalName "x") (Var f1)))
-
 
 
 --------------------------------------------------------------------
@@ -211,62 +168,38 @@ instance Sized (Pat m) where
 -- to automatically supply runtime naturals when possible. The operations `snat`
 -- and `withSNat` convert between implicit and explicit arguments.
 
--- >>> :t snat
--- snat :: SNatI n => SNat n
-
--- >>> :t withSNat
--- withSNat :: SNat n -> (SNatI n => r) -> r
-
-
--- There are singleton versions of various operations for 
--- natural numbers.  For example, we can add them:
--- >>> :t sPlus
--- sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
-
--- We can also test them for equality. The (overloaded) 
--- `testEquality` operation has a heterogenous type and 
--- produces a proof of equivalence for its *indices* when its 
--- arguments are equal.
-
--- >>> :t testEquality @SNat
--- testEquality @SNat :: TestEquality SNat => SNat a -> SNat b -> Maybe (a :~: b)
-
--- >>> s0 == s0
--- True
-
-
--- >>> s0 == s1
--- Couldn't match type 'S N0 with 'Z
--- Expected: SNat N0
---   Actual: SNat N1
--- In the second argument of `(==)', namely `s1'
--- In the expression: s0 == s1
--- In an equation for `it_a3Wes': it_a3Wes = s0 == s1
-
-
--- >>> testEquality s0 s1
--- Nothing
-
--- >>> testEquality s0 s0
--- Just Refl
 
 --------------------------------------------------------------------
 -- Alpha-equivalence 
 --------------------------------------------------------------------
+
+-- In Dependent Haskell, we sometimes need a heterogenously typed
+-- equality operation for indexed types. The `testEquality` operation 
+-- produces a proof of equivalence for its *indices* when its 
+-- *arguments* are equal.
+
+-- >>> :t testEquality @SNat
+
+-- >>> s0 == s0
+
+-- >>> s0 == s1
+
+-- >>> testEquality s0 s1
+
+-- >>> testEquality s0 s0
+
 
 -- Two branches are equal when their patterns are equal and their 
 -- bodies are equal
 instance Eq (BranchList n) where
   (==) :: BranchList n -> BranchList n -> Bool
   BNil == BNil = True
-  (BCons b1 brs1) == (BCons b2 brs2) = 
+  BCons b1 brs1 == BCons b2 brs2 = 
     case testEquality (getPat b1) (getPat b2) of
       Just Refl ->  getBody b1 == getBody b2 && brs1 == brs2
       Nothing -> False
   _ == _ = False
--- >>> :t maybe
--- maybe :: b -> (a -> b) -> Maybe a -> b
-      
+
 -- Compare two patterns for equality, even if we don't statically know 
 -- that they bind the same number of variables.
 instance TestEquality Pat where

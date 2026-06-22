@@ -299,7 +299,7 @@ injectTmWith vs (S.Unit)      = N.Pair []
 injectTmWith vs (S.Pair e1 e2)= N.Pair [injectTmWith vs e1, injectTmWith vs e2]
 injectTmWith vs (S.Inj i e)   = N.Inj i (injectTmWith vs e)
 injectTmWith vs (S.Match e brs) =
-    N.Case (injectTmWith vs e) (map (injectBranch vs) brs)
+    N.Case (injectTmWith vs e) (injectBranch vs brs)
 
 -- | Convert a closed well-scoped term to a named term.
 -- Variable names are taken from the 'S.LocalName' hints stored in binders.
@@ -307,10 +307,11 @@ injectTm :: S.Tm Z -> N.Tm
 injectTm = injectTmWith VNil
 
 -- | Convert a scoped branch to a named (pattern, body) pair.
-injectBranch :: Vec n String -> S.Branch n -> (N.Tm, N.Tm)
-injectBranch vs (S.Branch b) =
+injectBranch :: Vec n String -> S.BranchList n -> [(N.Tm, N.Tm)]
+injectBranch vs S.BNil = []
+injectBranch vs (S.BCons b brs) =
     let (npat, vs') = injectPat (S.getPat b) vs
-    in (npat, injectTmWith vs' (S.getBody b))
+    in (npat, injectTmWith vs' (S.getBody b)) : injectBranch vs brs
 
 -- | Convert a scoped pattern to a named pattern, extending the name context
 -- with fresh names for each bound variable.
@@ -374,7 +375,7 @@ projectTmWith vs (N.Inj i e1)
     | otherwise        = Left (UnsupportedInjection i)
 projectTmWith vs (N.Case e brs) = do
     a' <- projectTmWith vs e
-    brs' <- mapM (projectBranchWith vs) brs
+    brs' <- projectBranchWith vs brs
     return (S.Match a' brs')
 projectTmWith vs t = Left (UnsupportedForm t)
 
@@ -396,11 +397,13 @@ projectPat (N.Pair [t1, t2]) = do
 projectPat (N.Pair []) = return (SomePat S.PUnit VNil)
 projectPat t = Left (UnsupportedForm t)
 
-projectBranchWith :: Vec n String -> (N.Tm,N.Tm) -> Either ScopeCheckError (S.Branch n)
-projectBranchWith vs (t1, t2) = do
+projectBranchWith :: Vec n String -> [(N.Tm,N.Tm)] -> Either ScopeCheckError (S.BranchList n)
+projectBranchWith vs [] = return S.BNil
+projectBranchWith vs ((t1, t2):brs) = do
     SomePat pat vs' <- projectPat t1
     e <- projectTmWith (vs' Vec.++ vs) t2
-    return (S.Branch (S.bind pat e))
+    brs <- projectBranchWith vs brs
+    return (S.BCons (S.bind pat e) brs)
 
 ------------------------------------------------------------------------
 -- * Unit tests

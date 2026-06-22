@@ -178,19 +178,20 @@ genScopedFull = QC.sized go
 
           genMatchUnit = do
             e' <- gen
-            return [ Branch (bind PUnit e')]
+            return (BCons (bind PUnit e') BNil)
           genMatchPair = do
             ln1  <- genLocalName
             ln2  <- genLocalName
             body <- go (sz - 1)
-            return [ Branch (bind (PPair (PVar ln1) (PVar ln2)) body)]
+            return (BCons (bind (PPair (PVar ln1) (PVar ln2)) body) BNil)
           genMatchSum = do
             ln1 <- genLocalName
             ln2 <- genLocalName
             b1  <- go (sz `div` 2)
             b2  <- go (sz `div` 2)
-            return [ Branch (bind (PInj 0 (PVar ln1)) b1)
-                   , Branch (bind (PInj 1 (PVar ln2)) b2) ]
+            return (BCons (bind (PInj 0 (PVar ln1)) b1)
+                    (BCons (bind (PInj 1 (PVar ln2)) b2)
+                     BNil))
 
           gens = [ Lam <$> gen1,
                  App <$> gen <*> gen,
@@ -337,22 +338,24 @@ genTypedFull sz = do
               (a :* b)  -> [ Pair <$> gen a <*> gen b ]
               (a :+ b)  -> [ Inj 0 <$> gen a, Inj 1 <$> gen b ]
 
-            -- elimination forms, generate a randome type for 
+            -- elimination forms, generate a random type for 
             -- argument or scrutinee
             elimGens = 
                 let appGen = do
                         a <- genTy (sz `div` 2)
                         App <$> gen (a :-> ty) <*> gen a
 
-                    genBranch ty (SomePat p ctx2) = do
+                    genBranch ty [] = return BNil
+                    genBranch ty ((SomePat p ctx2):pats) = do
                         e <- go (ctx2 Vec.++ ctx) ty (sz `div` 2)
-                        return (Branch (bind p e))
+                        brs <- genBranch ty pats
+                        return (BCons (bind p e) brs)
 
                     genMatch = do
                         a <- genTy (sz `div` 2) 
                         e <- gen a
                         ps <- genPats a (sz `div` 2)
-                        brs <- mapM (genBranch ty) ps
+                        brs <- genBranch ty ps
                         return (Match e brs)
 
                 in [ appGen, genMatch]
@@ -361,7 +364,7 @@ genTypedFull sz = do
 
 
 -- >>> QC.sample' (genTm Typed Full :: Gen (Tm (S Z)))
--- [Unit,Inj 1 Unit,Pair (Inj 1 (Var 0)) (Match Unit [Branch (bind (PVar v) (Lam (bind x (Var 2))))]),Match (Match (Var 0) [Branch (bind PUnit (Pair Unit (Var 0)))]) [Branch (bind (PPair (PVar v) PUnit) (Match (Var 0) [Branch (bind (PVar t) (Var 0))]))],Lam (bind x (Lam (bind y (Inj 1 Unit)))),Pair (Pair (Lam (bind s (Var 1))) (Var 0)) (Pair (Lam (bind x Unit)) (Pair Unit (Var 0))),Pair Unit (App (App (Lam (bind t (Lam (bind u (Lam (bind u (Lam (bind z (Var 3))))))))) Unit) (Match Unit [Branch (bind (PVar t) (Inj 1 (Var 0)))])),Match (App (Lam (bind u (App (Lam (bind s (Pair (Var 0) (Pair Unit (Var 0))))) Unit))) (Lam (bind s (Var 0)))) [Branch (bind (PPair PUnit (PPair PUnit (PVar v))) (Inj 1 (Pair (Inj 0 Unit) (Lam (bind z Unit)))))],App (Lam (bind x (Lam (bind w (Inj 1 (Pair (Pair Unit Unit) (Lam (bind z (Var 2))))))))) (App (Lam (bind v Unit)) (Lam (bind z (App (Var 0) Unit)))),App (Match (Match (App (Lam (bind t (Var 0))) (Var 0)) [Branch (bind (PVar t) (Match (Var 1) [Branch (bind (PVar u) (Lam (bind y (Var 0))))]))]) [Branch (bind (PVar t) (App (App (Lam (bind x (Lam (bind z (Lam (bind t (Inj 1 Unit))))))) (Var 1)) (Match (Var 1) [Branch (bind PUnit (Pair (Var 1) (Var 1)))])))]) (Var 0),Match Unit [Branch (bind (PVar u) (Pair (Lam (bind y (Lam (bind u (Inj 0 (Var 2)))))) (Lam (bind t (Lam (bind w (Var 2)))))))]]
+
 
 
 ---------------------------------------------------------------------
@@ -470,8 +473,7 @@ fromInt n =
       Just (SomeNat m) -> Just (SomeNat (next m))
       Nothing -> Nothing
 
--- >>> :info Vec.take
--- take :: LE n m => Vec m a -> Vec n a 	-- Defined in ‘Data.Vec.Lazy’
+
 
 {-
 -- | Test a property with an arbitrary number of free variables

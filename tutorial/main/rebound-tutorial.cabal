@@ -63,6 +63,9 @@ library
     , Tutorial.Exercise2
     , Tutorial.Exercise3
     , Tutorial.Exercise4
+    , Tutorial.Talk1
+    , Tutorial.Talk2
+    , Tutorial.Talk3
   hs-source-dirs: src
 
 test-suite tutorial-tests

@@ -7,6 +7,7 @@
 
 module FreeBound where
 
+import GHC.TypeLits (ErrorMessage(..),TypeError)
 import Data.Kind (Type)
 import Prelude hiding (pi)
 
@@ -16,23 +17,24 @@ import Prelude hiding (pi)
 type Tag = Type -- a type for parametric names, needs to be extensible
 
 -- The name type: indexed by a tag so that we can distinguish different names
--- NB: This type is isomorphic to unit.
+-- NOTE: The tag is a phantom and all instance of the type are isomorphic to unit.
 data Name (a :: Tag) = Name
 
--- a scope is a snoc list of tags each where tag is 
--- a static "name" for a variable currently in scope. 
+-- A scope is a snoc list of tags each where tag is 
+-- a static "name" for a variable currently in scope.
+-- We will use scopes only in types. 
 data Scope where
    Nil  :: Scope
    (:>) :: Scope -> Tag -> Scope 
 
--- de Bruijn indices represent variables in a scope
+-- de Bruijn indices representing variables in a scope
 -- this type is isomorphic to "Fin" but the index is a list of tags
 -- instead of a single nat
 data Index (s :: Scope) where
     I0 :: Index (s :> a)
     IS :: Index s -> Index (s :> a)
 
--- we can turn them into numbers for printing
+-- we can turn indices into numbers for printing
 toInt :: Index s -> Int
 toInt I0 = 0
 toInt (IS x) = 1 + toInt x
@@ -41,19 +43,62 @@ instance Show (Index s) where show i = show (toInt i)
 
 
 ---------------------------------------------------------------------
--- type classes for indices
+-- type classes for working with indices
+-- Because the Index type statically tracks its scope, Haskell type
+-- class resolution is a powerful tool. 
 
--- | membership in scope
--- If a variable is in scope, then we should be able to get its 
--- index in that scope
+-- | Membership of names in scope
+-- If a tag is in scope, then we should be able to get its 
+-- index in that scope.
 class (a :: Tag) ∈ (s :: Scope) where
     inj :: Name a -> Index s
 
+
 -- type class magic to calculate the index
 instance {-# OVERLAPPING #-} a ∈ (s :> a) where 
+    inj :: Name a -> Index (s :> a)
     inj _ = I0
 instance {-# INCOHERENT #-} (a ∈ n) => a ∈ (n :> b)
     where inj p = IS (inj p) 
+
+{-
+-- a proof that a particular tag appears in a scope.
+data PIndex (a :: Tag) (s :: Scope) where
+    P0 :: PIndex a (s :> a)
+    PS :: PIndex a s -> PIndex a (s :> a')
+
+type Find :: forall (a :: Tag) -> forall (s::Scope) -> Scope -> PIndex a s
+type family Find a s s' :: PIndex a s where
+    Find a (s :> a) s' = P0
+    Find a (s :> a') s' = PS (Find a s s')
+    Find a Nil s' = 
+     TypeError (Text "Hey!  I couldn't find the tag '" :<>:
+                ShowType a :<>: Text "' in" :$$:
+                Text "    {" :<>: ShowScope s' :<>: Text "}")
+
+type family ShowScope(m :: Scope) :: ErrorMessage where
+  ShowScope Nil        = Text ""
+  ShowScope (Nil :> a) = ShowType a
+  ShowScope (m   :> a) = ShowType a :<>: Text ", " :<>: ShowScope m
+
+class Demote (p :: PIndex a s) where
+  index :: Index s
+instance Demote P0 where index = I0
+instance Demote p => Demote (PS p) where 
+    index = IS (index @_ @_ @p) 
+
+instance (Find a s s ~ (p :: PIndex a s), Demote p) => (a ∈ s) where 
+    inj :: Demote (Find a s s) => Name a -> Index s
+    inj _ = index @_ @_ @(Find a s s)
+
+-- we can turn indices into numbers for printing
+instance Show (PIndex a s) where 
+    show i = show (toInt i) where
+      toInt :: forall a s. PIndex a s -> Int
+      toInt P0 = 0
+      toInt (PS x) = 1 + toInt x
+-}
+
 
 -- | scope inclusion, witnessed by a substitution (see below)
 -- this should be a renaming (Index s -> Index s'), but we 
@@ -236,6 +281,7 @@ idExp = lamFresh Star $ \a ->
 -- For each name "x", there is an analogous name "R x"
 data R :: Tag -> Tag
 
+-- Scope translation for parametricity
 type family Param (s :: Scope) :: Scope where
     Param Nil = Nil
     Param (s :> x) = Param s :> x :> R x
@@ -245,7 +291,7 @@ extend :: Sub Exp n (Param n) -> Sub Exp (n :> a) (Param (n :> a))
 extend e = (up e) .>> shift
 
 -- Given a name "x", find the name "R x"
--- multiply a variable index by two
+-- essentially, this operation multiplies a variable index by two
 varR :: Index n -> Index (Param n)
 varR I0 = I0
 varR (IS n) = IS (IS (varR n))
@@ -256,44 +302,50 @@ varR (IS n) = IS (IS (varR n))
 -- >>> varR (IS I0 :: Index (Nil :> a :> b))
 -- 2
 
+-------------------------------------------------------------------------------
+--- Version 1 of parametricity translation
 
--- Take a renaming as a parameter while traversing
+-- This operation takes a renaming (theta) while traversing
 -- the term. This renaming multiplies the variable by two in order
 -- to weaken the orginal terms appearing in the output of the translation
--- (The alternative is to pass a runtime witness of the scope as another argument
--- and use that for weakening. But in Haskell, I'd need to create a new type 
--- for this runtime witness in addition to the function that uses it for weakening.)
--- OTOH, with enough type classes, we could probably get this argument to be created 
--- and passed implicitly
-param' :: forall n m. Sub Exp n (Param n) -> Exp n ->  Exp (Param n)
-param' theta Star = 
-    lamFresh Star $ \x -> pi (var x) Star
-param' theta (Var x) = 
-  -- look up the new name for the variable
+-- to the output scope.
+
+param1 :: forall n m. Sub Exp n (Param n) -> Exp n ->  Exp (Param n)
+--  [[ * ]]       = \x:*. Pi y:x. *
+param1 theta Star = 
+  lamFresh Star $ \x -> pi (var x) Star
+--  [[ x ]]       = xR
+param1 theta (Var x) = 
   Var (varR x)
-param' theta (Pi a bnd) = 
+--  [[Pi x:A. B]] = \xF:(Pi x:A.B). Pi x:A. Pi xR: [[A]] a. [[B]] (xF x)
+param1 theta (Pi a bnd) = 
   unbindWith bnd $ \ (x :: Name x) b ->
-  let -- translate domain type
-      pa = param' theta a
-      -- translate the body (in the extended scope)
-      pb = param' (extend theta) b
+  let -- translate domain type [[A]]
+      pa = param1 theta a
+      -- translate the body (in the extended scope) [[B]]
+      pb = param1 (extend theta) b
 
   in 
     lamFresh (applyE theta (Pi a bnd)) $ \ (xF :: Name xF) -> 
        (pi @x  (applyE (skip theta) a) 
          (pi @(R x) (App (weaken pa) (var x))
             (App (weaken pb) (App (var xF) (var x)))))
-param' theta (Lam ty bnd) = 
-  unbindWith bnd $ \ (x :: Name x) b ->
-  let 
-      pty  = param' theta ty 
-      pb   = param' (extend theta) b
-  in 
-  lam @x pty 
-    (lam @(R x) (App (weaken pty) (var x)) pb)
 
-param' theta (App f arg) = 
-  App (App (param' theta f) (applyE theta arg)) (param' theta arg)
+--  [[\x:A. e]]   = \x:a. \xR: [[A]] a. [[e]]
+param1 theta (Lam tA bnd) = 
+  unbindWith bnd $ \ (x :: Name a) e ->
+  let 
+      -- translate domain type [[A]]
+      pa = param1 theta tA  
+      -- translate body of function [[e]]
+      pe = param1 (extend theta) e
+  in 
+  lam @a pa 
+    (lam @(R a) (App (weaken pa) (var x)) pe)
+
+--  [[ e1 e2 ]]   = [[e1]] e2 [[e2]]
+param1 theta (App f arg) = 
+  App (App (param1 theta f) (applyE theta arg)) (param1 theta arg)
 
 
 -------------------------------------------------------------------------------
@@ -307,51 +359,54 @@ instance Theta Nil where
 instance Theta s => Theta (s :> a) where 
     theta = extend theta 
 
--- This instance is not allowed in Haskell because Param is a type family
--- instance Theta n => (n ⊆ (Param n)) where
---     incl = applyE @Exp theta
--- otherwise we could use weaken instead of "applyE theta" and 
--- "applyE (skip theta)" below
-
-param :: forall n m. Theta n => Exp n -> Exp (Param n)
-param Star = 
+param2 :: forall n m. Theta n => Exp n -> Exp (Param n)
+--  [[ * ]]       = \x:*. Pi y:x. *
+param2 Star = 
     lamFresh Star $ \x -> pi (var x) Star
-param (Var x) = 
-  -- look up the new name for the variable
+--  [[ x ]]       = xR
+param2 (Var x) = 
   Var (varR x)
-param (Pi a bnd) = 
+--  [[Pi x:A. B]] = \xF:(Pi x:A.B). Pi x:A. Pi xR: [[A]] a. [[B]] (xF x)
+param2 (Pi a bnd) = 
   unbindWith bnd $ \ (x :: Name x) b ->
   let -- translate domain type
-      pa = param a
+      pa = param2 a
       -- translate the body (in the extended scope)
-      pb = param b
+      pb = param2 b
   in 
     lamFresh (applyE theta (Pi a bnd)) $ \ (xF :: Name xF) -> 
        (pi @x (applyE (skip theta) a) 
          (pi @(R x) (App (weaken pa) (var x))
             (App (weaken pb) (App (var xF) (var x)))))
-param (Lam ty bnd) = 
-  unbindWith bnd $ \ (x :: Name x) b ->
+--  [[\x:A. e]]   = \x:a. \xR: [[A]] a. [[e]]
+param2 (Lam tA bnd) = 
+  unbindWith bnd $ \ (x :: Name a) b ->
   let 
-      pty  = param ty 
-      pb   = param b
+      pa  = param2 tA 
+      pb   = param2 b
   in 
-  lam @x pty 
-    (lam @(R x)  
-       (App (weaken pty) (var x)) pb)
-param (App f arg) = 
-  App (App (param f) (applyE theta arg)) (param arg)
+  lam @a pa 
+    (lam @(R a)  
+       (App (weaken pa) (var x)) pb)
+--  [[ e1 e2 ]]   = [[e1]] e2 [[e2]]
+param2 (App f arg) = 
+  App (App (param2 f) (applyE theta arg)) (param2 arg)
 
 
--- >>> param (idTy :: Exp Nil)
+-- >>> param2 (idTy :: Exp Nil)
 -- Lam (Pi Star (Bind (Pi (Var 0) (Bind (Var 1))))) (Bind (Pi Star (Bind (Pi (App (Lam Star (Bind (Pi (Var 0) (Bind (Star))))) (Var 0)) (Bind (App (Lam (Pi (Var 1) (Bind (Var 2))) (Bind (Pi (Var 2) (Bind (Pi (App (Var 2) (Var 0)) (Bind (App (Var 3) (App (Var 2) (Var 1))))))))) (App (Var 2) (Var 1))))))))
 
 
+-- NOTE: We would like to add this instance so that we can use 
+-- weaken instead of "applyE theta" and "applyE (skip theta)" 
+-- but it is not allowed in Haskell because Param is a type family
+-- instance Theta n => (n ⊆ (Param n)) where
+--     incl = applyE @Exp theta
 
 -----------------------------------------------------
 -- Version 3
 --
--- This version uses functional dependencies instead of type families to 
+-- This version uses functional dependencies instead of type families  
 -- all the definition of the function to use 'weaken' in all places.
 
 class IParam s s' | s -> s' where
@@ -384,36 +439,36 @@ ivarR = go dparam where
 -}
 
 
-iparam :: forall n n'. (IParam n n') => Exp n -> Exp n'
-iparam Star = 
+param3 :: forall n n'. (IParam n n') => Exp n -> Exp n'
+param3 Star = 
     lamFresh Star $ \x -> pi (var x) Star
-iparam (Var x) = 
+param3 (Var x) = 
   -- look up the new name for the variable
   Var (ivarR x)
-iparam (Pi a bnd) = 
+param3 (Pi a bnd) = 
   unbindWith bnd $ \ (x :: Name x) b ->
   let -- translate domain type
-      pa = iparam a
+      pa = param3 a
       -- translate the body (in the extended scope)
-      pb = iparam b
+      pb = param3 b
   in 
     lamFresh (weaken (Pi a bnd)) $ \ (xF :: Name xF) -> 
        (pi @x (weaken a) 
          (pi @(R x) (App (weaken pa) (var x))
             (App (weaken pb) (App (var xF) (var x)))))
-iparam (Lam ty bnd) = 
+param3 (Lam tA bnd) = 
   unbindWith bnd $ \ (x :: Name x) b ->
   let 
-      pty  = iparam ty 
-      pb   = iparam b
+      pa  = param3 tA 
+      pb  = param3 b
   in 
-  lam @x pty 
+  lam @x pa 
     (lam @(R x)  
-       (App (weaken pty) (var x)) pb)
-iparam (App f arg) = 
-  App (App (iparam f) (weaken arg)) (iparam arg)
+       (App (weaken pa) (var x)) pb)
+param3 (App f arg) = 
+  App (App (param3 f) (weaken arg)) (param3 arg)
 
 
 
--- >>> iparam (idTy :: Exp Nil)
+-- >>> param3 (idTy :: Exp Nil)
 -- Lam (Pi Star (Bind (Pi (Var 0) (Bind (Var 1))))) (Bind (Pi Star (Bind (Pi (App (Lam Star (Bind (Pi (Var 0) (Bind (Star))))) (Var 0)) (Bind (App (Lam (Pi (Var 1) (Bind (Var 2))) (Bind (Pi (Var 2) (Bind (Pi (App (Var 3) (Var 0)) (Bind (App (Var 4) (App (Var 2) (Var 1))))))))) (App (Var 2) (Var 1))))))))

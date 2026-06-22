@@ -120,16 +120,17 @@ cpsExp r (Inj i e) k =
        
 -- [[case e of { pᵢ -> bᵢ }]] k = [[e]] (λz. case z of { pᵢ -> [[bᵢ]] k' })
 cpsExp r (Match e brs) k =
-    cpsExp r e (Lam (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
+    cpsExp r e (Lam (bind (LocalName "z") (Match (Var FZ) (cpsBranch brs))))
     where
         r' = r .>> wk s1
         k' = applyE (wk s1) k
-        cpsBranch :: Branch n -> Branch (S m)
-        cpsBranch (Branch b) =
+        cpsBranch :: BranchList n -> BranchList (S m)
+        cpsBranch BNil = BNil
+        cpsBranch (BCons b brs) =
             let pat   = Pat.getPat b
                 sz    = size pat
                 body' = cpsExp (upN sz r') (Pat.getBody b) (applyE (wk sz) k')
-            in Branch (Pat.bind pat body')
+            in BCons (Pat.bind pat body') (cpsBranch brs)
 
 ------------------------------------------------------------------------
 -- * Properties
@@ -284,16 +285,17 @@ cpsExpOpt r (Inj i e) k =
        (applyCont k' (Inj i (Var FZ)))))
        where k' = applyE (wk s1) k
 cpsExpOpt r (Match e brs) k =
-    cpsExpOpt r e (Meta (bind (LocalName "z") (Match (Var FZ) (map cpsBranch brs))))
+    cpsExpOpt r e (Meta (bind (LocalName "z") (Match (Var FZ) (cpsBranch brs))))
     where
         r' = r .>> wk s1
         k' = applyE (wk s1) k
-        cpsBranch :: Branch n -> Branch (S m)
-        cpsBranch (Branch b) =
+        cpsBranch :: BranchList n -> BranchList (S m)
+        cpsBranch BNil = BNil
+        cpsBranch (BCons b brs) =
             let pat   = Pat.getPat b
                 sz    = size pat
                 body' = cpsExpOpt (upN sz r') (Pat.getBody b) (applyE (wk sz) k')
-            in Branch (Pat.bind pat body')
+            in BCons (Pat.bind pat body') (cpsBranch brs)
     
 ------------------------------------------------------------------------
 -- * Properties of Optimized CPS translation
@@ -390,9 +392,10 @@ countApp Unit           = 0
 countApp (Pair e1 e2)   = countApp e1 + countApp e2
 countApp (Inj _ e)      = countApp e
 countApp (App e1 e2)    = 1 + countApp e1 + countApp e2
-countApp (Match e brs)  = countApp e + sum (map countAppBranch brs)
+countApp (Match e brs)  = countApp e + countAppBranch brs
   where
-    countAppBranch (Branch b) = countApp (getBody b)
+    countAppBranch BNil = 0
+    countAppBranch (BCons b brs) = countApp (getBody b) + countAppBranch brs
 
 countLam :: Tm n -> Int
 countLam (Var _)        = 0
@@ -401,9 +404,10 @@ countLam Unit           = 0
 countLam (Pair e1 e2)   = countLam e1 + countLam e2
 countLam (Inj _ e)      = countLam e
 countLam (App e1 e2)    = countLam e1 + countLam e2
-countLam (Match e brs)  = countLam e + sum (map countLamBranch brs)
+countLam (Match e brs)  = countLam e + countLamBranch brs
   where
-    countLamBranch (Branch b) = countLam (getBody b)
+    countLamBranch BNil = 0
+    countLamBranch (BCons b brs) = countLam (getBody b) + countLamBranch brs
 
 countReturns :: Tm n -> Int
 countReturns (Var _) = 0
@@ -412,6 +416,8 @@ countReturns (Lam b) = 1 + countReturns (getBody b)
 countReturns (Pair e1 e2) = countReturns e1 + countReturns e2
 countReturns (Inj _ e) = countReturns e
 countReturns (App e1 e2) = countReturns e1 + countReturns e2
-countReturns (Match e brs) = length brs + countReturns e + sum (map countReturnsBranch brs)
+countReturns (Match e brs) = countReturns e + countReturnsBranch brs
    where 
-     countReturnsBranch (Branch b) = countReturns (getBody b)
+     countReturnsBranch BNil = 0
+     countReturnsBranch (BCons b brs) = 
+        1 + countReturns (getBody b) + countReturnsBranch brs
