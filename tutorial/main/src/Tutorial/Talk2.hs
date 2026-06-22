@@ -1,14 +1,14 @@
 {-|
 
-Now let's see how Rebound can help!  
+Part 2: Now let's see how rebound can help!  
 
 In this module, we 
   - define the syntax, declaratively specifying binding structure
-    including a separate datatype for patterns!
+    including a *separate datatype* for patterns!
   - define capture avoiding substitution
   - define alpha-equivalence
 
-This module is an annotated version of Syntax.hs in the rebound Tutorial.
+NOTE: This module is an annotated version of Syntax.hs in the rebound Tutorial.
 
 -}
 module Tutorial.Talk2(
@@ -39,27 +39,28 @@ data Tm (n :: Nat) where
     Match :: Tm n -> BranchList n -> Tm n
       deriving (Eq, Show, Generic1)
 
--- A pattern binding (BindP) of m variables, in scope n
+-- A list of pattern bindings (BindP) of m variables, in scope n
 -- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
 data BranchList (n :: Nat) where
     BNil :: BranchList n
     BCons :: BindP m n -> BranchList n -> BranchList n
 
-
--- m is the number of variables *bound* by the pattern
+-- A pattern: m is the number of variables *bound* by the pattern
+-- A local name let's us record a user-supplied name
 data Pat (m :: Nat) where
     PVar  :: LocalName -> Pat N1
     PUnit :: Pat N0
     PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)
     PInj  :: Int -> Pat m -> Pat m
 
+{-----------------------------------------------------------------}
+
+-- API operations for these types are instances of the general
+-- definitions and operations in Rebound.Bind.Pat
 
 -- type abbreviations for convenience
 type Bind1 n   = Bind Tm Tm LocalName n
 type BindP m n = Bind Tm Tm (Pat m) n
-
--- API operations for these types are instances of the general
--- operations in Rebound.Bind.Pat
 
 -- Named, single binders
 
@@ -90,7 +91,7 @@ instantiateP :: BindP m n -> Env Tm m n -> Tm n
 instantiateP = instantiate
 
 --------------------------------------------------------------------
--- * Substitution
+-- * Substitution via type class instances
 --------------------------------------------------------------------
 
 -- >>> :t var
@@ -112,6 +113,7 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e) = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (applyE r brs)
+  
 
 instance Subst Tm BranchList where
   applyE :: Env Tm n m -> BranchList n -> BranchList m
@@ -128,7 +130,7 @@ instance Subst Tm BranchList where
 -- Sized instance (counting bound variables)
 --------------------------------------------------------------------
 
--- Any type that is used as a pattern must be an
+-- Any type that is used as a pattern *must* be an
 -- instance of the `Sized` type class, so that the library
 -- can determine the number of binding variables both
 -- statically and dynamically.
@@ -148,12 +150,14 @@ instance Sized (Pat m) where
     size (PInj _ p) = size p
 
 -- >>> :t s1
--- s1 :: SNat N1
 
 -- >>> :t s0
 
 -- >>> :t sPlus
 -- sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
+
+
+--------------------------------------------------------------------
 
 -- The type `SNat` and type class `SNatI` provide *runtime* access to 
 -- type-level natural numbers. Haskell is not a full-spectrum 
@@ -173,7 +177,7 @@ instance Sized (Pat m) where
 -- Alpha-equivalence 
 --------------------------------------------------------------------
 
--- In Dependent Haskell, we sometimes need a heterogenously typed
+-- With dependent types, we sometimes need a heterogenously typed
 -- equality operation for indexed types. The `testEquality` operation 
 -- produces a proof of equivalence for its *indices* when its 
 -- *arguments* are equal.
@@ -189,14 +193,16 @@ instance Sized (Pat m) where
 -- >>> testEquality s0 s0
 
 
--- Two branches are equal when their patterns are equal and their 
+-- >>> :t BCons
+
+-- Two branch list are equal when all patterns are equal and their 
 -- bodies are equal
 instance Eq (BranchList n) where
   (==) :: BranchList n -> BranchList n -> Bool
   BNil == BNil = True
   BCons b1 brs1 == BCons b2 brs2 = 
     case testEquality (getPat b1) (getPat b2) of
-      Just Refl ->  getBody b1 == getBody b2 && brs1 == brs2
+      Just Refl -> getBody b1 == getBody b2 && brs1 == brs2
       Nothing -> False
   _ == _ = False
 
@@ -216,6 +222,19 @@ instance TestEquality Pat where
 instance (Eq (Pat m)) where
   (==) :: Pat m -> Pat m -> Bool
   p1 == p2 = Maybe.isJust (testEquality p1 p2)
+
+--------------------------------------------------------------------
+-- Revised Evaluator, with pattern matching
+--------------------------------------------------------------------
+
+-- See Tutorial.Scoped.Eval
+
+
+
+
+
+
+
 
 
 --------------------------------------------------------------------

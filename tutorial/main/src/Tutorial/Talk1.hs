@@ -7,18 +7,24 @@
                 sweirich@upenn.edu
             
               University of Pennsylvania
-           (visiting University of Cambridge)
+        (currently visiting University of Cambridge)
 
           https://sweirich.github.io/rebound/
 
-    NOTE: website includes lecture notes, link to tutorial code & exercises
-          library repository includes examples
+    NOTE: website above includes lecture notes
+          and link to github repository, including 
+          library, examples, tutorial, exercises
+          and this file.
 
 -}
 
-{-----------------------------------------------------------------}
 
-{-  Rebound library: Well-scoped de Bruijn indices in Haskell
+
+------------------------------------------------------------------------
+--  Rebound library: Well-scoped de Bruijn indices in Haskell
+------------------------------------------------------------------------
+
+{-
 
     Noé De Santo, Stephanie Weirich, "Rebound: Efficient, 
     Expressive, and Well-Scoped Binding"
@@ -35,25 +41,11 @@
 
  -}
 
-{-----------------------------------------------------------------}
+------------------------------------------------------------------------
+-- Let's implement a small language 
+------------------------------------------------------------------------
 
-{- 
-
-Talk plan:
- - Design: how does the rebound library work?
- - Expressiveness: what can you do with it?
-
-Takeaway:
- - Don't fear de Bruijn indices
- - Don't fear Dependent Types
-
--}
-
-{-----------------------------------------------------------------}
-
-{- 
-
-Goal: implement small language with functions, unit, products and sums
+{-
 
 t ::= Unit | t -> t | t * t | t + t
 
@@ -62,7 +54,15 @@ e ::= x | \ x . e | e1 e2
    | ( e1, e2 )      | case e0 of (x,y) -> e1
    | inj1 e | inj2 e | case e0 of { inj1 x -> e1 ; inj2 y -> e2 }
 
-Big step, substitution based semantics:
+-}
+
+
+
+
+------------------------------------------------------------------------
+-- Big step, substitution based semantics:
+------------------------------------------------------------------------
+{-
 
 ------- val
 v => v
@@ -82,11 +82,25 @@ case e0 of { inj1 x1 -> e1 ; inj2 x2 -> e2 } => v
 
 -}
 
-{-----------------------------------------------------------------}
+------------------------------------------------------------------------
 
 
-{- Goals: 
 
+
+
+
+{-     HOW???    -}
+
+
+
+
+
+
+
+------------------------------------------------------------------------
+-- Goals: 
+------------------------------------------------------------------------
+{-
    - Correctness: we want to be sure that we've implemented 
       *this* language, without any bugs
 
@@ -107,24 +121,32 @@ case e0 of { inj1 x1 -> e1 ; inj2 x2 -> e2 } => v
 
 -}
 
-{-----------------------------------------------------------------}
 
-{- 
 
-PART 1:  Talk1.hs: self-contained foundational introduction (15 mins)
+------------------------------------------------------------------------
+-- ANSWER:  rebound library
+------------------------------------------------------------------------
 
-PART 2:  Talk2.hs: lang definition with library support    (5 mins)
+{-
 
-PART 3:  Talk3.hs: using well-scoped DB indices at scale  (20 mins)
+PART 1:  Talk1.hs: self-contained foundational introduction 
 
-         parsing, scope checking, pretting printing, random testing 
-         scope-preserving translation
+PART 2:  Talk2.hs: language definition with library support 
+                   and pattern binding   
 
+PART 3:  Talk3.hs: using well-scoped DB indices at scale  
+                   e.g. parsing, scope checking, pretting 
+                   printing, random testing, etc
+         
 -}
 
-{-----------------------------------------------------------------}
 
--- | How does the library work?
+
+
+
+
+------------------------------------------------------------------------
+-- | PART1:  What abstractions should the rebound library provide?
 -- | Well-scoped de Bruijn term representations from scratch
 module Tutorial.Talk1 where
 
@@ -139,12 +161,16 @@ data Nat where
   S :: Nat -> Nat
 
 -- some (type-level) natural numbers
+type N0 = Z
 type N1 = S Z
 type N2 = S (S Z)
 type N3 = S (S (S Z))
 type N4 = S N3
 
-
+-- addition
+type family (+) (n :: Nat) (m :: Nat) :: Nat where
+   Z + m = m
+   (S n) + m = S (n + m)
 
 
 
@@ -165,16 +191,16 @@ f0 :: Fin (S n)
 f0 = FZ
 
 -- "1" in any scope that has at least two numbers
-f1 :: Fin (S (S n))
+f1 :: Fin (N2 + n)
 f1 = FS f0
 
 -- "2" in any scope that has at least three numbers
-f2 :: Fin (S (S (S n)))
-f2 = FS (FS f0)
+f2 :: Fin (N3 + n)
+f2 = FS f1
 
 -- "3" in any scope that has at least four numbers
-f3 :: Fin (S (S (S (S n))))
-f3 = FS (FS (FS f0))
+f3 :: Fin (N4 + n)
+f3 = FS f2
 
 
 
@@ -188,6 +214,7 @@ deriving instance (Eq (Fin n))
 
 
 -- >>> f1 == f2
+
 
 
 
@@ -228,7 +255,6 @@ instance Show (Fin n) where
 -- * Well-scoped lambda calculus terms
 ------------------------------------------------------------------------
 
--- NB: in Haskell, infix symbolic data constructors start with :
 data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
 
@@ -271,20 +297,15 @@ ex_id = Lam (Bind1 (Var f0))
 ex_const :: Tm Z
 ex_const = Lam (Bind1 (Lam (Bind1 (Var f1))))
 
--- | Function composition: λf. λg. λx. f (g x) or λ.λ.λ. 2 (1 0)
-ex_comp :: Tm Z
-ex_comp = Lam (Bind1 (Lam (Bind1 (Lam (Bind1
-    (App (Var f2) (App (Var f1) (Var f0))))))))
-
 -- | Swap a pair: 
 -- λp. case p of (x, y) → (y, x)  
 -- λ. case 0 of (,) -> (0,1)
-ex_swap :: Tm Z
-ex_swap = Lam (Bind1 (MatchPair (Var f0) 
-                (Bind2 (Pair (Var f0) (Var f1)))))
+ex_swap :: Tm n
+ex_swap = Lam (Bind1 (MatchPair (Var f0) (Bind2 (Pair (Var f0) (Var f1)))))
 
 
 -- >>> ex_id == ex_id
+
 
 
 
@@ -293,7 +314,8 @@ ex_swap = Lam (Bind1 (MatchPair (Var f0)
 -- * Substitution environments
 ------------------------------------------------------------------------
 
--- | A substitution environment mapping @m@ variables to terms in scope @n@.
+-- | A substitution environment maps @m@ variables to terms in scope @n@.
+-- It is like a vector of length m
 type Env m n = Fin m -> Tm n
 
 -- | If there are no variables in the domain, we can map to any scope
@@ -309,10 +331,10 @@ t .: env = \f -> case f of
     FZ   -> t      -- the new outermost variable maps to t
     FS x -> env x  -- all others delegate to env
 
--- EXAMPLE: substitute using examples above
+-- EXAMPLES: 
 -- all terms must be closed and there are three of them
-exampleE :: Env N3 Z
-exampleE = ex_id .: ex_const .: ex_comp .: zeroE
+-- exampleE :: Env N3 Z
+exampleE = ex_id .: ex_const .: ex_swap .: zeroE
 
 -- EXAMPLE: an identity substitution for terms with three free 
 -- variables. We map each index to a variable with that index.
@@ -331,7 +353,6 @@ idE = Var   -- recall Var :: Fin n -> Tm n
 
 -- | The shifting environment: increments the index of every variable by one
 -- i.e. weakens a scope by introducing a fresh outermost variable.
--- Apply with @applyE shift@ to weaken a term.
 shift :: Env m (S m)
 shift x = Var (FS x)
 
@@ -429,22 +450,6 @@ eval (MatchUnit e m) = do
         Unit -> eval m
         _ -> Nothing
 
--- Some test cases for the evaluator
-
--- (\x.\y.x) Unit (Inj0 Unit)
-test1 :: Maybe (Tm Z)
-test1 = eval (App (App ex_const Unit) (Inj 0 Unit))
-
---- >>> test1
--- Just Unit
-
-
-
--- case (Unit, Inj0 Unit) of (x,y) -> y
-test2 :: Maybe (Tm Z)
-test2 = eval (MatchPair (Pair Unit (Inj 0 Unit)) (Bind2 (Var f0)))
-
--- >>> test2
 
 
 
