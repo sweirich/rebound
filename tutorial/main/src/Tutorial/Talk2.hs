@@ -5,8 +5,8 @@ Part 2: Now let's see how rebound can help!
 In this module, we 
   - define the syntax, declaratively specifying binding structure
     including a *separate datatype* for patterns!
-  - define capture avoiding substitution
-  - define alpha-equivalence
+  - use rebound to define capture avoiding substitution
+  - use rebound to define alpha-equivalence
 
 NOTE: This module is an annotated version of Syntax.hs in the rebound Tutorial.
 
@@ -37,30 +37,42 @@ data Tm (n :: Nat) where
     Inj   :: Int -> Tm n -> Tm n
     App   :: Tm n -> Tm n -> Tm n
     Match :: Tm n -> BranchList n -> Tm n
-      deriving (Eq, Show, Generic1)
+      deriving (Show, Eq, Generic1)
+
+
+
+------------------------------------------------------------------------
+-- * Pattern matching
+------------------------------------------------------------------------ 
 
 -- A list of pattern bindings (BindP) of m variables, in scope n
 -- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
 data BranchList (n :: Nat) where
     BNil :: BranchList n
     BCons :: BindP m n -> BranchList n -> BranchList n
-
+      
 -- A pattern: m is the number of variables *bound* by the pattern
 -- A local name let's us record a user-supplied name
 data Pat (m :: Nat) where
-    PVar  :: LocalName -> Pat N1
+    PVar  :: LocalName -> Pat N1   -- remember user-supplied name
     PUnit :: Pat N0
     PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)
     PInj  :: Int -> Pat m -> Pat m
+      
+-- BranchList has an existential and Pat is a GADT
+-- Use standalone deriving for Show. 
+-- But, have to do something else for Eq and Generic1
+deriving instance (Show (BranchList n))
+deriving instance (Show (Pat n))
 
-{-----------------------------------------------------------------}
-
+-----------------------------------------------------------------
 -- API operations for these types are instances of the general
 -- definitions and operations in Rebound.Bind.Pat
 
 -- type abbreviations for convenience
-type Bind1 n   = Bind Tm Tm LocalName n
+type Bind1 n   = Bind Tm Tm LocalName n   
 type BindP m n = Bind Tm Tm (Pat m) n
+
 
 -- Named, single binders
 
@@ -98,14 +110,23 @@ instantiateP = instantiate
 
 
 -- >>> :t applyE
+-- applyE :: Subst v c => Env v n m -> c n -> c m
 
 
 instance SubstVar Tm where
   var :: Fin n -> Tm n
   var = Var
   
+-- >>> :t isVar
+-- isVar :: Subst v c => c n -> Maybe (v :~: c, Fin n)
+
 instance Subst Tm Tm where
-  applyE :: Env Tm n m -> Tm n -> Tm m
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+
+--  applyE :: Env Tm n m -> Tm n -> Tm m
+
+{-
   applyE r (Var x) = applyEnv r x
   applyE r (App e1 e2) = App (applyE r e1) (applyE r e2)
   applyE r (Lam b) = Lam (applyE r b)
@@ -113,7 +134,7 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2) = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e) = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (applyE r brs)
-  
+-}
 
 instance Subst Tm BranchList where
   applyE :: Env Tm n m -> BranchList n -> BranchList m
@@ -121,9 +142,12 @@ instance Subst Tm BranchList where
   applyE r BNil = BNil
 
 -- >>> applyE (Unit .: zeroE) (Var FZ)
+-- Unit
 
 
 -- >>> applyE (Unit .: zeroE) (Lam (bind1 (LocalName "x") (Var f1)))
+-- Lam (bind x Unit)
+
 
 
 --------------------------------------------------------------------
@@ -183,14 +207,24 @@ instance Sized (Pat m) where
 -- *arguments* are equal.
 
 -- >>> :t testEquality @SNat
+-- testEquality @SNat :: TestEquality SNat => SNat a -> SNat b -> Maybe (a :~: b)
 
 -- >>> s0 == s0
+-- True
 
 -- >>> s0 == s1
+-- Couldn't match type 'S N0 with 'Z
+-- Expected: SNat N0
+--   Actual: SNat N1
+-- In the second argument of `(==)', namely `s1'
+-- In the expression: s0 == s1
+-- In an equation for `it_aeVTe': it_aeVTe = s0 == s1
 
 -- >>> testEquality s0 s1
+-- Nothing
 
 -- >>> testEquality s0 s0
+-- Just Refl
 
 
 -- >>> :t BCons
@@ -243,13 +277,13 @@ instance (Eq (Pat m)) where
 
 -- | The show instance is for viewing the AST. We will also 
 -- implement a pretty printer for a more convenient representation.
-
 instance (Show p, Sized p) => Show (Pat.Bind Tm Tm p n) where
    showsPrec p bnd = 
       showParen (p > 10) $ 
       showString "bind " 
          . showsPrec 11 (Pat.getPat bnd) 
          . showString " " . showsPrec 11 (Pat.getBody bnd)
-
+{-
 deriving instance (Show (BranchList n))
 deriving instance (Show (Pat m))
+-}

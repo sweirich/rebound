@@ -7,12 +7,12 @@
                 sweirich@upenn.edu
             
               University of Pennsylvania
-        (currently visiting University of Cambridge)
+    (currently visiting University of Cambridge/Epic Games)
 
           https://sweirich.github.io/rebound/
 
-    NOTE: website above includes lecture notes
-          and link to github repository, including 
+    NOTE: the website above includes lecture notes
+          and a link to the github repository, including 
           library, examples, tutorial, exercises
           and this file.
 
@@ -59,11 +59,16 @@ e ::= x | \ x . e | e1 e2
 
 
 
+
+
+
+
+
+
 ------------------------------------------------------------------------
 -- Big step, substitution based semantics:
 ------------------------------------------------------------------------
 {-
-
 ------- val
 v => v
 
@@ -72,7 +77,7 @@ e { e2 / x } => v         <- how do you implement substitution?
 ------------------ app
 e1 e2 => v
 
-e0 => (e2,e3)  e1{e2/x,e3/y} => v               <- multsubstitution?
+e0 => (e2,e3)  e1{e2/x,e3/y} => v               <- multi-substitution?
 --------------------------------- match-pair
 case e0 of (x,y) -> e1 => v
 
@@ -108,16 +113,16 @@ case e0 of { inj1 x1 -> e1 ; inj2 x2 -> e2 } => v
 
    - Simplicity: we want a minimum of ceremony
 
-        ===> good abstractions (and types) simplify our work
+        ===> good abstractions (and types) that simplify our work
 
    - No limits: we want to do all the things that a practical 
     system might want
 
-        ===> first-order representation (and good abstractions)
+        ===> first-order representation (with good abstractions)
 
    - Efficiency: we want to be able to run the result
 
-        ===> good abstractions (hiding slick tricks)
+        ===> slick tricks (hidden by good abstractions)
 
 -}
 
@@ -132,9 +137,9 @@ case e0 of { inj1 x1 -> e1 ; inj2 x2 -> e2 } => v
 PART 1:  Talk1.hs: self-contained foundational introduction 
 
 PART 2:  Talk2.hs: language definition with library support 
-                   and pattern binding   
+                   for pattern binding   
 
-PART 3:  Talk3.hs: using well-scoped DB indices at scale  
+PART 3:  Talk3.hs: using well-scoped de Bruijn indices at scale  
                    e.g. parsing, scope checking, pretting 
                    printing, random testing, etc
          
@@ -147,14 +152,14 @@ PART 3:  Talk3.hs: using well-scoped DB indices at scale
 
 ------------------------------------------------------------------------
 -- | PART1:  What abstractions should the rebound library provide?
--- | Well-scoped de Bruijn term representations from scratch
+
 module Tutorial.Talk1 where
 
 ------------------------------------------------------------------------
--- * Bounded natural numbers
+-- * Natural numbers
 ------------------------------------------------------------------------
 
--- | Unary natural numbers, used as type-level scopes.
+-- | Unary natural (Peano) numbers, used in types.
 -- A term in scope @n@ has variables @0 .. n-1@.
 data Nat where
   Z :: Nat 
@@ -167,13 +172,15 @@ type N2 = S (S Z)
 type N3 = S (S (S Z))
 type N4 = S N3
 
--- addition
+-- (type-level) addition
 type family (+) (n :: Nat) (m :: Nat) :: Nat where
    Z + m = m
    (S n) + m = S (n + m)
 
 
-
+------------------------------------------------------------------------
+-- * Bounded natural numbers
+------------------------------------------------------------------------
 
 -- | @Fin n@ is the type of de Bruijn indices in scope n:
 -- the finite set @{0, 1, ..., n-1}@.
@@ -203,6 +210,8 @@ f3 :: Fin (N4 + n)
 f3 = FS f2
 
 
+--g :: Fin N1
+--g = f2
 
 -- In Haskell we can derive equality  
 -- functions automatically for datatypes
@@ -254,10 +263,8 @@ instance Show (Fin n) where
 ------------------------------------------------------------------------
 -- * Well-scoped lambda calculus terms
 ------------------------------------------------------------------------
-
 data Ty = One | Ty :-> Ty | Ty :* Ty | Ty :+ Ty
   deriving (Eq, Show)
-
 data Tm (n :: Nat) where
     Var   :: Fin n -> Tm n
     Lam   :: Bind1 n -> Tm n
@@ -276,12 +283,12 @@ data Tm (n :: Nat) where
 
 -- | A term with one bound variable: a body in scope `S n` 
 data Bind1 n where
-    Bind1 :: Tm (S n) -> Bind1 n
+    Bind1 :: Tm (N1 + n) -> Bind1 n
       deriving (Eq, Show)
 
 -- | A term with two bound variables: a body in scope `S (S n)`.
 data Bind2 (n :: Nat) where
-    Bind2 :: Tm (S (S n)) -> Bind2 n
+    Bind2 :: Tm (N2 + n) -> Bind2 n
       deriving (Eq, Show)
 
 
@@ -294,7 +301,7 @@ ex_id :: Tm Z
 ex_id = Lam (Bind1 (Var f0))
 
 -- | Constant function: λx. λy. x or λ.λ.1
-ex_const :: Tm Z
+ex_const :: Tm n
 ex_const = Lam (Bind1 (Lam (Bind1 (Var f1))))
 
 -- | Swap a pair: 
@@ -303,8 +310,6 @@ ex_const = Lam (Bind1 (Lam (Bind1 (Var f1))))
 ex_swap :: Tm n
 ex_swap = Lam (Bind1 (MatchPair (Var f0) (Bind2 (Pair (Var f0) (Var f1)))))
 
-
--- >>> ex_id == ex_id
 
 
 
@@ -395,7 +400,27 @@ s1 >> s2 = applyE s2 . s1
 
 
 
+------------------------------------------------------------------------
+-- * Substitution environment interface
+------------------------------------------------------------------------
 
+{-
+
+type Env m n 
+
+nilE  :: Env Z n
+(.:)  :: Tm n -> Env m n -> Env (S m) n
+
+idE   :: Env n n
+(>>)  :: Env m n -> Env n p -> Env m p
+
+shift :: Env n (S n)
+
+(!)   :: Env m n -> Fin m -> Tm n
+
+How can we implement this data structure efficiently?
+
+-}
 
 
 ------------------------------------------------------------------------

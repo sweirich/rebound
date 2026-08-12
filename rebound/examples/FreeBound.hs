@@ -279,7 +279,7 @@ idExp = lamFresh Star $ \a ->
 
 -- For the scope translation, we use an abstract type "R" for name generation.
 -- For each name "x", there is an analogous name "R x"
-data R :: Tag -> Tag
+data R :: Type -> Type
 
 -- Scope translation for parametricity
 type family Param (s :: Scope) :: Scope where

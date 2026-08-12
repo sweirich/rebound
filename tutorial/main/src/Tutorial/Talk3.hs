@@ -1,7 +1,7 @@
 {- 
 
-  Part 3: working with de Bruijn indices
-  parsing, scope checking, pretting printing, random testing 
+  Part 3: well-scoped de Bruijn indices in practice
+          parsing, scope checking, pretting printing, random testing 
 
 
 -}
@@ -34,6 +34,8 @@ Scoped Syntax -------> Named Syntax -------------> String
 
 -}
 
+
+
 ----------------------------------------------------------- 
 -- Parsing and pretty printing closed terms
 ----------------------------------------------------------- 
@@ -41,18 +43,21 @@ Scoped Syntax -------> Named Syntax -------------> String
 Right tmId1 = parse "\\x.x"
 
 -- >>> pp tmId1
+-- "\\ x. x"
 
 
 Right tmSwap = parse "\\x. case x of (y,z) -> (z,y)"
 
 
 -- >>> pp tmSwap
+-- "\\ x. case x of\n       (y, z) -> (z, y)"
 
 -- >>> parse "\\x.y"
+-- Left (ScopeError (UnboundVariable "y"))
 
 
 ----------------------------------------------------------- 
--- Parsing and pretty printing closed terms
+-- Parsing and pretty printing open terms
 ----------------------------------------------------------- 
 
 
@@ -61,6 +66,7 @@ names = "y" ::: "z" ::: VNil
 
 
 -- >>> parseWith names "\\x.z"
+-- Right (Lam (bind x (Var 2)))
 
 Right g = parseWith names "\\x.y"
 
@@ -73,24 +79,19 @@ Right g = parseWith names "\\x.y"
 -- QuickCheck and well-scoped/well-typed term generation 
 ----------------------------------------------------------- 
 
-{- 
+-- Tutorial.Scoped.Gen includes instances of QuickCheck's 
+-- several generators/shrinkers for terms and patterns
 
-Tutorial.Scoped.Gen includes instances of QuickCheck's 
-several generators/shrinkers for terms and patterns
-
--}
-
-
-
+-- Entry point:
 -- >>> :t forAll0
 -- forAll0 :: Testable a => Constraint -> Language -> (Tm 'Z -> a) -> Property
 
 
 {-
-Can generate either well-scoped or well-typed terms
+Generate either well-scoped or well-typed terms
 -- data Constraint = Scoped | Typed
 
-Can generate either terms from pure lambda calculus or full language
+Generate either terms from pure lambda calculus or full language
 -- data Language = PureLC | Full
 
 -}
@@ -103,7 +104,7 @@ Can generate either terms from pure lambda calculus or full language
 -- evaluating twice returns the same result
 prop_eval_idempotent :: Tm Z -> Property
 prop_eval_idempotent = \t ->
-    discardAfter 10000 $
+    discardAfter 10000 $   -- skip if test runs too long
     case eval t of
         Just v ->
             counterexample ("v: " ++ pp v) $
@@ -123,7 +124,7 @@ ghci> qc100k (forAll0 Typed Full prop_eval_idempotent)
 -- all terms produce values (NB: this holds for well-typed terms only!)
 prop_eval_exists_Val :: Tm Z -> Property
 prop_eval_exists_Val = \t ->
-    within 10000 $   -- tests fail for too many steps
+    within  10000 $   -- (within) tests fail for too many steps
     case eval t of
         Just v ->
             counterexample ("not a value: " ++ pp v) $
@@ -152,7 +153,7 @@ ghci> qc100k (forAll0 Typed Full prop_eval_exists_Val)
 
 -- Library repository includes examples
 --     letrec, dependent pattern matching, etc.
---     HOAS wrapper, scope checking, system F, "Names for Free"
+--     HOAS wrapper, scope checking, System F, "Names for Free"
 
 -- Large end-to-end example: pi-forall
 --     
@@ -162,17 +163,36 @@ ghci> qc100k (forAll0 Typed Full prop_eval_exists_Val)
 -}
 
 ----------------------------------------------------------- 
+-- Related Work
+-----------------------------------------------------------
+
+{-
+
+de Bruijn, Nameless dummies
+Marcello Fiore's work on presheaves
+McBride's dissertation, follow-on work
+Autosubst library in Rocq (Stark et al.)
+
+Bird and Patterson, de Bruijn indices as nested datatypes
+Ed Kmett, "bound" library
+Weirch and Yorgey, "unbound" library
+
+-}
+
+
+
+----------------------------------------------------------- 
 -- Conclusion
 -----------------------------------------------------------
 
 {- 
 
--- well-scoped de Bruijn indices are a well-scoped use 
+-- Well-scoped de Bruijn indices are a well-scoped use 
 -- of dependent types
 
--- types ensure necessary weakening/substitutions 
+-- Types ensure necessary weakening/substitutions happen 
 
--- minimal requirements for "proofs"
+-- Minimal requirements for "proofs"
 --   GHC can automatically use nat lemmas when requested
 
 
