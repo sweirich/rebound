@@ -18,22 +18,14 @@ common common-stanza
      -Wincomplete-patterns
      -Wno-deprecations
   default-language:
-    GHC2021
+    GHC2024
   default-extensions:
-    KindSignatures
-    , DataKinds
-    , GADTs
-    , StandaloneDeriving
-    , LambdaCase
-    , QuantifiedConstraints
+      QuantifiedConstraints
     , TypeFamilies
     , AllowAmbiguousTypes
     , UndecidableInstances
     , FunctionalDependencies
-    , ViewPatterns
-    , PatternSynonyms
     , PackageImports
-    , DerivingStrategies
 
 library
   import:

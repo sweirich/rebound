@@ -1,5 +1,3 @@
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
 -- | The concrete implementation of environments
 module Rebound.Env.Lazy where
 

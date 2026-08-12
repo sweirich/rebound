@@ -1,6 +1,4 @@
-{-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE PatternSynonyms #-}
+
 
 -- |
 -- Module      : Rebound.Env

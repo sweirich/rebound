@@ -8,7 +8,7 @@
 -- This module is intended to be imported qualified and used with the
 -- OverloadedLists Haskell language extension. Many of the operations
 -- in this module have the same name as prelude functions.
-{-# LANGUAGE DerivingStrategies, DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Data.Scoped.List (List,
       pattern Nil, pattern (:<),
       Data.Scoped.List.uncons,

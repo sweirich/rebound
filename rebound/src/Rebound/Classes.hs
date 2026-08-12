@@ -4,7 +4,6 @@
 --
 -- Main typeclasses used by the library.
 
-{-# LANGUAGE DefaultSignatures #-}
 module Rebound.Classes where
 
 import Rebound.Lib

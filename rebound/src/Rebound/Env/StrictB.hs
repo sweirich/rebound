@@ -1,5 +1,3 @@
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_HADDOCK hide #-}
 module Rebound.Env.StrictB where
 

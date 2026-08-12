@@ -1,13 +1,14 @@
 {-
 
 
-               Dependent Haskell FTW
+             What have we learned about 
+            Dependently Typed Programming 
+                 from Haskell?
 
                 Stephanie Weirich
                 sweirich@upenn.edu
             
               University of Pennsylvania
-    (currently visiting University of Cambridge/Epic Games)
 
           https://sweirich.github.io/rebound/
 
