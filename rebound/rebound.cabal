@@ -59,6 +59,7 @@ library
     , Rebound.Env.StrictB
     , Rebound.Env.Functional
     , Rebound.Env.ShiftList
+    , Rebound.Env.ShiftSkewed
     , Rebound.Generics
     , Rebound.Lib
     , Rebound.MonadNamed
@@ -102,6 +103,7 @@ library rebound-examples
     , HOAS
     , SystemF
     , PureSystemF
+    , TaggedSystemF
     , LinLC
   hs-source-dirs: examples
 
@@ -135,12 +137,14 @@ test-suite rebound-tests
     HOAS
     SystemF
     PureSystemF
+    TaggedSystemF
     LinLC
     Utils
     Examples.LC
     Examples.LCLet
     Examples.Pat
     Examples.PureSystemF
+    Examples.TaggedSystemF
     Examples.PTS
     Examples.DepMatch
     Examples.LinLC

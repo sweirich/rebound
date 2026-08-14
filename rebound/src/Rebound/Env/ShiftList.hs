@@ -1,6 +1,5 @@
 -- This implementation is adapted from
 -- https://mathisbd.github.io/blog/esubstitutions.html
--- TODO: still missing weakenER, but should be able to test and run it now
 module Rebound.Env.ShiftList where
 
 import Data.Nat

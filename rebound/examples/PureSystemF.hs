@@ -1,5 +1,4 @@
 -- | An implementation of System F as a (quasi) Pure Type System.
-
 module PureSystemF where
 
 import Control.Monad (unless)
@@ -14,35 +13,32 @@ import Rebound.MonadScoped (MonadScopedReader (..), ScopedReader, ScopedReaderT 
 import Rebound.MonadScoped qualified as Scoped
 import Text.Read (Lexeme (String))
 
-{- 
 -- | We represent both terms and types using one single
 -- syntactic class. We use one single constructor for variables,
 -- regardless of whether they stand for a term or a
 -- variable. We also use an additional constructor, 'Kind',
 -- which is used to represent the type of types.
-data Tag = TTy | TTm | Kd
-data Exp (tag :: Tag) (n :: Nat) where
-  Var :: Fin n -> Exp tag n
-  Kind :: Exp Kd n
+data Exp (n :: Nat) where
+  Var :: Fin n -> Exp n
+  Kind :: Exp n
   -- Types
   TAll :: Bind Ty Ty n -> Ty n
   TArr :: Ty n -> Ty n -> Ty n
   -- Terms
-  Abs :: Ty n -> Bind Tm Tm n -> Tm n
-  App :: Tm n -> Tm n -> Tm n
-  TAbs :: Bind Ty Tm n -> Tm n
-  TApp :: Tm n -> Ty n -> Tm n
+  Abs :: Ty n -> Bind Exp Exp n -> Exp n
+  App :: Exp n -> Exp n -> Exp n
+  TAbs :: Bind Ty Exp n -> Exp n
+  TApp :: Exp n -> Ty n -> Exp n
   deriving (Eq)
 
 -- | An alias used for readability.
-type Ty = Exp TTy
-type Tm = Exp TTm
+type Ty = Exp
 
 --------------------------------------------------------------------------------
 --- Instances required by Rebound
 --------------------------------------------------------------------------------
 
-instance SubstVar (Exp t) where
+instance SubstVar Exp where
   var = Var
 
 instance Subst Exp Exp where
@@ -280,4 +276,5 @@ bbn2 = TAbs (bind (LocalName "X") $ Abs (TArr (var f0) (var f0)) (bind (LocalNam
 -- ΛX. λf. λz. f (f z)
 -- Right ∀X. (X -> X) -> X -> X
 
--}
+-- See "TaggedSystemF" for a variant of this example where the syntax carries a
+-- tag distinguishing types from terms.

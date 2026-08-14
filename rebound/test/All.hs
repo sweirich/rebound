@@ -4,6 +4,7 @@ import Examples.LCLet qualified as LCLet
 import Examples.PTS qualified as PTS
 import Examples.Pat qualified as Pat
 import Examples.PureSystemF qualified as PureSystemF
+import Examples.TaggedSystemF qualified as TaggedSystemF
 import Examples.LinLC qualified as LinLC
 import Test.Tasty
 
@@ -18,7 +19,8 @@ main = do
         testGroup
           "System F"
           [ -- TODO: add System F tests
-            PureSystemF.all
+            PureSystemF.all,
+            TaggedSystemF.all
           ],
         PTS.all,
         DepMatch.all,
