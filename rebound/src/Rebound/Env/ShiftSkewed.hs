@@ -1,5 +1,6 @@
 -- This implementation is adapted from
 -- https://mathisbd.github.io/blog/esubstitutions.html
+-- NOTE: Claude Fable 5 assisted with this implementation
 
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
@@ -11,7 +12,6 @@ import Data.Fin
 import Rebound.Lib
 import GHC.Generics hiding (S)
 import Control.DeepSeq (NFData (..))
-import Unsafe.Coerce (unsafeCoerce)
 
 ------------------------------------------------------------------------------
 -- Substitution class declarations
@@ -44,15 +44,6 @@ gapplyE r e = applyOpt (\s x -> to1 $ gsubst s (from1 x)) r e
 -- | Generic programming support for 'Subst'.
 class GSubst v (e :: Nat -> Type) where
   gsubst :: Env v m n -> e m -> e n
-
-------------------------------------------------------------------------------
--- Extra arithmetic axiom
-------------------------------------------------------------------------------
-
--- | @+@ commutes with 'S' on the right. (Proved by 'unsafeCoerce', like the
--- axioms in "Data.SNat".)
-axiomPlusS :: forall m n. m + S n :~: S (m + n)
-axiomPlusS = unsafeCoerce Refl
 
 ------------------------------------------------------------------------------
 -- Environment representation
@@ -168,9 +159,6 @@ zeroE :: Env a Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
 
--- TODO: add weakenER to this definition
-weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = undefined
 
 shiftNE :: SNat k -> Env a n (k + n)
 shiftNE k = Inc k
@@ -205,8 +193,9 @@ bumpTree k0 (Node (k :: SNat k') kt (w :: SNat w') t
 -- shape, so this is constant time.
 tailEnv :: forall a n m. Env a (S n) m -> Env a n m
 tailEnv (Inc (k :: SNat k))
-  | Refl <- axiomPlusS @k @n
-  = Inc (next k)
+  -- the range is @k + S n@, i.e. @k + (N1 + n)@, which associates to @(k + N1) + n@
+  | Refl <- axiomAssoc @k @N1 @n
+  = Inc (sPlus k s1)
 tailEnv (Cons (w :: SNat w) t (s :: Env a n2 m1)) =
   case t of
     Leaf (k :: SNat k) _ -> withSNat k $ skip0 @k s
