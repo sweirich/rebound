@@ -47,7 +47,6 @@ class GSubst v (e :: Nat -> Type) where
 ------------------------------------------------------------------------------
 
 -- The 'SNat k' in this representation is an embedded shift 
--- that means that 'Inc k' is the same as 'Inc k'
 data Env a m n where
     Zero :: Env a Z n
     Inc  :: !(SNat k) -> Env a n (k + n)
@@ -99,10 +98,6 @@ zeroE :: Env a Z n
 zeroE = Zero
 {-# INLINEABLE zeroE #-}
 
--- TODO: add weakenER to this definition
-weakenER :: forall m v n. (SubstVar v) => SNat m -> Env v n (n + m)
-weakenER = undefined
-
 shiftNE :: SNat k -> Env a n (k + n)
 shiftNE k = Inc k
 {-# INLINEABLE shiftNE #-}
@@ -110,7 +105,6 @@ shiftNE k = Inc k
 (.:) :: a m -> Env a n m -> Env a (S n) m
 (.:) = Cons SZ 
 {-# INLINEABLE (.:) #-}
-
 
 -- | inverse of @cons@ -- remove the first mapping
 tail :: (SubstVar v) => Env v (S n) m -> Env v n m

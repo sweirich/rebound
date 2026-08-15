@@ -232,7 +232,11 @@ skip0 s = case s of
                     -> Cons w (bumpTree (snat @k0) t) s'
 {-# INLINEABLE skip0 #-}
 
+-- | Adapt an environment to go under a binder.
+-- Going under a binder with the identity leaves it unchanged, so descending
+-- through many binders does not grow the environment.
 up :: forall a n m. SubstVar a => Env a n m -> Env a (S n) (S m)
+up (Inc SZ) = Inc SZ
 up s = var f0 .: (skip0 @N1 s)
 
 -- NB: there is a generic definition of upN in Env.hs, but I don't know

@@ -60,6 +60,7 @@ library
     , Rebound.Env.Functional
     , Rebound.Env.ShiftList
     , Rebound.Env.ShiftSkewed
+    , Rebound.Env.Rocq
     , Rebound.Generics
     , Rebound.Lib
     , Rebound.MonadNamed
