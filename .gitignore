@@ -24,3 +24,8 @@ cabal.project.local~
 .envrc
 .direnv/
 .nix
+.DS_STORE
+.vscode
+*.hs-e
+stack.yaml.lock
+
