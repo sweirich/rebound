@@ -9,6 +9,7 @@
                 sweirich@upenn.edu
             
               University of Pennsylvania
+                    July 2026
 
           https://sweirich.github.io/rebound/
 
@@ -16,6 +17,7 @@
           and a link to the github repository, including 
           library, examples, tutorial, exercises
           and this file.
+
 
 -}
 
@@ -154,7 +156,7 @@ PART 3:  Talk3.hs: using well-scoped de Bruijn indices at scale
 ------------------------------------------------------------------------
 -- | PART1:  What abstractions should the rebound library provide?
 
-module Tutorial.Talk1 where
+module Talks.Bristol.Talk1 where
 
 ------------------------------------------------------------------------
 -- * Natural numbers

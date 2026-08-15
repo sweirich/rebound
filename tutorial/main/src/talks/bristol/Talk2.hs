@@ -11,7 +11,7 @@ In this module, we
 NOTE: This module is an annotated version of Syntax.hs in the rebound Tutorial.
 
 -}
-module Tutorial.Talk2(
+module Talks.Bristol.Talk2(
     Ty(..), Tm(..), BranchList(..), Pat(..),Bind1,BindP,instantiate1,
     module Rebound,
     module Pat) where

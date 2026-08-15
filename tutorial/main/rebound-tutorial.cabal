@@ -25,7 +25,7 @@ common common-stanza
     , AllowAmbiguousTypes
     , UndecidableInstances
     , FunctionalDependencies
-    , PackageImports
+    
 
 library
   import:
@@ -55,9 +55,12 @@ library
     , Tutorial.Exercise2
     , Tutorial.Exercise3
     , Tutorial.Exercise4
-    , Tutorial.Talk1
-    , Tutorial.Talk2
-    , Tutorial.Talk3
+    , Talks.Bristol.Talk1
+    , Talks.Bristol.Talk2
+    , Talks.Bristol.Talk3
+    , Talks.Hs26.Talk1
+    , Talks.Hs26.Talk2
+    , Talks.Hs26.Talk3
   hs-source-dirs: src
 
 test-suite tutorial-tests
