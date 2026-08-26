@@ -22,11 +22,12 @@
 
 {-
 
-    Examples of dependently-typed programming in Haskell, inspired 
+    Examples of dependently-typed programming (DTP) in Haskell, inspired 
     by rebound library
 
-    Part 1: Self-contained introduction
-    Part 2: Rebound in Haskell
+    Part I: A DTP Pearl: Well-scoped de Bruijn indices
+    Part II: A DTP "Pearl": Substitutions via shift lists
+    Part III: Reflecting on DTP in Haskell
 
  -}
 
@@ -41,17 +42,16 @@
     Expressive, and Well-Scoped Binding"
     Haskell Symposium 2025
 
+    - Efficient: supports working with delayed and reified substitutions
     - Expressive: reimplemented pi-forall demo implementation of
       dependently-typed language
-    - Efficient: implements of de Bruijn indices through delayed 
-      and reified substitutions
+    - Well-Scoped: Haskell's type system maintains domain-specific invariant
 
     https://github.com/sweirich/rebound 
 
-    NOTE: the website above includes lecture notes
-          and a link to the github repository, including 
-          library, examples, tutorial, exercises
-          and this file.
+    NOTE: the github repository includes the rebound library, 
+          examples, tutorial, exercises, pi-forall demo,
+          and this talk.
 
  -}
 
@@ -154,7 +154,6 @@ data Tm (n :: Nat) where
     Var   :: Fin n -> Tm n
     Lam   :: Tm (S n) -> Tm n
     App   :: Tm n -> Tm n -> Tm n
-      deriving (Eq)   
 
 
 -- | Identity function: λx. x  or  λ.0
@@ -165,16 +164,6 @@ ex_id = Lam (Var FZ)
 ex_const :: Tm Z
 ex_const = Lam (Lam (Var (FS FZ)))
 
-
-------------------------------------------------------------------------
--- * Alpha-equivalence: derivable
-------------------------------------------------------------------------
-
--- (==) is alpha-equivalence for this datatype
-
--- Fin is a *GADT* so we must use standalone deriving for equality
-deriving instance (Eq (Fin n))
--- Tm is not a GADT, so we can derive Eq
 
 ------------------------------------------------------------------------
 -- * Substitution
@@ -194,8 +183,10 @@ applyE env (App f a)      = App (applyE env f) (applyE env a)
 -- New variable maps to itself; all others are shifted 
 -- to the extended scope.
 up :: Env m n -> Env (S m) (S n)
-up env = Var FZ .: applyE (Var . FS) . env
+up env = Var FZ .: applyE shift . env
 
+shift :: Env n (S n)
+shift = Var . FS
 
 ------------------------------------------------------------------------
 -- * Evaluator
@@ -243,50 +234,6 @@ step _ = Nothing
       In Haskell, with QuickCheck, this property can be *tested* not 
       proven. (Tutorial material on generating well-scoped/well-typed 
       expressions are availble.)
-
--}
-
-
-------------------------------------------------------------------------
--- * Substitution environment interface
-------------------------------------------------------------------------
-
--- We have a data structure with a rich interface
-
-{-
-
-type Env m n 
-
--- lookup (total)
-(!)   :: Env m n -> Fin m -> Tm n
-
--- a little like a list
-nilE  :: Env Z n
-(.:)  :: Tm n -> Env m n -> Env (S m) n
-
--- a little like a function
-idE   :: Env n n
-(>>)  :: Env m n -> Env n p -> Env m p
-
-shift :: Env n (S n)
-up    :: Env m n -> Env (S m) (S n)
-
--}
-
-------------------------------------------------------------------------
--- * Alternative implementations, dependently-typed
-------------------------------------------------------------------------
-
-{-
-
-- Functions (as above)
-- Length-indexed lists
-- Defunctionalized (cf. Agda)
-- Shift-Skewed binary tree (cf. Rocq)
-
-- OR: Phantom-typed non-dependent implementation
-
-NOTE: Claude is very good at ornamentation
 
 -}
 
