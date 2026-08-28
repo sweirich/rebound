@@ -1,18 +1,19 @@
 
 ------------------------------------------------------------------------
---  Part III: Using the rebound library
+--  Part III: Using the rebound library, and reflections
 ------------------------------------------------------------------------
 
 module Talks.Hs26.Talk3 where
 
+-- Import rebound library
 import Rebound hiding (Ctx)
 import Rebound.Bind.Pat qualified as Rebound (Bind)
 import Rebound.Bind.Pat ( bind, getBody, getPat, instantiate )
 
-------------------------------------------------------------------------
--- * Let's see rebound in action
-------------------------------------------------------------------------
 
+------------------------------------------------------------------------
+-- * Challenge: Lang where # of binding vars not statically known
+------------------------------------------------------------------------
 {-
 
 -- lambda calculus with unit, products, and pattern matching
@@ -20,14 +21,11 @@ e ::= x | \ x . e | e1 e2
    | () | (e1,e2) | inj1 e | inj2 e   
    | case e of { brs }                
 
-
 -- list of branches
 brs ::=   {- empty -}  |  p -> e ; brs    
 
 -- pattern
 p ::= x | () | (p1,p2) | inj1 p
-
-Key challenge: number of bound variables isn't known statically
 
 -}
 
@@ -39,15 +37,10 @@ Key challenge: number of bound variables isn't known statically
 -- Binds `n` variables of type `Tm` in body of type `Tm`, using pattern `p`
 type Bind p n = Rebound.Bind Tm Tm p n
 
-data Tm (n :: Nat) where
-    Var   :: Fin n -> Tm n
-    Lam   :: Bind (SNat N1) n -> Tm n
-    App   :: Tm n -> Tm n -> Tm n
-    Unit  :: Tm n
-    Pair  :: Tm n -> Tm n -> Tm n
-    Inj   :: Int -> Tm n -> Tm n
-    Match :: Tm n -> BranchList n -> Tm n
-        deriving (Generic1)
+data Tm n = Var (Fin n) | Lam (Bind (SNat N1) n) | App (Tm n) (Tm n)  
+   | Unit | Pair (Tm n) (Tm n) | Inj Int (Tm n)   
+   | Match (Tm n) (BranchList n)
+     deriving (Generic1)
 
 -- A list of pattern bindings (BindP) of m variables, in scope n
 -- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
@@ -58,10 +51,10 @@ data BranchList (n :: Nat) where
 -- A pattern: m is the number of variables *bound* by the pattern
 -- A LocalName records a user-supplied name
 data Pat (m :: Nat) where
-    PVar  :: Pat N1   
-    PUnit :: Pat N0
-    PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)
-    PInj  :: Int -> Pat m -> Pat m
+    PVar  :: Pat N1                               -- x
+    PUnit :: Pat N0                               -- ()
+    PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)    -- (p1, p2)
+    PInj  :: Int -> Pat m -> Pat m                -- inj1 p / inj2 p
 
 
 -----------------------------------------------------------------
@@ -82,7 +75,6 @@ data Pat (m :: Nat) where
 
 instantiate1 :: (Sized p, Size p ~ N1) => Bind p n -> Tm n -> Tm n
 instantiate1 b t = instantiate b (t .: zeroE) 
-
 
 --------------------------------------------------------------------
 -- Sized instance (counting bound variables)
@@ -109,7 +101,6 @@ instance Sized (Pat m) where
 -- where
 --     applyEnv :: Env v m n -> Fin m -> v n
 
-
 -- >>> :t zeroE
 
 -- >>> :t (.:)
@@ -134,7 +125,6 @@ instance SubstVar Tm where
 --   c - type that we are substituting into
 
 -- >>> :t applyE
--- applyE :: Subst v c => Env v n m -> c n -> c m
 
 instance Subst Tm Tm where
   applyE :: Env Tm n m -> Tm n -> Tm m
@@ -152,16 +142,25 @@ instance Subst Tm BranchList where
   applyE r BNil = BNil
 
 
+-----------------------------------------------------------------
+-- * Why is Bind an abstract type?
+-----------------------------------------------------------------
+
+-- Can create instances for Subst (and other classes)
+--    instance SubstVar v => Subst v (Bind v c p)
+
+-- Simplifies other instances (see above)
+-- Allows optimization: delay substitution at binders, allowing 
+-- fused traversals
+
+
 --------------------------------------------------------------------
 -- * Generic Substitution (GHC.Generics)
 --------------------------------------------------------------------
 
--- can use GHC.Generics by replacing applyE with isVar
+-- can use GHC.Generics by replacing applyE above with isVar
 
 -- >>> :t isVar
--- isVar :: Subst v c => c n -> Maybe (v :~: c, Fin n)
-
-
 
 
 ------------------------------------------------------------------------
@@ -169,42 +168,24 @@ instance Subst Tm BranchList where
 ------------------------------------------------------------------------
 -- (==) is alpha-equivalence 
 
--- Tm is not a GADT, so we can derive Eq
+-- Tm is *not* a GADT, so we can derive Eq instance for it
 deriving instance (Eq (Tm n))
 
-
-instance Eq (Pat m) where
-  (==) :: Pat m -> Pat m -> Bool
-  PVar == PVar = True
-  PUnit == PUnit = True
-  (PInj i p1) == (PInj j p2) = i == j && p1 == p2
-  -- (PPair p1 p2) == (PPair p3 p4) = p1 == p3 && p2 == p4
+-- But Eq for BranchList is more challenging, due to the existential
+instance Eq (BranchList n) where
+  (==) :: BranchList n -> BranchList n -> Bool
+  BNil == BNil = True
+  BCons b1 brs1 == BCons b2 brs2 = {- b1 == b2 && -} brs1 == brs2
   _ == _ = False
-
--- >>> :t testEquality @Pat
-
--- >>> s0 == s0
-
--- >>> s0 == s1
-
--- >>> testEquality s0 s1
-
-
--- >>> testEquality s0 s0
 
 
 -- >>> :t BCons
 
--- Two branch list are equal when all patterns are equal and their 
--- bodies are equal
-instance Eq (BranchList n) where
-  (==) :: BranchList n -> BranchList n -> Bool
-  BNil == BNil = True
-  BCons b1 brs1 == BCons b2 brs2 = 
-    case testEquality (getPat b1) (getPat b2) of
-      Just Refl -> getBody b1 == getBody b2 && brs1 == brs2
-      Nothing -> False
-  _ == _ = False
+-- >>> :t getPat
+
+-- >>> :t getBody
+
+-- >>> :t testEquality @Pat
 
 -- Compare two patterns for equality, even if we don't statically know 
 -- that they bind the same number of variables.
@@ -269,103 +250,45 @@ patternMatch (PPair p1 p2) (Pair v1 v2) = do
 patternMatch (PInj i p) (Inj j v) | i == j = patternMatch p v
 patternMatch _ _ = Nothing
 
---------------------------------------------------------------------
--- * Summary
---------------------------------------------------------------------
-
-{-
-    Examples of concrete datatypes that use indices to express properties
-
-       Fin n    -- bounded natural number
-       SNat n   -- runtime witness of type-level nat
-       Tm  n, 
-       BranchList n, Pat n  
-       Env m n, Bind n
-
-    Examples of abstract datatypes w/indices
-
-    Operations where type-indices enforce invariants
-
-    Operations where heterogenous types
-
-
- -}
 
 --------------------------------------------------------------------
--- * Conclusion: What have we learned about DTP?
+-- * What works for in Haskell?
 --------------------------------------------------------------------
 
--- Internal verification is a sweet spot for DTP and works well in GHC 
---   + avoids equational reasoning
---   + avoids singletons
---   - requires heterogeneity (e.g. testEquality vs (==))
--- 
--- When external verification is required, GHC has minimal support
---   - more expressive coercion language (erasable proofs instead of axioms)
---   - combined terms and types, separate mechanism for dependency 
---     tracking (no singletons)
---   + coercion language already supports "extensional" equality
+--   Erasure is the default 
+--      - Agda can use @0 annotations, but erasure must be requested
+--      - Haskell is the opposite: singletons indicate non-erasure
+
+--   Type soundness holds in presence of nontermination 
+--      - Weirich et al. "A specification of Dependent Haskell", ICFP 2017
+--      - Can add pragmas to Agda, but proving termination is challenging
+--        when substitutions are delayed in binders
+
+--   Constraint solver automatically applies equations in types
+--      - Sjoeberg & Weirich. "Programming Up-to-congruence", POPL 2015
+
+--   Industrial-strength language features, libraries, and compiler (GHC)
+--      - deriving and GHC.Generics 
+--      - QuickCheck
+--      - Overlapping instances, MPTC + functional dependencies 
 
 --------------------------------------------------------------------
--- * Equality is heterogenous and informative
---------------------------------------------------------------------
-{-
-
-Compare:
-
-    (==) :: Pat a -> Pat a -> Bool
-
-    testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
-
-Needed to generalize type to define equivalence checking function.
-
-If we know the patterns are equal, we also know they bind the 
-same number of variables
-
--}
-
-
---------------------------------------------------------------------
--- * Proofs are possible
+-- * Conclusion: What have we learned about DTP from Haskell?
 --------------------------------------------------------------------
 
-
-{- Propositional equality in Haskell:
-
-     data (:~:) a b where 
-        Refl :: a :~: a
-
-  - Good:
-    
-     * testEquality produces evidence of index
-       equality during computation we need to do anyway
-        - no cost for producing this evidence
-        - GHC treats Refl as a "0-bit" value, so not cost to 
-          pass it around
-
-     * isVar returns evidence that var constructor is for 
-       the right type
-
-  - Not good: reasoning about the properties of arithmetic
-
-     * assoc : forall x y z. (x + y) + z :~: x + (y + z)
-
--}
+-- Internal verification is a sweet spot  
+--   + (:~:) type important even in this context
+--   + proofs written in this style are similar to Agda 
+--     (see Agda port in repository for more details)
+--   
+-- When external verification is required, GHC has "answers"
+--   + type inference supports "extensional" equality
+--   + more expressive coercion language for proofs would help
+--   + a combined terms and types would require a separate mechanism 
+--     for requesting runtime witnesses 
 
 
---------------------------------------------------------------------
--- * Singletons 
---------------------------------------------------------------------
 
-{- singletons are needed (SNat), but minor
 
-   Why did we need them?
 
-   - When 
-   - When the number of bound variables in a subterm is not statically 
-     known.
 
-   i.e. pattern matching can bind an arbitrary number of variables in 
-   each branch.
-
--}

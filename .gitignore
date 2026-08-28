@@ -29,3 +29,8 @@ cabal.project.local~
 *.hs-e
 stack.yaml.lock
 
+
+# Agda
+_build/
+*.agdai
+agda/build/

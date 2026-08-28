@@ -27,7 +27,7 @@
 
     Part I: A DTP Pearl: Well-scoped de Bruijn indices
     Part II: A DTP "Pearl": Substitutions via shift lists
-    Part III: Reflecting on DTP in Haskell
+    Part III: Reflecting on DTP in Haskell, using rebound
 
  -}
 
@@ -43,15 +43,13 @@
     Haskell Symposium 2025
 
     - Efficient: supports working with delayed and reified substitutions
-    - Expressive: reimplemented pi-forall demo implementation of
-      dependently-typed language
-    - Well-Scoped: Haskell's type system maintains domain-specific invariant
+    - Expressive: reimplemented pi-forall 
+    - Well-Scoped: type system maintains domain-specific invariant
 
     https://github.com/sweirich/rebound 
 
     NOTE: the github repository includes the rebound library, 
-          examples, tutorial, exercises, pi-forall demo,
-          and this talk.
+          examples, tutorial, exercises, pi-forall demo, and this talk.
 
  -}
 
@@ -64,42 +62,18 @@
 module Talks.Hs26.Talk1 where
 -- no imports in this part, we'll start from scratch
 
-------------------------------------------------------------------------
--- * External verification
-------------------------------------------------------------------------
 
--- | Unary natural (Peano) numbers
-data Nat where
-  Z :: Nat 
-  S :: Nat -> Nat
 
-n1 :: Nat
-n1 = S Z
 
--- A sequence is built like a list, but indexable via natural numbers
-type Seq a = Nat -> Maybe a
 
-snil :: Seq a 
-snil = \x -> Nothing
 
-scons :: a -> Seq a -> Seq a 
-scons x xs = \f -> case f of 
-                    Z -> Just x
-                    S n -> xs n
 
-example :: Seq String
-example = scons "a" snil
-
--- Out-of-domain access is runtime failure
--- >>> example n1
--- Nothing
-
--- External verification is not generally available within Haskell
--- but supported through various tools (LiquidHaskell, hs2coq, etc)
 
 ------------------------------------------------------------------------
 -- * Internal verification - GADT based
 ------------------------------------------------------------------------
+-- | Peano natural numbers
+data Nat = Z | S Nat
 
 -- | `Fin n` is the type of de Bruijn indices in scope n:
 -- the finite set `{0, 1, ..., n-1}`.
@@ -107,10 +81,11 @@ data Fin n where
     FZ :: Fin (S n)
     FS :: Fin n -> Fin (S n)
     
-f1 :: Fin (S (S Z))
+f1 :: Fin (S (S n))   -- Any scope >= 2
 f1 = FS FZ
 
--- Fin delimits the domain of the function    
+
+-- Requisite Vec example: Fin delimits the domain of the function    
 type Vec n a = Fin n -> a
 
 vnil :: Vec Z a 
@@ -123,8 +98,12 @@ x .: xs = \f -> case f of
                   FS f -> xs f
 
 
+(!) :: Vec n a -> Fin n -> a
+v ! x = v x
+
 -- Out-of-domain access is compile-time failure
 -- >>>  ("a" .: vnil) ! f1
+
 
 ------------------------------------------------------------------------
 -- * Internal vs. External verification
@@ -135,13 +114,11 @@ x .: xs = \f -> case f of
 Internal verification is more common in Agda
 External verification is more common in Lean/Rocq
 
-External verification is more general
-  - vectors can only reason about domains/indexing
-
+External verification is more general.
 But, when internal verification works, it is beautiful.
 
-  - we should treasure and display these pearls
-  - ... but not be surprised by their rarity
+We should treasure and display these pearls
+     ... but not be surprised by their rarity.
 
 -}
 
@@ -170,7 +147,11 @@ ex_const = Lam (Lam (Var (FS FZ)))
 ------------------------------------------------------------------------
 
 -- | A substitution environment maps `m` variables to terms in scope `n`.
-type Env m n = Fin m -> Tm n
+type Env m n = Vec m (Tm n)
+
+-- Identity enviroment, another terminator for a Vec
+idE :: Env n n
+idE = Var
 
 -- | Apply a substitution environment to a term, replacing every free
 -- variable  
@@ -183,13 +164,14 @@ applyE env (App f a)      = App (applyE env f) (applyE env a)
 -- New variable maps to itself; all others are shifted 
 -- to the extended scope.
 up :: Env m n -> Env (S m) (S n)
-up env = Var FZ .: applyE shift . env
+up env = Var FZ .: shiftE env
 
-shift :: Env n (S n)
-shift = Var . FS
+-- | Shift an environment to a new scope
+shiftE :: Env n m -> Env n (S m)
+shiftE env = applyE (Var . FS) . env
 
 ------------------------------------------------------------------------
--- * Evaluator
+-- * Evaluator: Internal verification for well-scoped terms
 ------------------------------------------------------------------------
 
 -- Only one kind of value in pure lambda calculus
@@ -203,37 +185,51 @@ eval (Lam b)   = VLam b
 eval (App m n) = eval (instantiate (eval m) n)
 
     
-
 -- | Open a single-variable binder by substituting `t` for the bound variable.
 instantiate :: Val -> Tm Z -> Tm Z
-instantiate (VLam body) t = applyE (t .: vnil) body
+instantiate (VLam body) t = applyE (t .: idE) body
+
+
+
+
+
+
+
+
+
+-- End of Part I ---
+
+
+
+
 
 ------------------------------------------------------------------------
--- * Internal verification for well-scoped terms
+-- * Extra definitions
 ------------------------------------------------------------------------
 
--- Small step 
-step :: Tm Z -> Maybe (Tm Z)
-step (App (Lam b) n) = Just (instantiate (VLam b) n)
-step (App m n) | Just m' <- step m 
-               = Just (App m' n)
-step _ = Nothing
+deriving instance Eq Nat
 
-{- 
+instance Eq (Fin n) where
+  FZ == FZ = True
+  (FS f1) == (FS f2) = f1 == f2
+  _ == _ = False
 
-- Internal verification provides an automatic precondition to eval
+instance Show Nat where
+  show n = show (fromNat n)
 
-- Not every property about eval be stated using internal verification
+instance Show (Fin n) where
+  show f = show (toNat f)
 
-      step :: Tm Z -> Tm Z
+instance Num Nat where
+  fromInteger 0 = Z
+  fromInteger n | n > 0 = S (fromInteger (n-1))
+  fromInteger n = error "cannot convert negative number to Nat"
 
-      lemma step_sound :: forall t1 t2,
-         step t1 = Just t2 -> 
-         eval t1 = eval t2 
+fromNat :: Nat -> Int
+fromNat Z = 0
+fromNat (S n) = 1 + fromNat n 
 
-      In Haskell, with QuickCheck, this property can be *tested* not 
-      proven. (Tutorial material on generating well-scoped/well-typed 
-      expressions are availble.)
-
--}
+toNat :: Fin n -> Nat
+toNat FZ = Z
+toNat (FS n) = S (toNat n)
 
