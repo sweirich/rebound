@@ -252,20 +252,21 @@ Haskell is encoding a constraint that Agda states by construction:
 ## Termination
 
 Haskell checks nothing here, and "non-termination by default" is on the
-talk's list of what it gets right. Fifty-one definitions escape the
-termination checker — 22 `TERMINATING` and 29 `NON_TERMINATING`. All of
+talk's list of what it gets right. Sixty-two definitions escape the
+termination checker — 33 `TERMINATING` and 29 `NON_TERMINATING`. All of
 them are in client code: `rebound/` needs none and passes `agda --safe`
 in full, as does `examples/LCWF.agda`.
 
 | What | Pragma | # | Why |
 | --- | --- | --- | --- |
 | every `eval` / `nf` / `whnf` / `norm`, and the type checkers that call them | `NON_TERMINATING` | 29 | genuinely partial — untyped or partially-typed calculi, and *should* be |
-| every syntax's substitution traversal (`applyE`, `applyExp`, `applyTm`, `applyTy`) | `TERMINATING` | 10 | mutually recursive with `comp`, which substitutes into terms stored in an environment |
+| every syntax's substitution traversal (`applyE`, `applyExp`, `applyTm`, `applyTy`, `applyAny`) | `TERMINATING` | 13 | mutually recursive with `comp`, which substitutes into terms stored in an environment |
+| alpha-equivalence (`eqTm`, `eqExp`, `eqTy`) | `TERMINATING` | 5 | `getBody` applies the suspended substitution, so the body is not a subterm |
+| `strengthenExp`, `appearsFreeExp` | `TERMINATING` | 5 | recurse through `Bind`, hence through `getBody` |
 | small-step `step` | `TERMINATING` | 4 | calls `instantiate` / `findBranch`, whose results are subterms of nothing |
-| alpha-equivalence (`eqTm`, `eqExp`, `eqTy`) | `TERMINATING` | 3 | `getBody` applies the suspended substitution, so the body is not a subterm |
-| `strengthenExp`, `appearsFreeExp` | `TERMINATING` | 3 | recurse through `Bind`, hence through `getBody` |
+| bidirectional checkers (`ensureType`, `checkType`, `tc`) | `TERMINATING` | 4 | recurse on `getBody`, and `ensureType` is mutual with `inferType` |
 | `DepMatch.patternMatch` | `TERMINATING` | 1 | the `PPair` case recurses on a *substituted* pattern |
-| `SystemF.tc` | `TERMINATING` | 1 | recurses on `getBody` |
+| `PureSystemF.pp'` | `TERMINATING` | 1 | the pretty printer recurses under binders via `getBody` |
 
 The count tracks the number of examples, not the difficulty: each ported
 syntax contributes roughly one `TERMINATING` for its traversal plus one

@@ -11,12 +11,15 @@ import Rebound.Bind.Pat qualified as Rebound (Bind)
 import Rebound.Bind.Pat ( bind, getBody, getPat, instantiate )
 
 
+
+
+
+
+
 ------------------------------------------------------------------------
 -- * Challenge: Lang where # of binding vars not statically known
 ------------------------------------------------------------------------
-{-
-
--- lambda calculus with unit, products, and pattern matching
+{-  -- lambda calculus with unit, products, and pattern matching
 e ::= x | \ x . e | e1 e2 
    | () | (e1,e2) | inj1 e | inj2 e   
    | case e of { brs }                
@@ -32,15 +35,19 @@ p ::= x | () | (p1,p2) | inj1 p
 ------------------------------------------------------------------------
 -- * Syntax and binding specification
 ------------------------------------------------------------------------
-
 -- rebound exports abstract `Bind` type 
--- Binds `n` variables of type `Tm` in body of type `Tm`, using pattern `p`
+-- Binds `n` variables of type `Tm` in body of type `Tm`
+-- using pattern `p`
 type Bind p n = Rebound.Bind Tm Tm p n
 
 data Tm n = Var (Fin n) | Lam (Bind (SNat N1) n) | App (Tm n) (Tm n)  
    | Unit | Pair (Tm n) (Tm n) | Inj Int (Tm n)   
    | Match (Tm n) (BranchList n)
      deriving (Generic1)
+
+
+
+
 
 -- A list of pattern bindings (BindP) of m variables, in scope n
 -- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
@@ -49,12 +56,15 @@ data BranchList (n :: Nat) where
     BCons :: Bind (Pat m) n -> BranchList n -> BranchList n
       
 -- A pattern: m is the number of variables *bound* by the pattern
--- A LocalName records a user-supplied name
 data Pat (m :: Nat) where
     PVar  :: Pat N1                               -- x
     PUnit :: Pat N0                               -- ()
     PPair :: Pat m1 -> Pat m2 -> Pat (m2 + m1)    -- (p1, p2)
     PInj  :: Int -> Pat m -> Pat m                -- inj1 p / inj2 p
+
+
+
+
 
 
 -----------------------------------------------------------------
@@ -76,8 +86,10 @@ data Pat (m :: Nat) where
 instantiate1 :: (Sized p, Size p ~ N1) => Bind p n -> Tm n -> Tm n
 instantiate1 b t = instantiate b (t .: zeroE) 
 
+
+
 --------------------------------------------------------------------
--- Sized instance (counting bound variables)
+-- Sized instance for Pat (counts bound variables)
 --------------------------------------------------------------------
 
 instance Sized (Pat m) where
@@ -93,19 +105,17 @@ instance Sized (Pat m) where
 
 
 
---------------------------------------------------------------------
--- * Environments 
---------------------------------------------------------------------
 
--- Rebound exports an environment type:  `Env v m n` 
--- where
---     applyEnv :: Env v m n -> Fin m -> v n
 
--- >>> :t zeroE
+--------------------------------------------------------------------
+-- * Environments: `Env v m n`
+--------------------------------------------------------------------
 
 -- >>> :t (.:)
 
 -- Some operations need to identify "Var" constructor
+(!) :: SubstVar v => Env v m n -> Fin m -> v n
+(!) = applyEnv
 
 -- >>> :t idE
 
@@ -119,7 +129,6 @@ instance SubstVar Tm where
 --------------------------------------------------------------------
 -- * Substitution
 --------------------------------------------------------------------
-
 -- applyE is a member multiparameter type class "Subst v c"
 --   v - type in RHS of environment
 --   c - type that we are substituting into
@@ -142,6 +151,9 @@ instance Subst Tm BranchList where
   applyE r BNil = BNil
 
 
+
+
+
 -----------------------------------------------------------------
 -- * Why is Bind an abstract type?
 -----------------------------------------------------------------
@@ -149,9 +161,13 @@ instance Subst Tm BranchList where
 -- Can create instances for Subst (and other classes)
 --    instance SubstVar v => Subst v (Bind v c p)
 
--- Simplifies other instances (see above)
--- Allows optimization: delay substitution at binders, allowing 
+
+-- Allows optimization: store substitution at binders, allowing 
 -- fused traversals
+
+
+
+
 
 
 --------------------------------------------------------------------
@@ -163,42 +179,11 @@ instance Subst Tm BranchList where
 -- >>> :t isVar
 
 
-------------------------------------------------------------------------
--- * Alpha-equivalence
-------------------------------------------------------------------------
--- (==) is alpha-equivalence 
-
--- Tm is *not* a GADT, so we can derive Eq instance for it
-deriving instance (Eq (Tm n))
-
--- But Eq for BranchList is more challenging, due to the existential
-instance Eq (BranchList n) where
-  (==) :: BranchList n -> BranchList n -> Bool
-  BNil == BNil = True
-  BCons b1 brs1 == BCons b2 brs2 = {- b1 == b2 && -} brs1 == brs2
-  _ == _ = False
 
 
--- >>> :t BCons
 
--- >>> :t getPat
 
--- >>> :t getBody
 
--- >>> :t testEquality @Pat
-
--- Compare two patterns for equality, even if we don't statically know 
--- that they bind the same number of variables.
-instance TestEquality Pat where
-  testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
-  testEquality (PPair p1 p2) (PPair p1' p2') = do
-    Refl <- testEquality p1 p1'
-    Refl <- testEquality p2 p2'
-    return Refl
-  testEquality PVar  PVar  = return Refl
-  testEquality PUnit PUnit = return Refl
-  testEquality (PInj i p) (PInj j p') | i == j = testEquality p p'
-  testEquality _ _ = Nothing
 
 
 --------------------------------------------------------------------
@@ -252,12 +237,13 @@ patternMatch _ _ = Nothing
 
 
 --------------------------------------------------------------------
--- * What works for in Haskell?
+-- * What have we learned about DTP from Haskell?
 --------------------------------------------------------------------
 
 --   Erasure is the default 
 --      - Agda can use @0 annotations, but erasure must be requested
 --      - Haskell is the opposite: singletons indicate non-erasure
+--      - Note: combined term and type language still needs singletons
 
 --   Type soundness holds in presence of nontermination 
 --      - Weirich et al. "A specification of Dependent Haskell", ICFP 2017
@@ -272,23 +258,72 @@ patternMatch _ _ = Nothing
 --      - QuickCheck
 --      - Overlapping instances, MPTC + functional dependencies 
 
+
+
 --------------------------------------------------------------------
--- * Conclusion: What have we learned about DTP from Haskell?
+-- * Conclusion
 --------------------------------------------------------------------
 
 -- Internal verification is a sweet spot  
---   + (:~:) type important even in this context
---   + proofs written in this style are similar to Agda 
---     (see Agda port in repository for more details)
+--   - proofs written in this style are similar to Agda 
+--        (see Agda port in repository for more details)
+--   - ... but relatively rare
+ 
 --   
--- When external verification is required, GHC has "answers"
---   + type inference supports "extensional" equality
---   + more expressive coercion language for proofs would help
---   + a combined terms and types would require a separate mechanism 
---     for requesting runtime witnesses 
+-- When external verification is required, GHC unique support
+--   - type inference supports "extensional" equality
+--   - ... but more expressive coercion language would help
+
+
+
+
+
+--- End of Part III
 
 
 
 
 
 
+
+
+------------------------------------------------------------------------
+-- * Bonus: Alpha-equivalence
+------------------------------------------------------------------------
+-- (==) is alpha-equivalence 
+
+{-
+
+-- Tm is *not* a GADT, so we can derive Eq instance for it
+deriving instance (Eq (Tm n))
+
+-- But Eq for BranchList is more challenging, due to the existential
+instance Eq (BranchList n) where
+  (==) :: BranchList n -> BranchList n -> Bool
+  BNil == BNil = True
+  BCons b1 brs1 == BCons b2 brs2 = {- b1 == b2 && -} brs1 == brs2
+  _ == _ = False
+
+
+-- >>> :t BCons
+
+-- >>> :t getPat
+
+-- >>> :t getBody
+
+-- >>> :t testEquality @Pat
+
+-- Compare two patterns for equality, even if we don't statically know 
+-- that they bind the same number of variables.
+instance TestEquality Pat where
+  testEquality :: Pat a -> Pat b -> Maybe (a :~: b)
+  testEquality (PPair p1 p2) (PPair p1' p2') = do
+    Refl <- testEquality p1 p1'
+    Refl <- testEquality p2 p2'
+    return Refl
+  testEquality PVar  PVar  = return Refl
+  testEquality PUnit PUnit = return Refl
+  testEquality (PInj i p) (PInj j p') | i == j = testEquality p p'
+  testEquality _ _ = Nothing
+
+-}

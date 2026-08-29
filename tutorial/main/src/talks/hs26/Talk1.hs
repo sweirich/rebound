@@ -1,9 +1,9 @@
 {-
 
 
-             What have we learned about 
-            Dependently Typed Programming 
-                 from Haskell?
+              What have we learned about 
+             Dependently Typed Programming 
+                  from Haskell?
 
                 Stephanie Weirich
                 sweirich@upenn.edu
@@ -22,12 +22,12 @@
 
 {-
 
-    Examples of dependently-typed programming (DTP) in Haskell, inspired 
-    by rebound library
+    Examples of dependently-typed programming (DTP) in Haskell, 
+    inspired by rebound library
 
     Part I: A DTP Pearl: Well-scoped de Bruijn indices
     Part II: A DTP "Pearl": Substitutions via shift lists
-    Part III: Reflecting on DTP in Haskell, using rebound
+    Part III: Reflecting on DTP in Haskell
 
  -}
 
@@ -35,10 +35,7 @@
 ------------------------------------------------------------------------
 --  Rebound library: Well-scoped de Bruijn indices in Haskell
 ------------------------------------------------------------------------
-
-{-
-
-    Noé De Santo, Stephanie Weirich, "Rebound: Efficient, 
+{-  Noé De Santo, Stephanie Weirich, "Rebound: Efficient, 
     Expressive, and Well-Scoped Binding"
     Haskell Symposium 2025
 
@@ -50,7 +47,6 @@
 
     NOTE: the github repository includes the rebound library, 
           examples, tutorial, exercises, pi-forall demo, and this talk.
-
  -}
 
 
@@ -70,7 +66,7 @@ module Talks.Hs26.Talk1 where
 
 
 ------------------------------------------------------------------------
--- * Internal verification - GADT based
+-- * Internal verification example in Haskell
 ------------------------------------------------------------------------
 -- | Peano natural numbers
 data Nat = Z | S Nat
@@ -84,8 +80,9 @@ data Fin n where
 f1 :: Fin (S (S n))   -- Any scope >= 2
 f1 = FS FZ
 
-
--- Requisite Vec example: Fin delimits the domain of the function    
+------------------------------------------------------------------------
+-- * Vectors - Fin delimits the domain of the function
+------------------------------------------------------------------------
 type Vec n a = Fin n -> a
 
 vnil :: Vec Z a 
@@ -93,10 +90,7 @@ vnil = \x -> case x of {}
 
 infixr 5 .:
 (.:) :: a -> Vec n a -> Vec (S n) a
-x .: xs = \f -> case f of 
-                  FZ -> x
-                  FS f -> xs f
-
+x .: xs = \f -> case f of { FZ -> x ; FS f -> xs f }
 
 (!) :: Vec n a -> Fin n -> a
 v ! x = v x
@@ -111,8 +105,8 @@ v ! x = v x
 
 {- 
 
-Internal verification is more common in Agda
-External verification is more common in Lean/Rocq
+Internal verification is more common in Agda.
+External verification is more common in Lean/Rocq.
 
 External verification is more general.
 But, when internal verification works, it is beautiful.
@@ -145,24 +139,17 @@ ex_const = Lam (Lam (Var (FS FZ)))
 ------------------------------------------------------------------------
 -- * Substitution
 ------------------------------------------------------------------------
-
 -- | A substitution environment maps `m` variables to terms in scope `n`.
 type Env m n = Vec m (Tm n)
 
--- Identity enviroment, another terminator for a Vec
-idE :: Env n n
-idE = Var
-
--- | Apply a substitution environment to a term, replacing every free
--- variable  
+-- | Apply an environment to a term, replacing every free variable  
 applyE :: Env m n -> Tm m -> Tm n
-applyE env (Var x)        = env x
+applyE env (Var x)        = env ! x
 applyE env (Lam b)        = Lam (applyE (up env) b)
 applyE env (App f a)      = App (applyE env f) (applyE env a)
 
--- | Lift under one binder
--- New variable maps to itself; all others are shifted 
--- to the extended scope.
+-- | Lift under one binder: New variable maps to itself; 
+-- all others are shifted to the extended scope.
 up :: Env m n -> Env (S m) (S n)
 up env = Var FZ .: shiftE env
 
@@ -170,10 +157,14 @@ up env = Var FZ .: shiftE env
 shiftE :: Env n m -> Env n (S m)
 shiftE env = applyE (Var . FS) . env
 
+
+
+
+
+
 ------------------------------------------------------------------------
 -- * Evaluator: Internal verification for well-scoped terms
 ------------------------------------------------------------------------
-
 -- Only one kind of value in pure lambda calculus
 newtype Val = VLam (Tm (S Z))
 
@@ -184,10 +175,13 @@ eval (Var x)   = case x of {}     -- impossible case
 eval (Lam b)   = VLam b
 eval (App m n) = eval (instantiate (eval m) n)
 
-    
 -- | Open a single-variable binder by substituting `t` for the bound variable.
 instantiate :: Val -> Tm Z -> Tm Z
-instantiate (VLam body) t = applyE (t .: idE) body
+instantiate (VLam body) t = applyE (t .: Var) body
+
+-- | Identity enviroment -- doesn't change the scope
+idE :: Env n n
+idE = Var
 
 
 

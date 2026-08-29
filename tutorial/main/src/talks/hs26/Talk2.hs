@@ -11,6 +11,12 @@ module Talks.Hs26.Talk2 where
 import Data.Fin
 import Rebound.Lib hiding (Vec)
 
+
+
+
+
+
+
 ------------------------------------------------------------
 -- * Recap of Part I: Well-scoped AST + interpreter
 ------------------------------------------------------------
@@ -30,16 +36,18 @@ applyE env (Var x)     = env ! x
 applyE env (App t1 t2) = App (applyE env t1) (applyE env t2)
 applyE env (Lam t)     = Lam (applyE (up env) t)
 
-------------------------------------------------------------
--- * Need environments with rich interface
-------------------------------------------------------------
 
+
+
+
+------------------------------------------------------------
+-- * Need environments with informative interface
+------------------------------------------------------------
 -- lookup a variable (total operation!)
 (!)  :: Env m n -> Fin m -> Tm n
 
--- identity substitution, does not modify scope 
+-- identity, does not modify scope
 idE  :: Env n n
-
 -- extend with new definition (cons)
 (.:) :: Tm n -> Env m n -> Env (S m) n
 
@@ -51,18 +59,25 @@ up s = Var FZ .: shiftE s
 -- shift to a larger scope
 shiftE :: Env n m -> Env n (S m)
 
+
+
+
+
+
 ------------------------------------------------------------------------
--- * Many implementations
+-- * Many implementations for environments
 ------------------------------------------------------------------------
 
 -- Functions (e.g. Fin m -> Tm n, from Part I)
--- Length-indexed lists (e.g. Vec m (T n))
+
+-- Length-indexed lists (e.g. usual definitions of Vec m (Tm n))
+
 -- Defunctionalized interface (cf. Agda)
--- Shift-Skewed binary tree (cf. Rocq)
+
+-- Shift-Skewed lists (cf. Rocq)
 
 -- OR: non-dependent implementation using phantom types
-
--- NOTE: Claude is very good at ornamentation
+-- [NOTE: Claude is very good at ornamentation]
 
 
 
@@ -76,13 +91,15 @@ shiftE :: Env n m -> Env n (S m)
 ------------------------------------------------------------
 
 -- Recall:
---    up env = Var FZ .: shift env
+--    up env = Var FZ .: shiftE env
 --
 --    shiftE env = applyE (Var . FS) . env
 -- 
 -- "applyE" weakens each term in the range of env
--- But, *every* binder shifts---this is expensive!
+-- But, going under *every* binder shifts---this is expensive!
 -- Can we fuse multiple traversals?
+
+
 
 
 
@@ -90,9 +107,9 @@ shiftE :: Env n m -> Env n (S m)
 -- **Key idea**: represent env as a length-indexed list, with 
 -- interspersed, **delayed** n-ary shifting
 
--- (This is a *very* simplified version of Rocq's implementation.
--- adapted from https://mathisbd.github.io/blog/esubstitutions.html
--- and ornamented with scope indices.)
+-- (This is a *very* simplified version of Rocq's implementation, 
+-- which also adds a tree structure for O(log n) lookup.
+-- See https://mathisbd.github.io/blog/esubstitutions.html)
 
 ------------------------------------------------------------
 -- * ShiftList implementation
@@ -107,9 +124,8 @@ idE  = Id
 
 (.:) = Cons
 
--- smart "shift" operation, fuses multiple shifts
-shiftE (Shift k e) = Shift (sPlus s1 k) e
-shiftE e           = Shift s1 e
+shiftE = Shift s1
+
 
 
 
@@ -118,7 +134,6 @@ shiftE e           = Shift s1 e
 ------------------------------------------------------------
 -- * ASIDE: SNat - singleton nats
 ------------------------------------------------------------
-
 -- The type `SNat` provide *runtime* access to type-level 
 -- natural numbers. This is because, in Haskell, numbers 
 -- that appear in types are erased before execution.
@@ -137,7 +152,7 @@ shiftE e           = Shift s1 e
 -- * SNat - in action
 ------------------------------------------------------------
 
--- Can use SNat to shift `Fin` indices to new scopes.
+-- Need a SNat to shift `Fin` indices to new scopes.
 
 -- >>> :t shiftN
 
@@ -152,13 +167,11 @@ shiftE e           = Shift s1 e
 ------------------------------------------------------------
 -- * Implementation of (!) with embedded shifts
 ------------------------------------------------------------
-
 -- Recall type of environment
 -- >>> :i Env
 
 
--- | As we traverse the list, accumulate amount to shift and 
--- apply it all at once, fusing multiple traversals
+-- | Traverse the list, accumulating amount to shift
 env ! x = lookupRec s0 env x
 
 lookupRec :: forall k m n.
@@ -190,14 +203,14 @@ lookupRec k s i =
 ------------------------------------------------------------------
 -- * Associativity axiom
 ------------------------------------------------------------------
-
 -- Associativity axiom returns a witness for type equality
+-- implemented by unsafeCoerce
 
 -- >>> :i Refl
 
 -- >>> :t axiomAssoc
 
--- | "Proof" of associativity
+-- | "Proof" 
 lemmaAssoc :: forall m n p. SNat p -> p + (m + n) :~: (p + m) + n
 lemmaAssoc p = case snat_ p of 
             SZ_ -> Refl
@@ -210,7 +223,7 @@ lemmaAssoc p = case snat_ p of
 
 
 
-{- NB: compare to Agda version of proof:
+{- Compare to Agda version of proof:
 
 -- | Agda Proof 
 @0 assoc : ∀ (@0 p : Nat) {@0 m n} → p + (m + n) ≡ (p + m) + n
@@ -232,12 +245,22 @@ cong f Refl = Refl
 -- * Associativity lemma
 ------------------------------------------------------------------
 
--- So why does axiomAssoc use unsafeCoerce?
+-- So, why does axiomAssoc use unsafeCoerce?
+
+
+
+
+
+
+
+
+
 
 -- We don't want to use lemmaAssoc !
---   + Haskell has to *run* the proof to make sure that it is real
---   + SNat p is not available where we need the lemma, so we  
---     have to pass it around.
+--   + Haskell has to *run* the proof to make sure that it is real,
+--     that takes time.
+--   + SNat p is not available where we need assoc, so we  
+--     have to pass it at runtime too.
 
 
 
@@ -271,7 +294,7 @@ cong f Refl = Refl
 -- expressed in a consistent language.
 --
 -- For more expressiveness: extend GHC's coercion language to include 
--- induction. Blueprint in:
+-- induction. See:
 -- 
 --    Yiyun Liu and Stephanie Weirich. "Dependently-Typed Programming 
 --    with Logical Equality Reflection", ICFP 2023.
