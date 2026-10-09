@@ -139,12 +139,16 @@ shiftE = Shift s1
 -- that appear in types are erased before execution.
 
 -- >>> :t s0
+-- s0 :: SNat N0
 
 -- >>> :t s1
+-- s1 :: SNat N1
 
 -- >>> :t sPlus
+-- sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
 
 -- >>> toInt (sPlus s2 s3)
+-- 5
 
 
 
@@ -155,8 +159,10 @@ shiftE = Shift s1
 -- Need a SNat to shift `Fin` indices to new scopes.
 
 -- >>> :t shiftN
+-- shiftN :: SNat n -> Fin m -> Fin (n + m)
 
 -- >>> shiftN s2 (f1 :: Fin N3)
+-- 3
 
 
 
@@ -169,6 +175,13 @@ shiftE = Shift s1
 ------------------------------------------------------------
 -- Recall type of environment
 -- >>> :i Env
+-- type role Env nominal nominal
+-- type Env :: Nat -> Nat -> *
+-- data Env m n where
+--   Id :: Env m m
+--   Cons :: Tm n -> Env m1 n -> Env ('S m1) n
+--   Shift :: SNat k -> Env m n1 -> Env m (k + n1)
+--   	-- Defined at /Users/sweirich/github/haskell/rebound/tutorial/main/src/talks/hs26/Talk2.hs:118:1
 
 
 -- | Traverse the list, accumulating amount to shift
@@ -207,8 +220,14 @@ lookupRec k s i =
 -- implemented by unsafeCoerce
 
 -- >>> :i Refl
+-- type role (:~:) nominal nominal
+-- type (:~:) :: forall {k}. k -> k -> *
+-- data (:~:) a b where
+--   Refl :: forall {k} (a :: k). (:~:) a a
+--   	-- Defined in ‘GHC.Internal.Data.Type.Equality’
 
 -- >>> :t axiomAssoc
+-- axiomAssoc :: (p + (m + n)) :~: ((p + m) + n)
 
 -- | "Proof" 
 lemmaAssoc :: forall m n p. SNat p -> p + (m + n) :~: (p + m) + n

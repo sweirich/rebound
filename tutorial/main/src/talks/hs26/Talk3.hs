@@ -28,7 +28,7 @@ e ::= x | \ x . e | e1 e2
 brs ::=   {- empty -}  |  p -> e ; brs    
 
 -- pattern
-p ::= x | () | (p1,p2) | inj1 p
+p ::= x | () | (p1,p2) | inj1 p | inj2 p
 
 -}
 
@@ -72,14 +72,17 @@ data Pat (m :: Nat) where
 -----------------------------------------------------------------
 
 -- >>> :t bind
+-- bind :: (Sized pat, Subst v c) => pat -> c (Size pat + n) -> Bind v c pat n
 
 -- >>> :t getPat
+-- getPat :: Bind v c pat n -> pat
 
 -- Any type that is used as a pattern *must* be an
 -- instance of the `Sized` type class, so that the library
 -- can determine the number of binding variables.
 
 -- >>> :t getBody
+-- getBody :: (Sized pat, Subst v c) => Bind v c pat n -> c (Size pat + n)
 
 -- >>> :t instantiate
 
@@ -135,7 +138,10 @@ instance SubstVar Tm where
 
 -- >>> :t applyE
 
-instance Subst Tm Tm where
+instance Subst Tm Tm where 
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+  {-
   applyE :: Env Tm n m -> Tm n -> Tm m
   applyE r (Var x)       = applyEnv r x
   applyE r (App e1 e2)   = App (applyE r e1) (applyE r e2)
@@ -144,7 +150,7 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2)  = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e)     = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (applyE r brs)
-
+  -}
 instance Subst Tm BranchList where
   applyE :: Env Tm n m -> BranchList n -> BranchList m
   applyE r (BCons b brs) = BCons (applyE r b) (applyE r brs)

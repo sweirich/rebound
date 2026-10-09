@@ -97,6 +97,12 @@ v ! x = v x
 
 -- Out-of-domain access is compile-time failure
 -- >>>  ("a" .: vnil) ! f1
+-- Couldn't match type 'S n0_aLdTl[tau:1] with 'Z
+-- Expected: Fin ('S 'Z)
+--   Actual: Fin ('S ('S n0_aLdTl[tau:1]))
+-- In the second argument of `(!)', namely `f1'
+-- In the expression: ("a" .: vnil) ! f1
+-- In an equation for `it_aLdRU': it_aLdRU = ("a" .: vnil) ! f1
 
 
 ------------------------------------------------------------------------
@@ -180,9 +186,11 @@ instantiate :: Val -> Tm Z -> Tm Z
 instantiate (VLam body) t = applyE (t .: Var) body
 
 -- | Identity enviroment -- doesn't change the scope
-idE :: Env n n
+idE :: Env Z Z
 idE = Var
 
+nilE :: Env Z n
+nilE = \x -> case x of {}
 
 
 
