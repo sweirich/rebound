@@ -306,6 +306,12 @@ instance Num Nat where
   fromInteger 0 = Z
   fromInteger n | n > 0 = S (fromInteger (n-1))
   fromInteger n = error "cannot convert negative number to Nat"
+  (*) = undefined
+  (+) = undefined
+  abs = undefined
+  signum = undefined
+  (-) = undefined
+
 
 fromNat :: Nat -> Int
 fromNat Z = 0
@@ -314,4 +320,5 @@ fromNat (S n) = 1 + fromNat n
 toNat :: Fin n -> Nat
 toNat FZ = Z
 toNat (FS n) = S (toNat n)
+
 
