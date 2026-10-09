@@ -5,7 +5,7 @@
     via ShiftLists
 
   ---------------------------------------------------------------------
-  Agda transcription of Talks.Hs26.Talk2.  This is the part of the talk
+  Agda transcription of Hs26.Talk2.  This is the part of the talk
   where Haskell and Agda diverge the most, because the whole section is
   about the two things Agda does not have to worry about:
 

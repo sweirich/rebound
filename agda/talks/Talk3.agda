@@ -3,7 +3,7 @@
 ------------------------------------------------------------------------
 --  Part III: Using the rebound library, and reflections
 --
---  Agda transcription of Talks.Hs26.Talk3.  See the "AGDA:" notes for
+--  Agda transcription of Hs26.Talk3.  See the "AGDA:" notes for
 --  the places where the two languages part company.
 --
 --  Scopes, and the number of variables a pattern binds, are marked "@0":

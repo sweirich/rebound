@@ -1,17 +1,16 @@
 {-
 
 
-              What have we learned about 
-             Dependently Typed Programming 
-                  from Haskell?
+          Adventures in Dependent Haskell: 
+              Well-scoped expressions
 
                 Stephanie Weirich
                 sweirich@upenn.edu
             
               University of Pennsylvania
 
-                 Haskell Symposium
-                   August 2026
+                 Lambda World
+                 October 2026
 
 -}
 
@@ -26,8 +25,7 @@
     inspired by rebound library
 
     Part I: A DTP Pearl: Well-scoped de Bruijn indices
-    Part II: A DTP "Pearl": Substitutions via shift lists
-    Part III: Reflecting on DTP in Haskell
+    Part II: Using rebound at scale, and reflecting on Dependent Haskell
 
  -}
 
@@ -55,7 +53,7 @@
 -- * Part I: A Dependently-Typed Pearl
 ------------------------------------------------------------------------
 
-module Talks.Hs26.Talk1 where
+module Lambdaworld.Talk1 where
 -- no imports in this part, we'll start from scratch
 
 
@@ -159,9 +157,13 @@ applyE env (App f a)      = App (applyE env f) (applyE env a)
 up :: Env m n -> Env (S m) (S n)
 up env = Var FZ .: shiftE env
 
+-- Compose environments (apply the second to the range of the first)
+(.>>) :: Env m n -> Env n p -> Env m p
+e1 .>> e2 = applyE e2 . e1
+
 -- | Shift an environment to a new scope
 shiftE :: Env n m -> Env n (S m)
-shiftE env = applyE (Var . FS) . env
+shiftE env = env .>> (Var . FS)
 
 
 
@@ -191,6 +193,84 @@ idE = Var
 
 nilE :: Env Z n
 nilE = \x -> case x of {}
+
+
+------------------------------------------------------------------------
+-- * Transition: building a library for variable binding
+------------------------------------------------------------------------
+
+-- * Environment data structure `Env m n`
+
+{-
+-- lookup a variable (total operation!)
+(!)  :: Env m n -> Fin m -> Tm n
+
+-- identity, does not modify scope
+idE  :: Env n n
+
+-- extend with new definition (cons)
+(.:) :: Tm n -> Env m n -> Env (S m) n
+
+-- lift under binder: new variable maps to itself; 
+-- all others are shifted to the extended scope
+up   :: Env m n -> Env (S m) (S n)
+
+-- compose two binders
+(.>>) :: Env m n -> Env n p -> Env m p
+
+-- shift to a larger scope
+shiftE :: Env n m -> Env n (S m)
+-}
+
+
+------------------------------------------------------------------------
+-- * Efficient implementations for environments 
+------------------------------------------------------------------------
+
+-- Recall:
+--    up env = Var FZ .: shiftE env
+--
+--    shiftE env = env .>> (Var . FS) 
+-- 
+-- "applyE" weakens each term in the range of env
+-- But, going under *every* binder shifts---this composition is expensive!
+
+------------------------------------------------------------------------
+-- * Fusing multiple traversals
+------------------------------------------------------------------------
+
+-- (1) Delay substitution at binders
+
+data Bind n where
+  Bind :: Env m n -> Tm (S m) -> Bind n 
+
+instantiate1 :: Bind n -> Tm n -> Tm n
+instantiate1 (Bind e body) v = applyE (v .: e) body
+
+-- (2) Delay shifting in the data structure
+
+-- data Env m n where
+--   Id    :: Env m m
+--   Cons  :: Tm n -> Env m n -> Env (S m) n
+--   Shift :: SNat k -> Env m n -> Env m (k + n)   -- multiple shifts at once
+
+
+
+
+------------------------------------------------------------
+-- * SNat - singleton nats
+------------------------------------------------------------
+-- The type `SNat` provide *runtime* access to type-level 
+-- natural numbers. This is because, in Haskell, numbers 
+-- that appear in types are erased before execution.
+
+
+-- s0 :: SNat N0
+
+-- s1 :: SNat N1
+
+-- sPlus :: SNat n1 -> SNat n2 -> SNat (n1 + n2)
+
 
 
 
@@ -226,6 +306,17 @@ instance Num Nat where
   fromInteger 0 = Z
   fromInteger n | n > 0 = S (fromInteger (n-1))
   fromInteger n = error "cannot convert negative number to Nat"
+  Z + m = m
+  S n + m = S (n + m)
+  Z * _ = Z
+  S n * m = m + n * m
+  n - Z = n
+  S n - S m = n - m
+  Z - S _ = error "cannot subtract to a negative Nat"
+  abs n = n
+  signum Z = Z
+  signum (S _) = S Z
+
 
 fromNat :: Nat -> Int
 fromNat Z = 0
@@ -234,4 +325,5 @@ fromNat (S n) = 1 + fromNat n
 toNat :: Fin n -> Nat
 toNat FZ = Z
 toNat (FS n) = S (toNat n)
+
 

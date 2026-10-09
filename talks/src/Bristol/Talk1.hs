@@ -156,7 +156,7 @@ PART 3:  Talk3.hs: using well-scoped de Bruijn indices at scale
 ------------------------------------------------------------------------
 -- | PART1:  What abstractions should the rebound library provide?
 
-module Talks.Bristol.Talk1 where
+module Bristol.Talk1 where
 
 ------------------------------------------------------------------------
 -- * Natural numbers

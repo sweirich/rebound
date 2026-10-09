@@ -1,0 +1,49 @@
+cabal-version:  3.0
+name:           rebound-talks
+version:        0.1.0.0
+description:    Source code for talks about the rebound library
+homepage:       https://github.com/sweirich/rebound/talks
+bug-reports:    https://github.com/sweirich/rebound/issues
+author:         Stephanie Weirich
+maintainer:     sweirich@seas.upenn.edu
+copyright:      2026 Stephanie Weirich
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+category:       Language
+
+common common-stanza
+  ghc-options:
+     -Wno-type-defaults
+     -Wincomplete-patterns
+     -Wno-deprecations
+  default-language:
+    GHC2024
+  default-extensions:
+      QuantifiedConstraints
+    , TypeFamilies
+    , AllowAmbiguousTypes
+    , UndecidableInstances
+    , FunctionalDependencies
+
+library
+  import:
+    common-stanza
+  build-depends:
+      base >= 4.15 && < 5.0
+    , rebound >= 0.1.2
+    , rebound-tutorial
+    , QuickCheck >= 2.14.3 && < 2.19
+  exposed-modules:
+    -- Bristol, July 2026
+      Bristol.Talk1
+    , Bristol.Talk2
+    , Bristol.Talk3
+    -- Haskell Symposium 2026
+    , Hs26.Talk1
+    , Hs26.Talk2
+    , Hs26.Talk3
+    -- Lambda World 2026
+    , Lambdaworld.Talk1
+    , Lambdaworld.Talk2
+  hs-source-dirs: src

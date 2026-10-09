@@ -5,7 +5,7 @@
 
 -}
 
-module Talks.Hs26.Talk2 where
+module Hs26.Talk2 where
 
 -- Use library definitions for Nat, Fin, etc.
 import Data.Fin
@@ -181,7 +181,7 @@ shiftE = Shift s1
 --   Id :: Env m m
 --   Cons :: Tm n -> Env m1 n -> Env ('S m1) n
 --   Shift :: SNat k -> Env m n1 -> Env m (k + n1)
---   	-- Defined at /Users/sweirich/github/haskell/rebound/tutorial/main/src/talks/hs26/Talk2.hs:118:1
+--   	-- Defined at src/Hs26/Talk2.hs:118:1
 
 
 -- | Traverse the list, accumulating amount to shift

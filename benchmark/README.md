@@ -29,7 +29,7 @@ include or exclude various implementations from testing and benchmarking.
 ## Running the test suite
 
 The correctness of the implementations is ensured through quickcheck and unit
-testing. The module [Main](test/Main.hs) in the `test/` subdirectory defines
+testing. The module [Main](tests/Main.hs) in the `tests/` subdirectory defines
 these tests. To run them:
 
     stack test
@@ -55,6 +55,20 @@ QuickChecks:
 
 ### Table 1
 
+The implementations mentioned in the paper are:
+- [Env.Strict.BindV](lib/Rebound/Env/Strict/BindV.hs)
+- [Env.Strict.EnvV](lib/Rebound/Env/Strict/EnvV.hs)
+- [Env.Strict.EnvGenV](lib/Rebound/Env/Strict/EnvGenV.hs)
+- [Env.Strict.Bind](lib/Rebound/Env/Strict/Bind.hs)
+- [Env.Strict.Env](lib/Rebound/Env/Strict/Env.hs)
+- [Env.Strict.EnvGen](lib/Rebound/Env/Strict/EnvGen.hs)
+- [NBE.KovacsScoped](lib/NBE/KovacsScoped.hs)
+- [DeBruijn.BoundV](lib/DeBruijn/BoundV.hs)
+- [DeBruijn.Bound](lib/DeBruijn/Bound.hs)
+- [Named.Foil](lib/Named/Foil.hs)
+- [Unbound.Gen](lib/Unbound/Gen.hs)
+- [Unbound.NonGen](lib/Unbound/NonGen.hs)
+
 In [Suite.hs](lib/Suite.hs), change `impls` as follows:
 ```
 impls = rebound_comparison
@@ -71,6 +85,15 @@ The result are in `results/<MACHINENAME>/rebound_comparison/output.txt`
 
 ### Table 2 (partial)
 
+The implementations of the main environments are:
+- [Functional](../rebound/src/Rebound/Env/Functional.hs)
+- [Lazy](../rebound/src/Rebound/Env/Lazy.hs)
+- [LazyA](../rebound/src/Rebound/Env/LazyA.hs)
+- [LazyB](../rebound/src/Rebound/Env/LazyB.hs)
+- [Strict](../rebound/src/Rebound/Env/Strict.hs)
+- [StrictA](../rebound/src/Rebound/Env/StrictA.hs)
+- [StrictB](../rebound/src/Rebound/Env/StrictB.hs)
+
 In [Suite.hs](lib/Suite.hs), change `impls` as follows:
 ```
 impls = rebound_strict_envV
@@ -86,6 +109,16 @@ To benchmark the implementations, run
 The result are in `results/ablate/rebound_strict_envV/main`
 
 This will benchmark all `main/...` implementations.
+
+### Table 3
+
+The pi-forall benchmarks live in the [`piforall`](../piforall/README.md)
+directory; consult its README for instructions. The pi-forall files used are:
+- [AVL](../piforall/pi/examples/AVL_F.pi)
+- [DepAvl](../piforall/pi/examples/AVL.pi)
+- [Compiler](../piforall/pi/examples/Compiler.pi)
+- [Lennart](../piforall/pi/examples/Lennart.pi)
+- [CompCk](../piforall/pi/examples/cCompiler.pi)
 
 ## Anatomy of an implementation:
 

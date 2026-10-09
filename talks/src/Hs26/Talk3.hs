@@ -1,23 +1,14 @@
-{- 
 
-  Part II: 
+------------------------------------------------------------------------
+--  Part III: Using the rebound library, and reflections
+------------------------------------------------------------------------
 
--}
-
-module Talks.Lambdaworld.Talk2 where
+module Hs26.Talk3 where
 
 -- Import rebound library
 import Rebound hiding (Ctx)
 import Rebound.Bind.Pat qualified as Rebound (Bind)
 import Rebound.Bind.Pat ( bind, getBody, getPat, instantiate )
-
-------------------------------------------------------------------------
---  Part II: Using the rebound library, and reflections
-------------------------------------------------------------------------
-
-
-
-
 
 
 
@@ -28,9 +19,7 @@ import Rebound.Bind.Pat ( bind, getBody, getPat, instantiate )
 ------------------------------------------------------------------------
 -- * Challenge: Lang where # of binding vars not statically known
 ------------------------------------------------------------------------
-{-  
-
--- lambda calculus with unit, products, and pattern matching
+{-  -- lambda calculus with unit, products, and pattern matching
 e ::= x | \ x . e | e1 e2 
    | () | (e1,e2) | inj1 e | inj2 e   
    | case e of { brs }                
@@ -60,8 +49,8 @@ data Tm n = Var (Fin n) | Lam (Bind (SNat N1) n) | App (Tm n) (Tm n)
 
 
 
--- A list of pattern bindings of m variables, in scope n
--- Bind (Pat m) n contains a pattern (Pat m) and body (Tm (m + n))
+-- A list of pattern bindings (BindP) of m variables, in scope n
+-- BindP m n contains a pattern (Pat m) and body (Tm (m + n))
 data BranchList (n :: Nat) where
     BNil  :: BranchList n
     BCons :: Bind (Pat m) n -> BranchList n -> BranchList n
@@ -128,11 +117,6 @@ instance Sized (Pat m) where
 -- >>> :t (.:)
 
 -- Some operations need to identify "Var" constructor
-instance SubstVar Tm where
-  var :: Fin n -> Tm n
-  var = Var
-
--- look up an index in the environment
 (!) :: SubstVar v => Env v m n -> Fin m -> v n
 (!) = applyEnv
 
@@ -140,6 +124,9 @@ instance SubstVar Tm where
 
 -- >>> :t up
 
+instance SubstVar Tm where
+  var :: Fin n -> Tm n
+  var = Var
 
 
 --------------------------------------------------------------------
@@ -152,7 +139,9 @@ instance SubstVar Tm where
 -- >>> :t applyE
 
 instance Subst Tm Tm where 
- 
+  isVar (Var x) = Just (Refl, x)
+  isVar _ = Nothing
+  {-
   applyE :: Env Tm n m -> Tm n -> Tm m
   applyE r (Var x)       = applyEnv r x
   applyE r (App e1 e2)   = App (applyE r e1) (applyE r e2)
@@ -161,7 +150,7 @@ instance Subst Tm Tm where
   applyE r (Pair e1 e2)  = Pair (applyE r e1) (applyE r e2)
   applyE r (Inj i e)     = Inj i (applyE r e)
   applyE r (Match e brs) = Match (applyE r e) (applyE r brs)
-  
+  -}
 instance Subst Tm BranchList where
   applyE :: Env Tm n m -> BranchList n -> BranchList m
   applyE r (BCons b brs) = BCons (applyE r b) (applyE r brs)
@@ -254,40 +243,48 @@ patternMatch _ _ = Nothing
 
 
 --------------------------------------------------------------------
--- * Conclusion: What does Dependent Haskell buy?
+-- * What have we learned about DTP from Haskell?
 --------------------------------------------------------------------
 
--- The compiler checks an invariant you were already tracking in your head
---    - "This index is in scope" became a type, not a comment
---    - Scope errors are compile-time errors
---    - No proofs needed: every function in Part I was ordinary Haskell
+--   Erasure is the default 
+--      - Agda can use @0 annotations, but erasure must be requested
+--      - Haskell is the opposite: singletons indicate non-erasure
+--      - Note: combined term and type language still needs singletons
 
--- Libraries save work and automate boilerplate
---    - Abstract types hide the clever parts (implementation of Bind/Env)
---    - GHC.Generics derives substitution
---    - Rich interface guarantees correct usage
+--   Type soundness holds in presence of nontermination 
+--      - Weirich et al. "A specification of Dependent Haskell", ICFP 2017
+--      - Can add pragmas to Agda, but proving termination is challenging
+--        when substitutions are delayed in binders
 
--- But there are costs...
---    - Error messages can be obscure
---    - Sometimes GHC needs help with type-level arithmetic
+--   Constraint solver automatically applies equations in types
+--      - Sjoeberg & Weirich. "Programming Up-to-congruence", POPL 2015
+
+--   Industrial-strength language features, libraries, and compiler (GHC)
+--      - deriving and GHC.Generics 
+--      - QuickCheck
+--      - Overlapping instances, MPTC + functional dependencies 
 
 
--- When Dependent Haskell works, it is beautiful. 
 
 --------------------------------------------------------------------
--- * Try it
+-- * Conclusion
 --------------------------------------------------------------------
---   https://github.com/sweirich/rebound
---     library, tutorial, exercises, larger example, and this talk
+
+-- Internal verification is a sweet spot  
+--   - proofs written in this style are similar to Agda 
+--        (see Agda port in repository for more details)
+--   - ... but relatively rare
+ 
+--   
+-- When external verification is required, GHC unique support
+--   - type inference supports "extensional" equality
+--   - ... but more expressive coercion language would help
 
 
 
 
 
-
-
-
---- End of Part II
+--- End of Part III
 
 
 

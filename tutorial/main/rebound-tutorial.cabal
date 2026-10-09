@@ -55,14 +55,6 @@ library
     , Tutorial.Exercise2
     , Tutorial.Exercise3
     , Tutorial.Exercise4
-    , Talks.Bristol.Talk1
-    , Talks.Bristol.Talk2
-    , Talks.Bristol.Talk3
-    , Talks.Hs26.Talk1
-    , Talks.Hs26.Talk2
-    , Talks.Hs26.Talk3
-    , Talks.Lambdaworld.Talk1
-    , Talks.Lambdaworld.Talk2
   hs-source-dirs: src
 
 test-suite tutorial-tests

@@ -15,7 +15,7 @@
                    August 2026
 
   ---------------------------------------------------------------------
-  This is the Agda transcription of Talks.Hs26.Talk1.  The Haskell is
+  This is the Agda transcription of Hs26.Talk1.  The Haskell is
   reproduced as closely as Agda allows; every place the two languages
   part company is flagged with an "AGDA:" note.
 

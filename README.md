@@ -8,9 +8,31 @@ using an *environment*, a parallel substitution similar to a function of
 type `Fin n -> Exp m`. Applying an environment converts an expression that 
 contains indices in scope `n` to one in scope `m`.
 
-## Draft paper
+## Paper
 
-See: [rebound-paper.pdf](./rebound-paper.pdf)
+Noé De Santo and Stephanie Weirich. 2025. Rebound: Efficient, Expressive, and
+Well-Scoped Binding. In *Proceedings of the 18th ACM SIGPLAN International
+Haskell Symposium (Haskell '25)*, October 12–18, 2025, Singapore. ACM, New
+York, NY, USA, 38–52. <https://doi.org/10.1145/3759164.3759348>
+
+A draft of the paper is included in this repository as
+[rebound-paper.pdf](./rebound-paper.pdf), and a preprint is available as
+[arXiv:2509.13261](https://arxiv.org/abs/2509.13261).
+
+```bibtex
+@inproceedings{desanto2025rebound,
+  author    = {De Santo, No{\'e} and Weirich, Stephanie},
+  title     = {Rebound: Efficient, Expressive, and Well-Scoped Binding},
+  booktitle = {Proceedings of the 18th ACM SIGPLAN International Haskell
+               Symposium},
+  series    = {Haskell '25},
+  year      = {2025},
+  pages     = {38--52},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  doi       = {10.1145/3759164.3759348}
+}
+```
 
 ## Design goals
 
@@ -45,55 +67,19 @@ prototype implementation quickly.
 Each sub-directory contains a README with additional instructions, but here is a
 high-level overview:
 - [`rebound`](./rebound/README.md) contains the Haskell library itself, as well
-  as some short [examples](./rebound/examples) showing how to use the library.
+  as many short [examples](./rebound/examples) showing how to use the library.
 - [`piforall`](./piforall/README.md) contains two implementations of the
   `pi-forall` language. These implementations are the original one (using
   `unbound-generics`) and new one based on `rebound`.
 - [`benchmark`](./benchmark/README.md) contains many implementations of the
-  lambda-calculus, using different libraries and techniques. It also contains
-  code to benchmark the normalization of lambda-terms in each of these
-  implementations.
-
-## Benchmarks
-
-### Table 1
-
-**To run**: Consult this [file](./benchmark/README.md) for instructions.
-
-The implementations mentioned in the paper are:
-- [Env.Strict.BindV](benchmark/lib/Rebound/Env/Strict/BindV.hs)
-- [Env.Strict.EnvV](benchmark/lib/Rebound/Env/Strict/EnvV.hs)
-- [Env.Strict.EnvGenV](benchmark/lib/Rebound/Env/Strict/EnvGenV.hs)
-- [Env.Strict.Bind](benchmark/lib/Rebound/Env/Strict/Bind.hs)
-- [Env.Strict.Env](benchmark/lib/Rebound/Env/Strict/Env.hs)
-- [Env.Strict.EnvGen](benchmark/lib/Rebound/Env/Strict/EnvGen.hs)
-- [NBE.KovacsScoped](benchmark/lib/NBE/KovacsScoped.hs)
-- [DeBruijn.BoundV](benchmark/lib/DeBruijn/BoundV.hs)
-- [DeBruijn.Bound](benchmark/lib/DeBruijn/Bound.hs)
-- [Named.Foil](benchmark/lib/Named/Foil.hs)
-- [Unbound.Gen](benchmark/lib/Unbound/Gen.hs)
-- [Unbound.NonGen](benchmark/lib/Unbound/NonGen.hs)
-
-### Table 2 (partial)
-
-**To run**: Consult this [file](./benchmark/README.md) for instructions.
-
-The implementation of the main environments are:
-- [Functional](rebound/src/Rebound/Env/Functional.hs)
-- [Lazy](rebound/src/Rebound/Env/Lazy.hs)
-- [LazyA](rebound/src/Rebound/Env/LazyA.hs)
-- [LazyB](rebound/src/Rebound/Env/LazyB.hs)
-- [Strict](rebound/src/Rebound/Env/Strict.hs)
-- [StrictA](rebound/src/Rebound/Env/StrictA.hs)
-- [StrictB](rebound/src/Rebound/Env/StrictB.hs)
-
-### Table 3
-
-**To run**: Consult this [file](./piforall/README.md) for instructions.
-
-The pi-forall files used are:
-- [AVL](piforall/pi/examples/AVL_F.pi)
-- [DepAvl](piforall/pi/examples/AVL.pi)
-- [Compiler](piforall/pi/examples/Compiler.pi)
-- [Lennart](piforall/pi/examples/Lennart.pi)
-- [CompCk](piforall/pi/examples/cCompiler.pi)
+  lambda-calculus, using different libraries and techniques, including 
+  `rebound`. It also contains code to benchmark the normalization of 
+  lambda-terms using each of these implementations.
+- [`tutorial`](./tutorial/README.md) contains the companion code and lecture
+  notes for the four-lecture tutorial "Implement your POPL paper (in
+  Haskell)". The rendered tutorial website is at
+  <https://sweirich.github.io/rebound/>.
+- [`talks`](./talks/README.md) contains the Haskell source for talks about
+  `rebound`, one directory per talk.
+- [`agda`](./agda/README.md) contains an Agda translation of the library,
+  several of its examples, and the Haskell Symposium 2026 talk.

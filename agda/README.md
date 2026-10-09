@@ -1,6 +1,6 @@
 # Agda port of rebound and the HS26 talk
 
-An Agda transcription of `tutorial/main/src/talks/hs26/{Talk1,Talk2,Talk3}.hs`,
+An Agda transcription of `talks/src/Hs26/{Talk1,Talk2,Talk3}.hs`,
 the part of `rebound/src` they need, and eight of the examples in
 `rebound/examples`. The goal is to follow the Haskell as closely as Agda
 allows, so that the places where the two languages genuinely differ stand

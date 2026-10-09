@@ -6,7 +6,7 @@
 
 -}
 
-module Talks.Bristol.Talk3 where
+module Bristol.Talk3 where
 
 
 import Test.QuickCheck
