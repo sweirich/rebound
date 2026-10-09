@@ -61,6 +61,8 @@ library
     , Talks.Hs26.Talk1
     , Talks.Hs26.Talk2
     , Talks.Hs26.Talk3
+    , Talks.Lambdaworld.Talk1
+    , Talks.Lambdaworld.Talk2
   hs-source-dirs: src
 
 test-suite tutorial-tests
