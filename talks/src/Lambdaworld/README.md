@@ -6,3 +6,7 @@ The talk is composed of two parts:
 
 
 
+
+A Lean 4 transcription of both parts is in
+[`lean/Talks/Lambdaworld`](../../../lean/Talks/Lambdaworld), built on a Lean port
+of the library; see [`lean/README.md`](../../../lean/README.md).

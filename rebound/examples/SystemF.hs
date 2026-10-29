@@ -85,12 +85,14 @@ lookup (FS x) (ConsTyVar g) = applyE @Ty shift1E $ lookup (FS x) g
 
 tc :: FCtx m n -> Exp m n -> Maybe (Ty m)
 tc g (EVar x) = return $ lookup x g
-tc g (ELam ty b) = tc (ConsTmVar ty g) (getBody b)
+tc g (ELam t1 b) = do 
+    t2 <- tc (ConsTmVar t1 g) (getBody b)
+    return (TArr t1 t2)
 tc g (EApp a b) = do 
     t1 <- tc g a
     t2 <- tc g b
     case t1 of 
-        TArr t11 t12 -> if t1 == t2 then return t12 else Nothing
+        TArr t11 t12 -> if t11 == t2 then return t12 else Nothing
         _ -> Nothing
 tc g (ETLam b) = do
     t1 <- tc (ConsTyVar g) (unTyExp (getBody b))

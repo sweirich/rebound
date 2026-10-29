@@ -122,7 +122,7 @@ termination pragmas discussed below.
 ```sh
 cd agda
 agda --compile --compile-dir=build talks/Test.agda   # checks talks + examples
-./build/Test                                         # runs 38 checks
+./build/Test                                         # runs 40 checks
 ```
 
 ## Erasure

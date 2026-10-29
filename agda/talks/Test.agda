@@ -268,6 +268,21 @@ module T7 where
   test-tc : Bool
   test-tc = isJust (tc Empty polyId)
 
+  polyIdTy : Ty Z
+  polyIdTy = TAll (bind (TArr (TVar f0) (TVar f0)))
+
+  test-tc-type : Bool
+  test-tc-type with tc Empty polyId
+  ... | Just t  = eqTy t polyIdTy
+  ... | Nothing = false
+
+  -- ΛA. λx:A. x x  is ill-typed: x is not a function
+  selfApp : Exp Z Z
+  selfApp = ETLam (bind (mkTyExp (ELam (TVar f0) (bind (EApp (EVar f0) (EVar f0))))))
+
+  test-tc-reject : Bool
+  test-tc-reject = not (isJust (tc Empty selfApp))
+
 module T8 where
   open LCLet using (Exp; eval; t2; t3; t4; Lam)
 
@@ -448,6 +463,8 @@ main =
   check "scope check accepts closed   " T6.test-scoped      then
   check "scope check rejects open     " T6.test-illscoped   then
   check "System F infers poly identity" T7.test-tc          then
+  check "System F poly identity type  " T7.test-tc-type     then
+  check "System F rejects x x         " T7.test-tc-reject   then
   check "let-binding evaluates        " T8.test-let         then
   check "let-telescope evaluates      " T8.test-tele        then
   check "PTS checks polymorphic id    " T9.test-tmid        then

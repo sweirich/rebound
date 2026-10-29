@@ -43,6 +43,8 @@
 --  Rebound library: Well-scoped de Bruijn indices in Haskell
 ------------------------------------------------------------------------
 {-  
+      https://github.com/sweirich/rebound 
+
     - Well-scoped: type system maintains domain-specific invariants
     - Expressive: didactic examples + pi-forall
     - Efficient: supports working with delayed and reified substitutions
@@ -59,7 +61,7 @@
 
 
 
-    https://github.com/sweirich/rebound 
+    
 
     NOTE: the repository includes the rebound library, 
           examples, tutorial, exercises, pi-forall demo, and this talk.

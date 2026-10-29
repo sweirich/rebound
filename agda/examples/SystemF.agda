@@ -118,11 +118,11 @@ eqTy _            _            = false
 {-# TERMINATING #-}
 tc : ∀ {@0 m n} → FCtx m n → Exp m n → Maybe (Ty m)
 tc g (EVar x)    = return (lookup x g)
-tc g (ELam ty b) = tc (ConsTmVar ty g) (getBody b)
+tc g (ELam ty b) = tc (ConsTmVar ty g) (getBody b) >>= λ t2 → return (TArr ty t2)
 tc g (EApp a b)  = tc g a >>= λ t1 → tc g b >>= λ t2 → tcApp t1 t2
   where
     tcApp : ∀ {@0 m} → Ty m → Ty m → Maybe (Ty m)
-    tcApp (TArr t11 t12) t2 with eqTy (TArr t11 t12) t2
+    tcApp (TArr t11 t12) t2 with eqTy t11 t2
     ... | true  = Just t12
     ... | false = Nothing
     tcApp _ _ = Nothing
