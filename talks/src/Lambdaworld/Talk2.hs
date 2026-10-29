@@ -34,7 +34,7 @@ e ::= x | \ x . e | e1 e2
 brs ::=   |  p -> e ; brs    
 
 -- patterns
-p ::= x | () | (p1,p2) | Left p | Right p
+p ::= x | () | (p1,p2) | Left p | Right p | _ 
 
 -}
 
@@ -226,6 +226,10 @@ instance SubstVar Tm where
 
 instance Subst Tm Tm where 
 
+  isVar (TVar x) = Just (Refl, x)
+  isVar _ = Nothing
+
+{-
   applyE :: Env Tm n m -> Tm n -> Tm m
   applyE r (TVar x)       = r ! x
   applyE r (TApp e1 e2)   = TApp (applyE r e1) (applyE r e2)
@@ -235,7 +239,7 @@ instance Subst Tm Tm where
   applyE r (TLeft e)      = TLeft (applyE r e)
   applyE r (TRight e)     = TRight (applyE r e)
   applyE r (TCase e brs)  = TCase (applyE r e) (applyE r brs)
-
+-}
 
 instance Subst Tm BranchList where
 

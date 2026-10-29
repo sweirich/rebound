@@ -108,8 +108,8 @@ data Fin n where
 
 
 
-f0 :: Fin (S Z)
-f0 = FZ               
+f1' :: Fin (S (S Z))
+f1' = FS FZ               
 
 f1 :: Fin (S (S n))   -- The index 1 in any scope >= 2
 f1 = FS FZ
@@ -153,7 +153,7 @@ ex_const = Lam (Lam (Var (FS FZ)))
 -- a closed lambda expression
 newtype Val = VLam (Tm (S Z))
 
--- | Evaluation function (call-by-value) 
+-- | Evaluation function (call-by-name) 
 -- Haskell's type system ensures no *runtime* errors
 eval :: Tm Z -> Val
 eval (Var x)   = case x of {}     -- impossible case!
@@ -188,7 +188,8 @@ External verification: prove properties after the fact
 
         eval :: Tm -> Maybe Val
 
-        pf  :: well_scoped e -> exists v. eval e = Just v
+        pf  :: closed e -> exists v. eval e = Just v 
+                           or diverges e
 
 
 
